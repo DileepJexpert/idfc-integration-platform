@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: bureau-capability
+
+# Actuator locked down: health/info/metrics only (no env/heapdump/etc.).
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+
+logging:
+  level:
+    com.idfcfirstbank.integration.capabilities.bureau: INFO

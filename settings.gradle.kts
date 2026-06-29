@@ -22,7 +22,7 @@ include("edges:sfdc-egress-edge")      // stub (later slice)
 
 // capabilities/ — business capabilities (stubs in Slice 1)
 include("capabilities:kyc")
-include("capabilities:bureau")
+include("capabilities:bureau-capability")
 include("capabilities:scoring")
 include("capabilities:lending-origination")
 include("capabilities:lending-servicing")
