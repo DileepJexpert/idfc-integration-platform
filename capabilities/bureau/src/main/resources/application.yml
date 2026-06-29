@@ -1,6 +1,23 @@
 spring:
   application:
     name: bureau
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+# CIBIL (credit bureau vendor): mock locally, real (docker/prod) via URL.
+idfc:
+  bureau:
+    cibil:
+      mode: ${CIBIL_MODE:mock}
+      url: ${CIBIL_URL:http://localhost:9102}
+
 management:
   endpoints:
     web:

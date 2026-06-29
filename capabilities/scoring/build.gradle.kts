@@ -2,6 +2,36 @@ plugins {
     id("idfc.spring-boot-app-conventions")
 }
 
-// STUB module (Slice 1). Runnable Spring Boot app exposing /actuator/health.
-// Real implementation arrives in a later slice; see docs/SLICE1_PUNCH_LIST.md scope fence.
-description = "scoring (Slice 1 stub)"
+// scoring capability — the DECISIONING capability. Takes the applicant + the
+// bureau result (from collectedResults) and produces a credit DECISION. Hexagonal:
+// domain framework-free, the pure decision rule unit-tested, FICO behind an OUT
+// port with mock (local/test) + real (HTTP) adapters. Implements THE CAPABILITY
+// CONTRACT (shared:shared-domain).
+description = "scoring capability — credit decisioning (FICO + rule)"
+
+dependencies {
+    implementation(project(":shared:shared-domain"))   // THE CAPABILITY CONTRACT
+    implementation("org.springframework.kafka:spring-kafka:${property("springKafkaVersion")}")
+    implementation("com.fasterxml.jackson.core:jackson-databind")
+
+    testImplementation("org.springframework.kafka:spring-kafka-test")
+    testImplementation("org.testcontainers:kafka")
+}
+
+val integrationTest = tasks.register<Test>("integrationTest") {
+    description = "Runs Testcontainers-backed tests (real Kafka + mock vendor)."
+    group = "verification"
+    useJUnitPlatform { includeTags("integration") }
+    shouldRunAfter(tasks.named("test"))
+    val dockerHost = System.getenv("DOCKER_HOST") ?: "unix:///var/run/docker.sock"
+    environment("DOCKER_HOST", dockerHost)
+    environment("TESTCONTAINERS_RYUK_DISABLED", "true")
+    environment("TESTCONTAINERS_CHECKS_DISABLE", "true")
+    val dockerApi = System.getenv("DOCKER_API_VERSION") ?: "1.43"
+    environment("DOCKER_API_VERSION", dockerApi)
+    systemProperty("api.version", dockerApi)
+}
+
+tasks.named<Test>("test") {
+    useJUnitPlatform { excludeTags("integration") }
+}

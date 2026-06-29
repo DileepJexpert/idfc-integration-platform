@@ -1,6 +1,24 @@
 spring:
   application:
     name: scoring
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+# Scoring (credit decisioning): threshold + FICO vendor. FICO mock locally,
+# real (docker/prod) via URL.
+idfc:
+  scoring:
+    threshold: ${SCORING_THRESHOLD:700}
+    fico-mode: ${FICO_MODE:mock}
+    fico-url: ${FICO_URL:http://localhost:9103}
+
 management:
   endpoints:
     web:

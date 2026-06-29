@@ -1,6 +1,23 @@
 spring:
   application:
     name: customer-party
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+# Posidex (customer source of truth): mock locally, real (docker/prod) via URL.
+idfc:
+  customer-party:
+    posidex:
+      mode: ${POSIDEX_MODE:mock}
+      url: ${POSIDEX_URL:http://localhost:9101}
+
 management:
   endpoints:
     web:

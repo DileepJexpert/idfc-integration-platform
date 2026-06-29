@@ -1,0 +1,14 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPath": "/nsdl/verify"
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "status": "VERIFIED",
+      "kycRefId": "KYC-MOCK-0001"
+    }
+  }
+}

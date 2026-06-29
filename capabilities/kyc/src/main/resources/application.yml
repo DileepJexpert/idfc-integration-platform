@@ -1,6 +1,23 @@
 spring:
   application:
     name: kyc
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+# NSDL (KYC vendor): mock locally, real (docker/prod) via URL.
+idfc:
+  kyc:
+    nsdl:
+      mode: ${NSDL_MODE:mock}
+      url: ${NSDL_URL:http://localhost:9104}
+
 management:
   endpoints:
     web:
