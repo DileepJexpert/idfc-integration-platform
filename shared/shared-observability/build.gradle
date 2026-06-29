@@ -1,6 +1,0 @@
-plugins {
-    id 'idfc.library-conventions'
-}
-
-// Shared library (no Spring Boot app). OpenTelemetry/Micrometer wiring helpers.
-description = 'OpenTelemetry/Micrometer wiring helpers.'

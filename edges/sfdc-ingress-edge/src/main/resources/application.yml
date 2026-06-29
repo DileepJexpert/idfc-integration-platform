@@ -66,4 +66,4 @@ idfc:
 
 logging:
   level:
-    in.idfc.integration.edges.sfdcingress: INFO
+    com.idfcfirstbank.integration.edges.sfdcingress: INFO

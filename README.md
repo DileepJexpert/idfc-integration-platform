@@ -12,6 +12,21 @@ real external URLs**.
 > build gate — wins on any conflict), the integration registry, and the kickoff
 > prompt. Read the punch list first.
 
+## Build conventions (house style)
+
+- **Kotlin DSL** Gradle scripts (`*.gradle.kts`) throughout; shared logic lives in
+  the `buildSrc` convention plugins (`idfc.java-conventions`,
+  `idfc.library-conventions`, `idfc.spring-boot-app-conventions`).
+- **group** `com.idfcfirstbank`; Java base package `com.idfcfirstbank.integration.*`.
+- Plugins applied via the conventions/root: `application`, `org.springframework.boot`,
+  `jacoco`, `maven-publish`, and `org.sonarqube` (root-level, multi-module).
+- **Dependency management — boot-parent swap:** the build uses the public
+  `spring-boot-dependencies` BOM so it resolves in a public sandbox. On IDFC's
+  network, swap the BOM import for the internal parent in one line —
+  `mavenBom("com.idfcfirstbank:boot-parent:1.0.15")` — and uncomment the internal
+  Nexus repo in `settings.gradle.kts` / the java convention; `idfc-*` libraries
+  (e.g. `idfc-http-client-utility`) then resolve from boot-parent.
+
 ## Repository map
 
 ```
