@@ -1,0 +1,69 @@
+spring:
+  application:
+    name: sfdc-ingress-edge
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all                       # don't consider a publish done until replicated
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+      enable-auto-commit: true
+
+# Actuator locked down: health/info/metrics only, never env/heapdump/etc.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+
+idfc:
+  aerospike:
+    host: ${AEROSPIKE_HOST:localhost}
+    port: ${AEROSPIKE_PORT:3000}
+    namespace: ${AEROSPIKE_NAMESPACE:idfc}
+    record-set: idem
+    app-pointer-set: idem_app
+    # TTL MUST exceed SFDC's confirmed max retry window (A1). 30d placeholder.
+    ttl-seconds: ${IDEMPOTENCY_TTL_SECONDS:2592000}
+  edge:
+    auth:
+      # Mock two-token auth (real Hydra+Kong is a later slice; secrets via Vault).
+      expected-token: ${SFDC_EDGE_TOKEN:dev-token}
+    poison-redelivery-threshold: 5    # C5 edge poison breaker N
+    max-journey-retry: 1              # C3 transient journey re-enqueue ceiling
+    dlq-topic: orig.sfdc.dlq.v1
+    finnone:
+      max-concurrency: 4             # backpressure cap N (§G)
+      consume-topics: orig.sfdc.pl.v1,orig.sfdc.lap.v1,orig.sfdc.bl.v1,orig.sfdc.commercial.v1
+    # Seed routing map (§E): adding a business line is a CONFIG row, not code.
+    routing:
+      - type: PERSONAL_LOAN
+        topic: orig.sfdc.pl.v1
+        downstream-journey: origination-journey
+      - type: LAP
+        topic: orig.sfdc.lap.v1
+        downstream-journey: origination-journey
+      - type: BUSINESS_LOAN
+        topic: orig.sfdc.bl.v1
+        downstream-journey: origination-journey
+      - type: COMMERCIAL
+        topic: orig.sfdc.commercial.v1
+        downstream-journey: origination-journey
+    # Known orgs (org-config-as-data). Unknown org -> refresh+recheck -> DLQ (C2).
+    known-orgs:
+      - ORG1
+      - IDFC_RETAIL
+      - IDFC_BUSINESS
+
+logging:
+  level:
+    in.idfc.integration.edges.sfdcingress: INFO

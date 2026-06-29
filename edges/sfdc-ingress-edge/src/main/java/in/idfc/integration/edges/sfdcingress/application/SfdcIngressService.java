@@ -119,7 +119,7 @@ public class SfdcIngressService {
 
     private EdgeResult onTransientFailure(SfdcInboundEvent event, IdempotencyRecord record, EdgeException cause) {
         // Persist the failure and bump the C5 edge-redelivery counter (CAS-safe).
-        IdempotencyRecord failed = casToFailed(record);
+        IdempotencyRecord failed = casToFailed(record.notificationId());
         CasResult bumped = store.compareAndIncrementRedelivery(failed);
         int redeliveries = bumped.record().redeliveryCount();
 
@@ -140,7 +140,7 @@ public class SfdcIngressService {
     }
 
     private EdgeResult toDlqPermanent(SfdcInboundEvent event, IdempotencyRecord record, EdgeException cause) {
-        casToFailed(record);
+        casToFailed(record.notificationId());
         publisher.publishToDlq(poisonEnvelope(event), headersFor(event, record),
                 "C2 permanent: " + cause.getMessage());
         log.error("edge.dlq-permanent notificationId={} reason={} ALERT", event.notificationId(), cause.getMessage());
@@ -183,16 +183,23 @@ public class SfdcIngressService {
         return cas.record();
     }
 
-    private IdempotencyRecord casToFailed(IdempotencyRecord record) {
-        if (record.status() == RecordStatus.FAILED) {
-            return record;
+    /** Drive the record to FAILED from whatever its CURRENT state is (CAS-retry loop). */
+    private IdempotencyRecord casToFailed(String notificationId) {
+        for (int attempt = 0; attempt < 5; attempt++) {
+            IdempotencyRecord current = store.findByNotificationId(notificationId).orElse(null);
+            if (current == null) {
+                throw new TransientEdgeException("record vanished while marking FAILED: " + notificationId);
+            }
+            if (current.status() == RecordStatus.FAILED || current.status() == RecordStatus.DECIDED) {
+                return current; // terminal-ish; nothing to do
+            }
+            CasResult cas = store.compareAndSetStatus(current, RecordStatus.FAILED, null);
+            if (cas.applied()) {
+                return cas.record();
+            }
+            // generation moved under us — re-read and retry
         }
-        IdempotencyRecord current = store.findByNotificationId(record.notificationId()).orElse(record);
-        if (current.status() == RecordStatus.FAILED || current.status() == RecordStatus.DECIDED) {
-            return current;
-        }
-        CasResult cas = store.compareAndSetStatus(current, RecordStatus.FAILED, null);
-        return cas.record();
+        return store.findByNotificationId(notificationId).orElseThrow();
     }
 
     // --- side effects, wrapped so failures classify as transient -----------------
