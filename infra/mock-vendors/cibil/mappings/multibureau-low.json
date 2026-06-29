@@ -1,0 +1,4 @@
+{ "priority": 1, "request": { "method": "POST", "urlPath": "/multibureau/report",
+    "bodyPatterns": [ { "matchesJsonPath": "$[?(@.applicationRef =~ /.*LOW.*/i)]" } ] },
+  "response": { "status": 200, "headers": { "Content-Type": "application/json" },
+    "jsonBody": { "score": 530, "grade": "C", "reportId": "MB-LOW-0001" } } }

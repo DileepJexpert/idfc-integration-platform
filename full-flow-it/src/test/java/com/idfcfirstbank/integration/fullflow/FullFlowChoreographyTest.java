@@ -2,7 +2,9 @@ package com.idfcfirstbank.integration.fullflow;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.capabilities.bureau.adapter.out.cibil.MockCibilAdapter;
+import com.idfcfirstbank.integration.capabilities.bureau.application.BureauFetchService;
 import com.idfcfirstbank.integration.capabilities.bureau.application.BureauService;
+import com.idfcfirstbank.integration.capabilities.bureau.domain.model.BureauType;
 import com.idfcfirstbank.integration.capabilities.customer.party.adapter.out.posidex.MockPosidexAdapter;
 import com.idfcfirstbank.integration.capabilities.customer.party.application.CustomerPartyService;
 import com.idfcfirstbank.integration.capabilities.kyc.adapter.out.nsdl.MockNsdlAdapter;
@@ -75,7 +77,9 @@ class FullFlowChoreographyTest {
         Map<String, Function<CapabilityRequest, CapabilityResponse>> fleet = Map.of(
                 "customer-party", new CustomerPartyService(new MockPosidexAdapter())::handle,
                 "kyc", new KycService(new MockNsdlAdapter())::handle,
-                "bureau", new BureauService(new MockCibilAdapter())::handle,
+                "bureau", new BureauService(
+                        new BureauFetchService(java.util.List.of(new MockCibilAdapter())),
+                        java.util.List.of(BureauType.CIBIL))::handle,
                 "scoring", new ScoringService(new MockFicoAdapter(), new DecisionRule(), 700)::handle,
                 "lending-origination", new LendingOriginationService(new MockFinnOneAdapter())::handle);
 

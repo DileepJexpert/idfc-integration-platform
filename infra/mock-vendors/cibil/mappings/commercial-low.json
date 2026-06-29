@@ -1,0 +1,4 @@
+{ "priority": 1, "request": { "method": "POST", "urlPath": "/commercial/report",
+    "bodyPatterns": [ { "matchesJsonPath": "$[?(@.applicationRef =~ /.*LOW.*/i)]" } ] },
+  "response": { "status": 200, "headers": { "Content-Type": "application/json" },
+    "jsonBody": { "score": 520, "grade": "C", "reportId": "COM-LOW-0001" } } }

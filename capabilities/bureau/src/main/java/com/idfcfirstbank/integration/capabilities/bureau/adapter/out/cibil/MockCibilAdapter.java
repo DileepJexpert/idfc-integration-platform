@@ -1,31 +1,32 @@
 package com.idfcfirstbank.integration.capabilities.bureau.adapter.out.cibil;
 
-import com.idfcfirstbank.integration.capabilities.bureau.domain.model.BureauReport;
-import com.idfcfirstbank.integration.capabilities.bureau.domain.port.CibilPort;
+import com.idfcfirstbank.integration.capabilities.bureau.domain.model.BureauType;
+import com.idfcfirstbank.integration.capabilities.bureau.domain.model.CanonicalBureauResult;
+import com.idfcfirstbank.integration.capabilities.bureau.domain.port.CibilBureauPort;
 
+import java.time.Instant;
 import java.util.Map;
 
 /**
- * Local mock CIBIL — deterministic report derived from the applicant's PAN, so
- * the bureau branch is demoable BOTH ways without a docker vendor. Used for unit
- * tests and when {@code idfc.bureau.cibil.mode=mock}.
- *
- * <p>The real high/low fixtures come from the docker mock vendor (compose); this
- * heuristic just mirrors them: a "LOW" marker in either the PAN or the
- * applicationRef yields a low/declinable profile, anything else a high/clean one.
- * applicationRef is used too because in the LIVE edge path the inline PAN travels
- * via the S3 claim-check, whereas applicationRef is always on the envelope.
+ * Local mock CIBIL — deterministic so the bureau branch is demoable BOTH ways
+ * without a docker vendor. A "LOW" marker in the PAN or the applicationRef yields
+ * a low/declinable profile (applicationRef is used too because in the live edge
+ * path the PAN travels via the S3 claim-check). Used for tests and mock mode.
  */
-public class MockCibilAdapter implements CibilPort {
+public class MockCibilAdapter implements CibilBureauPort {
 
     @Override
-    public BureauReport fetch(Map<String, Object> identity) {
+    public BureauType type() {
+        return BureauType.CIBIL;
+    }
+
+    @Override
+    public CanonicalBureauResult fetch(Map<String, Object> identity) {
         String pan = String.valueOf(identity.getOrDefault("pan", "UNKNOWN"));
         String applicationRef = String.valueOf(identity.getOrDefault("applicationRef", ""));
-        String marker = (pan + " " + applicationRef).toUpperCase();
-        if (marker.contains("LOW")) {
-            return new BureauReport(540, "C", "CIBIL-" + pan);
-        }
-        return new BureauReport(780, "A", "CIBIL-" + pan);
+        boolean low = (pan + " " + applicationRef).toUpperCase().contains("LOW");
+        int score = low ? 540 : 780;
+        return new CanonicalBureauResult(BureauType.CIBIL, score, low ? "C" : "A", "CIBIL-" + pan,
+                "mock-cibil", Instant.now().toString(), Map.of("enquiries", low ? 7 : 1));
     }
 }

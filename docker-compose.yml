@@ -120,8 +120,14 @@ services:
       kafka: { condition: service_healthy }
     environment:
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      # Bureau pulls CIBIL by default; the same mock serves multi-bureau/commercial
+      # endpoints, so BUREAU_TYPES can be widened to fan out (all real adapters).
       CIBIL_MODE: real
       CIBIL_URL: http://mock-cibil:8080
+      MULTI_BUREAU_MODE: real
+      MULTI_BUREAU_URL: http://mock-cibil:8080
+      COMMERCIAL_MODE: real
+      COMMERCIAL_URL: http://mock-cibil:8080
 
   scoring:
     image: idfc/scoring:0.1.0-SNAPSHOT

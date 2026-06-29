@@ -1,17 +1,22 @@
 package com.idfcfirstbank.integration.capabilities.bureau.adapter.out.cibil;
 
-import com.idfcfirstbank.integration.capabilities.bureau.domain.model.BureauReport;
-import com.idfcfirstbank.integration.capabilities.bureau.domain.port.CibilPort;
+import com.idfcfirstbank.integration.capabilities.bureau.domain.model.BureauType;
+import com.idfcfirstbank.integration.capabilities.bureau.domain.model.CanonicalBureauResult;
+import com.idfcfirstbank.integration.capabilities.bureau.domain.port.CibilBureauPort;
 import org.springframework.web.client.RestClient;
 
+import java.time.Instant;
 import java.util.Map;
 
 /**
- * Real CIBIL adapter — HTTP POST the applicant identity to the CIBIL report
- * endpoint (base URL from config: the docker mock in compose, the real CIBIL in
- * prod, no code change). Active when {@code idfc.bureau.cibil.mode=real}.
+ * Real CIBIL adapter — HTTP POST the identity to the CIBIL endpoint (URL via
+ * config: docker mock in compose, real CIBIL in prod, no code change) and
+ * translate the vendor's shape into the canonical result. Active when
+ * {@code idfc.bureau.cibil.mode=real}.
+ *
+ * <p>// TODO: parity harness (post-demo) — record real-vs-canonical for cutover.
  */
-public class CibilHttpAdapter implements CibilPort {
+public class CibilHttpAdapter implements CibilBureauPort {
 
     private final RestClient restClient;
 
@@ -20,21 +25,21 @@ public class CibilHttpAdapter implements CibilPort {
     }
 
     @Override
+    public BureauType type() {
+        return BureauType.CIBIL;
+    }
+
+    @Override
     @SuppressWarnings("unchecked")
-    public BureauReport fetch(Map<String, Object> identity) {
-        Map<String, Object> body = restClient.post()
-                .uri("/cibil/report")
-                .body(identity)
-                .retrieve()
-                .body(Map.class);
+    public CanonicalBureauResult fetch(Map<String, Object> identity) {
+        Map<String, Object> body = restClient.post().uri("/cibil/report").body(identity).retrieve().body(Map.class);
         if (body == null) {
-            throw new IllegalStateException("cibil returned empty body");
+            throw new IllegalStateException("CIBIL returned an empty body");
         }
-        // TODO: parity harness (post-demo)
-        return new BureauReport(
-                ((Number) body.get("score")).intValue(),
-                str(body.get("grade")),
-                str(body.get("reportId")));
+        return new CanonicalBureauResult(BureauType.CIBIL,
+                ((Number) body.getOrDefault("score", 0)).intValue(),
+                str(body.get("grade")), str(body.get("reportId")),
+                "cibil", Instant.now().toString(), body);
     }
 
     private static String str(Object v) {
