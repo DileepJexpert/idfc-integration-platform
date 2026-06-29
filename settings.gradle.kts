@@ -1,15 +1,5 @@
 rootProject.name = "idfc-integration-platform"
 
-// On IDFC's network, point dependency resolution at the internal Nexus so
-// boot-parent + idfc-* artifacts resolve (kept commented so the repo builds in a
-// public sandbox against Maven Central).
-// dependencyResolutionManagement {
-//     repositories {
-//         mavenCentral()
-//         maven { url = uri(System.getenv("IDFC_NEXUS_URL") ?: "https://nexus.idfcfirstbank.com/repository/maven") }
-//     }
-// }
-
 // ---------------------------------------------------------------------------
 // Module map (kickoff §3). Slice 1 implements ONLY edges:sfdc-ingress-edge for
 // real; every other module is an empty, runnable stub. Adding a module = one

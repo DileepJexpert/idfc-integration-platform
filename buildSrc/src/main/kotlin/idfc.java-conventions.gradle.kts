@@ -17,10 +17,6 @@ java {
 
 repositories {
     mavenCentral()
-    // boot-parent swap: when building on IDFC's network, add the internal Nexus here
-    // (or in settings.gradle.kts dependencyResolutionManagement) so boot-parent +
-    // idfc-* artifacts resolve. See the BOM note in the *-conventions plugins.
-    // maven { url = uri(System.getenv("IDFC_NEXUS_URL") ?: "https://nexus.idfcfirstbank.com/repository/maven") }
 }
 
 tasks.withType<JavaCompile>().configureEach {

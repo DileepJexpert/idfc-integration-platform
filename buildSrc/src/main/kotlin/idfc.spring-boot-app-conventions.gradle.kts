@@ -12,8 +12,6 @@ plugins {
 
 dependencyManagement {
     imports {
-        // BOM swap: on IDFC's network replace the spring-boot-dependencies import
-        // with the internal parent — mavenBom("com.idfcfirstbank:boot-parent:1.0.15").
         mavenBom("org.springframework.boot:spring-boot-dependencies:${property("springBootVersion")}")
         mavenBom("org.testcontainers:testcontainers-bom:${property("testcontainersVersion")}")
         mavenBom("io.opentelemetry:opentelemetry-bom:${property("otelVersion")}")
@@ -30,9 +28,6 @@ dependencies {
     implementation("io.micrometer:micrometer-registry-prometheus")
     implementation("io.micrometer:micrometer-tracing-bridge-otel:${property("micrometerOtelVersion")}")
     implementation("io.opentelemetry:opentelemetry-exporter-otlp")
-
-    // On IDFC's network, the internal HTTP client utility comes from boot-parent:
-    //   implementation("com.idfcfirstbank:idfc-http-client-utility:1.6.4")
 
     // Test baseline for every app
     testImplementation("org.springframework.boot:spring-boot-starter-test")
