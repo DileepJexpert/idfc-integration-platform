@@ -67,11 +67,17 @@ this is applicationRef and not the inline PAN.
 
 ## What's verified now vs Docker-gated
 
-- ✅ **Verified, Docker-free:** `:full-flow-it:test` wires the REAL engine + the
-  five REAL capability services over an in-memory bus and proves both outcomes
-  (APPROVED+loanId, REJECTED) through the real DecisionRule, bureau score, and
-  booking. Every module's unit suite is green. `docker compose config` validates
-  the full topology.
+- ✅ **Verified, Docker-free:** `./gradlew build` is green across the whole
+  monorepo — every module compiles, all unit suites pass, and all bootable jars
+  assemble (so `bootBuildImage` can produce the demo images). `:full-flow-it:test`
+  wires the REAL engine + the five REAL capability services over an in-memory bus
+  and proves both outcomes (APPROVED+loanId, REJECTED) through the real
+  DecisionRule, bureau score, and booking. `docker compose config` validates the
+  full topology.
+  - Note: the edge's `adapter/out/*` (Aerospike idempotency store, Kafka
+    publisher, and the S3/org-config/auth/SFDC/FinnOne mocks) was reconstructed
+    after an un-anchored `.gitignore` `out/` rule had silently dropped every
+    `adapter/out/` directory from earlier commits (now fixed → `/out/`).
 - ⏳ **Docker-gated (run where Docker is available):** the live `docker compose`
   stack (Kafka + Aerospike + 7 services + WireMock + Oracle-XE) via `./demo.sh`.
   The per-module `integrationTest` tasks (Testcontainers Kafka, tag `integration`)
