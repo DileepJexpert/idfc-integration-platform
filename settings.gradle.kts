@@ -19,10 +19,11 @@ include("platform:platform-messaging")    // shared Kafka helpers
 // edges/ — protocol edges (thin; no business logic)
 include("edges:sfdc-ingress-edge")     // *** Slice 1 — IMPLEMENTED FOR REAL ***
 include("edges:sfdc-egress-edge")      // stub (later slice)
+include("edges:digital-partner-edge")  // digital twin: partner REST -> SAME envelope/topic/engine
 
 // capabilities/ — business capabilities (stubs in Slice 1)
 include("capabilities:kyc")
-include("capabilities:bureau-capability")
+include("capabilities:bureau")
 include("capabilities:scoring")
 include("capabilities:lending-origination")
 include("capabilities:lending-servicing")
@@ -31,3 +32,8 @@ include("capabilities:payments")
 
 // orchestration/ — long-running journeys (stubs in Slice 1)
 include("orchestration:origination-journey")
+
+// full-flow demo integration test (no main code). Wires the engine + all five
+// capability services to prove the end-to-end choreography (edge output ->
+// engine -> capabilities -> branch -> decision) both ways.
+include("full-flow-it")

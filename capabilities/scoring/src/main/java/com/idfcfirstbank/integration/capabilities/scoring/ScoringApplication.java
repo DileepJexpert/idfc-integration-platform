@@ -4,8 +4,11 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 /**
- * Slice 1 STUB. Starts and serves /actuator/health; no business logic yet.
- * The real {@code scoring} capability is implemented in a later slice.
+ * scoring capability app — the DECISIONING capability. Consumes
+ * {@code cap.scoring.request.v1}, reads the upstream bureau result from
+ * {@code collectedResults}, enriches via FICO (mock/real adapter), applies the
+ * pure decision rule, and replies on {@code cap.scoring.response.v1} with a
+ * {@code decision} of {@code APPROVED}/{@code REJECTED} per THE CAPABILITY CONTRACT.
  */
 @SpringBootApplication
 public class ScoringApplication {

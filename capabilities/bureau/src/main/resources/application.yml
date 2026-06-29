@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: bureau
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+# Bureau (multi-vendor fan-out). Which bureaus a request pulls by default, and
+# each vendor's mock/real binding. Adding a bureau is config + an adapter.
+idfc:
+  bureau:
+    # The demo pulls CIBIL by default (a request may ask for more, e.g.
+    # [CIBIL, MULTI_BUREAU, COMMERCIAL]); SCORECARD_INFRA is an internal backing.
+    default-bureau-types: ${BUREAU_TYPES:CIBIL}
+    cibil:
+      mode: ${CIBIL_MODE:mock}
+      url: ${CIBIL_URL:http://localhost:9102}
+    multi-bureau:
+      mode: ${MULTI_BUREAU_MODE:mock}
+      url: ${MULTI_BUREAU_URL:http://localhost:9102}
+    commercial:
+      mode: ${COMMERCIAL_MODE:mock}
+      url: ${COMMERCIAL_URL:http://localhost:9102}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus   # locked down: no env/heapdump/etc.
+  endpoint:
+    health:
+      probes:
+        enabled: true

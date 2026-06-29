@@ -5,5 +5,7 @@ build/
 .idea/
 *.iml
 .vscode/
-out/
-bin/
+# Anchor IDE output dirs to the repo root so they don't match source packages
+# like `adapter/out/` (an un-anchored `out/` silently excluded every out-adapter).
+/out/
+/bin/

@@ -1,6 +1,24 @@
 spring:
   application:
     name: lending-origination
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+# FinnOne (loan booking system of record). The real integration is an Oracle
+# STORED PROCEDURE over JDBC (SP_FINNONE_SUBMISSION) — NOT HTTP. mock locally,
+# real via spring.datasource.* (docker/prod).
+idfc:
+  lending-origination:
+    finnone:
+      mode: ${FINNONE_MODE:mock}
+
 management:
   endpoints:
     web:

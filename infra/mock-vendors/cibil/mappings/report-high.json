@@ -1,0 +1,16 @@
+{
+  "priority": 10,
+  "request": {
+    "method": "POST",
+    "urlPath": "/cibil/report"
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "score": 780,
+      "grade": "A",
+      "reportId": "CIBIL-HIGH-0001"
+    }
+  }
+}

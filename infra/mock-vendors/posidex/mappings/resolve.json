@@ -1,0 +1,16 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPath": "/posidex/resolve"
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "crn": "CRN-MOCK-0001",
+      "customerId": "CUST-0001",
+      "name": "Asha Demo",
+      "status": "ACTIVE"
+    }
+  }
+}

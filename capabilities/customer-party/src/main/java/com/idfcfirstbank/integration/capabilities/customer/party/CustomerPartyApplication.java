@@ -4,8 +4,9 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 /**
- * Slice 1 STUB. Starts and serves /actuator/health; no business logic yet.
- * The real {@code customer-party} capability is implemented in a later slice.
+ * customer-party capability app. Consumes {@code cap.customer-party.request.v1},
+ * resolves the customer against Posidex (mock/real adapter), and replies on
+ * {@code cap.customer-party.response.v1} per THE CAPABILITY CONTRACT.
  */
 @SpringBootApplication
 public class CustomerPartyApplication {

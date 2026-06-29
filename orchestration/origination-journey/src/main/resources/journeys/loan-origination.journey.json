@@ -1,0 +1,112 @@
+{
+  "key": "loan-origination",
+  "startNodeId": "n_customer",
+  "nodes": [
+    {
+      "type": "task",
+      "id": "n_customer",
+      "capabilityKey": "customer-party",
+      "next": [
+        "n_kyc"
+      ]
+    },
+    {
+      "type": "task",
+      "id": "n_kyc",
+      "capabilityKey": "kyc",
+      "next": [
+        "n_bureau"
+      ]
+    },
+    {
+      "type": "task",
+      "id": "n_bureau",
+      "capabilityKey": "bureau",
+      "next": [
+        "n_score"
+      ]
+    },
+    {
+      "type": "task",
+      "id": "n_score",
+      "capabilityKey": "scoring",
+      "next": [
+        "n_decide"
+      ]
+    },
+    {
+      "type": "branch",
+      "id": "n_decide",
+      "arms": [
+        {
+          "expression": "decision == 'APPROVED'",
+          "next": "n_book"
+        },
+        {
+          "expression": "decision == 'REJECTED'",
+          "next": "n_reject"
+        }
+      ]
+    },
+    {
+      "type": "task",
+      "id": "n_book",
+      "capabilityKey": "lending-origination",
+      "next": [
+        "n_done"
+      ],
+      "meter": "finnone_pool",
+      "compensation": "n_reverse"
+    },
+    {
+      "type": "terminal",
+      "id": "n_done",
+      "action": "push_decision_to_channel",
+      "emit": [
+        "LoanBooked"
+      ]
+    },
+    {
+      "type": "terminal",
+      "id": "n_reject",
+      "action": "push_decision_to_channel",
+      "emit": [
+        "LoanRejected"
+      ]
+    }
+  ],
+  "layout": {
+    "n_customer": {
+      "x": 80.0,
+      "y": 200.0
+    },
+    "n_kyc": {
+      "x": 260.0,
+      "y": 200.0
+    },
+    "n_bureau": {
+      "x": 440.0,
+      "y": 200.0
+    },
+    "n_score": {
+      "x": 620.0,
+      "y": 200.0
+    },
+    "n_decide": {
+      "x": 800.0,
+      "y": 200.0
+    },
+    "n_book": {
+      "x": 980.0,
+      "y": 120.0
+    },
+    "n_done": {
+      "x": 1160.0,
+      "y": 120.0
+    },
+    "n_reject": {
+      "x": 980.0,
+      "y": 300.0
+    }
+  }
+}

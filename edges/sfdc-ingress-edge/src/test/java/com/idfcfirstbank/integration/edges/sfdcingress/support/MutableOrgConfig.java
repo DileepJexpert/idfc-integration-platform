@@ -1,7 +1,7 @@
 package com.idfcfirstbank.integration.edges.sfdcingress.support;
 
 import com.idfcfirstbank.integration.edges.sfdcingress.domain.model.RoutingDecision;
-import com.idfcfirstbank.integration.edges.sfdcingress.domain.model.SourceSystem;
+import com.idfcfirstbank.integration.shared.domain.envelope.SourceSystem;
 import com.idfcfirstbank.integration.edges.sfdcingress.domain.port.OrgConfigPort;
 
 import java.util.HashMap;

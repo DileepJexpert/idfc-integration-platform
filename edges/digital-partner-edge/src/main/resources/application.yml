@@ -1,0 +1,56 @@
+server:
+  port: 8081   # distinct from the SFDC edge (8080) so both run side by side
+
+spring:
+  application:
+    name: digital-partner-edge
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+
+idfc:
+  digital-edge:
+    decision-topic: orig.decision.v1
+    # Partner registry as config-as-data — onboarding a partner is a row, not a service.
+    partners:
+      - code: CRED
+        token: ${CRED_TOKEN:cred-dev-token}
+        callback-url: ${CRED_CALLBACK:http://localhost:9201/cred/callback}
+      - code: FLIPKART
+        token: ${FLIPKART_TOKEN:flipkart-dev-token}
+        callback-url: ${FLIPKART_CALLBACK:http://localhost:9202/flipkart/callback}
+      - code: GROWW
+        token: ${GROWW_TOKEN:groww-dev-token}
+        callback-url: ${GROWW_CALLBACK:http://localhost:9203/groww/callback}
+    # SAME routing as the SFDC edge: a businessLine type -> the SAME origination topic.
+    routing:
+      - { type: PERSONAL_LOAN, topic: orig.sfdc.pl.v1 }
+      - { type: LAP, topic: orig.sfdc.lap.v1 }
+      - { type: BUSINESS_LOAN, topic: orig.sfdc.bl.v1 }
+      - { type: COMMERCIAL, topic: orig.sfdc.commercial.v1 }
+    aerospike:
+      host: ${AEROSPIKE_HOST:localhost}
+      port: ${AEROSPIKE_PORT:3000}
+      namespace: ${AEROSPIKE_NAMESPACE:idfc}
+      # SAME platform idempotency sets as the SFDC edge — partner & assisted resends
+      # dedupe against the one platform store.
+      notification-set: idem
+      application-set: idem_app
+      ttl-seconds: ${IDEMPOTENCY_TTL_SECONDS:2592000}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true

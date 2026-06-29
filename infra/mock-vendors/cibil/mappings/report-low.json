@@ -1,0 +1,19 @@
+{
+  "priority": 1,
+  "request": {
+    "method": "POST",
+    "urlPath": "/cibil/report",
+    "bodyPatterns": [
+      { "matchesJsonPath": "$[?(@.applicationRef =~ /.*LOW.*/i)]" }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "score": 540,
+      "grade": "C",
+      "reportId": "CIBIL-LOW-0001"
+    }
+  }
+}

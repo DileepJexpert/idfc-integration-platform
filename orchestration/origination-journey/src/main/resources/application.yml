@@ -1,6 +1,38 @@
 spring:
   application:
     name: origination-journey
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+      properties:
+        # Discover pattern-matched cap.*.response.v1 topics promptly.
+        metadata.max.age.ms: 2000
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+# Engine config-as-data: the loaded journeys, the decision topic, and the
+# businessLine(type) -> journey routing (empty => use the single loaded journey).
+idfc:
+  engine:
+    journey-resources:
+      - journeys/loan-origination.journey.json
+    decision-topic: orig.decision.v1
+    origination-topics: orig.sfdc.pl.v1
+    type-to-journey: {}
+    # Journey-instance state: "in-memory" (default, Docker-free) or "aerospike"
+    # (durable — the engine is the audit source-of-truth for what ran).
+    state-store: ${IDFC_ENGINE_STATE_STORE:in-memory}
+    aerospike:
+      host: ${AEROSPIKE_HOST:localhost}
+      port: ${AEROSPIKE_PORT:3000}
+      namespace: ${AEROSPIKE_NAMESPACE:idfc}
+      instance-set: journey_instance
+      ttl-seconds: ${JOURNEY_STATE_TTL_SECONDS:604800}
+
 management:
   endpoints:
     web:
