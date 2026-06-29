@@ -1,0 +1,18 @@
+{
+  "name": "personal-loan new application -> PL topic",
+  "request": {
+    "notificationId": "ntf-pl-001",
+    "correlationId": "corr-req-aaa",
+    "sfdcRecordId": "0061x000PL001",
+    "applicationRef": "APP-PL-001",
+    "orgId": "ORG1",
+    "type": "PERSONAL_LOAN",
+    "payload": { "applicant": "A. Kumar", "amount": 500000, "tenureMonths": 36 }
+  },
+  "expected": {
+    "dedupVerdict": "NEW",
+    "routingTopic": "orig.sfdc.pl.v1",
+    "downstreamJourney": "origination-journey",
+    "resolvedPayload": { "applicant": "A. Kumar", "amount": 500000, "tenureMonths": 36 }
+  }
+}

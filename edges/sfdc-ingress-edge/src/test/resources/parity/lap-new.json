@@ -1,0 +1,18 @@
+{
+  "name": "loan-against-property new application -> LAP topic",
+  "request": {
+    "notificationId": "ntf-lap-002",
+    "correlationId": "corr-req-bbb",
+    "sfdcRecordId": "0061x000LAP002",
+    "applicationRef": "APP-LAP-002",
+    "orgId": "ORG1",
+    "type": "LAP",
+    "payload": { "applicant": "R. Sharma", "amount": 7500000, "property": "Mumbai-401" }
+  },
+  "expected": {
+    "dedupVerdict": "NEW",
+    "routingTopic": "orig.sfdc.lap.v1",
+    "downstreamJourney": "origination-journey",
+    "resolvedPayload": { "applicant": "R. Sharma", "amount": 7500000, "property": "Mumbai-401" }
+  }
+}
