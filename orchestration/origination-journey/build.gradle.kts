@@ -15,6 +15,9 @@ dependencies {
     // Messaging — Kafka is a REAL local dependency (docker-compose), not mocked.
     implementation("org.springframework.kafka:spring-kafka:${property("springKafkaVersion")}")
 
+    // Durable journey-instance state (the org's only datastore); selected by config.
+    implementation("com.aerospike:aerospike-client-jdk21:${property("aerospikeClientVersion")}")
+
     // JSON (journey config + capability payloads); jackson is managed by the BOM.
     implementation("com.fasterxml.jackson.core:jackson-databind")
 

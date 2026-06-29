@@ -49,6 +49,37 @@ public final class JourneyInstance {
     public void markDispatched(String nodeId) { dispatchedNodeIds.add(nodeId); }
     public boolean isCompleted(String nodeId) { return completedNodeIds.contains(nodeId); }
 
+    /** Read-only views of the tracking sets, for persistence. */
+    public Set<String> completedNodeIds() { return Set.copyOf(completedNodeIds); }
+    public Set<String> dispatchedNodeIds() { return Set.copyOf(dispatchedNodeIds); }
+
+    /**
+     * Rehydrate a persisted instance (used by a durable {@code JourneyInstanceStore}
+     * adapter). Restores the full run state — collected results, the completed and
+     * dispatched node sets, and the status — so the engine resumes exactly where it
+     * left off across the async hops.
+     */
+    public static JourneyInstance restore(String journeyInstanceId, String correlationId, String journeyKey,
+                                          String applicationRef, Map<String, Object> payload,
+                                          Map<String, Object> collectedResults, Set<String> completedNodeIds,
+                                          Set<String> dispatchedNodeIds, InstanceStatus status) {
+        JourneyInstance instance = new JourneyInstance(journeyInstanceId, correlationId, journeyKey,
+                applicationRef, payload);
+        if (collectedResults != null) {
+            instance.collectedResults.putAll(collectedResults);
+        }
+        if (completedNodeIds != null) {
+            instance.completedNodeIds.addAll(completedNodeIds);
+        }
+        if (dispatchedNodeIds != null) {
+            instance.dispatchedNodeIds.addAll(dispatchedNodeIds);
+        }
+        if (status != null) {
+            instance.status = status;
+        }
+        return instance;
+    }
+
     /** Record a node's result and mark it complete. Results are keyed by capability. */
     public void recordResult(String nodeId, String capabilityKey, Map<String, Object> result) {
         completedNodeIds.add(nodeId);

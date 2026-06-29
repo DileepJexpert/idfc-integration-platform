@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.kafka.KafkaCapabilityRequestPublisher;
 import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.kafka.KafkaDecisionPublisher;
 import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.loader.JourneyDefinitionLoader;
+import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.store.AerospikeJourneyInstanceStore;
 import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.store.InMemoryJourneyInstanceStore;
 import com.idfcfirstbank.integration.orchestration.originationjourney.application.JourneyOrchestrator;
 import com.idfcfirstbank.integration.orchestration.originationjourney.application.JourneyRegistry;
@@ -61,8 +62,22 @@ public class EngineConfiguration {
         return new JourneyRegistry(definitions, props.typeToJourney());
     }
 
+    /**
+     * Journey-instance store: durable Aerospike when {@code idfc.engine.state-store
+     * =aerospike} (per ARCHITECTURE_origination-journey), else the in-memory default
+     * (Docker-free). Exposed only as the port, so it is a swap, not a rewrite.
+     */
     @Bean
-    JourneyInstanceStore journeyInstanceStore() {
+    JourneyInstanceStore journeyInstanceStore(EngineProperties props, ObjectMapper objectMapper) {
+        if (props.usesAerospikeState()) {
+            var aero = props.aerospike();
+            var policy = new com.aerospike.client.policy.ClientPolicy();
+            policy.failIfNotConnected = false;
+            policy.timeout = 3000;
+            var client = new com.aerospike.client.AerospikeClient(policy, aero.host(), aero.port());
+            return new AerospikeJourneyInstanceStore(client, objectMapper, aero.namespace(),
+                    aero.instanceSet(), aero.ttlSeconds());
+        }
         return new InMemoryJourneyInstanceStore();
     }
 

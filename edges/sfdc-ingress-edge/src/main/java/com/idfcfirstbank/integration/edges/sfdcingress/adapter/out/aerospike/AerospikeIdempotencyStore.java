@@ -44,6 +44,8 @@ import java.util.Optional;
 public class AerospikeIdempotencyStore implements IdempotencyStorePort {
 
     private static final int TTL_NO_CHANGE = -2;
+    /** Hot-key (KEY_BUSY) retry budget for a CREATE_ONLY under peak same-key contention. */
+    private static final int HOT_KEY_MAX_RETRIES = 12;
 
     // Bin names (Aerospike bin names are <= 15 chars).
     private static final String B_NOTIF = "notif";
@@ -80,16 +82,8 @@ public class AerospikeIdempotencyStore implements IdempotencyStorePort {
 
     @Override
     public InsertOutcome insertIfAbsent(IdempotencyRecord record) {
-        WritePolicy wp = createOnly();
-        try {
-            client.put(wp, recordKey(record.notificationId()), recordBins(record));
-            return InsertOutcome.INSERTED;
-        } catch (AerospikeException e) {
-            if (e.getResultCode() == ResultCode.KEY_EXISTS_ERROR) {
-                return InsertOutcome.ALREADY_EXISTS;
-            }
-            throw e;
-        }
+        return createOnly(recordKey(record.notificationId()), recordBins(record))
+                ? InsertOutcome.INSERTED : InsertOutcome.ALREADY_EXISTS;
     }
 
     @Override
@@ -100,16 +94,8 @@ public class AerospikeIdempotencyStore implements IdempotencyStorePort {
 
     @Override
     public LinkOutcome linkApplication(ApplicationKey applicationKey, String ownerNotificationId) {
-        WritePolicy wp = createOnly();
-        try {
-            client.put(wp, appKey(applicationKey.value()), new Bin(B_OWNER, ownerNotificationId));
-            return LinkOutcome.LINKED;
-        } catch (AerospikeException e) {
-            if (e.getResultCode() == ResultCode.KEY_EXISTS_ERROR) {
-                return LinkOutcome.ALREADY_LINKED;
-            }
-            throw e;
-        }
+        return createOnly(appKey(applicationKey.value()), new Bin(B_OWNER, ownerNotificationId))
+                ? LinkOutcome.LINKED : LinkOutcome.ALREADY_LINKED;
     }
 
     @Override
@@ -156,9 +142,50 @@ public class AerospikeIdempotencyStore implements IdempotencyStorePort {
         }
     }
 
+    /**
+     * Atomic insert-if-absent (CREATE_ONLY). Returns {@code true} if THIS call
+     * created the record (the single winner), {@code false} if it already existed
+     * (a loser — {@link ResultCode#KEY_EXISTS_ERROR}).
+     *
+     * <p>Under a burst of concurrent writes to the SAME key, Aerospike's hot-key
+     * protection can transiently reject with {@link ResultCode#KEY_BUSY} — that is
+     * "retry", NOT "exists". We retry briefly so exactly-one-winner holds even at
+     * peak contention; the atomicity guarantee is unchanged (only one CREATE_ONLY
+     * can ever succeed for a key).
+     */
+    private boolean createOnly(Key key, Bin... bins) {
+        AerospikeException lastBusy = null;
+        for (int attempt = 0; attempt < HOT_KEY_MAX_RETRIES; attempt++) {
+            try {
+                client.put(createOnlyPolicy(), key, bins);
+                return true;
+            } catch (AerospikeException e) {
+                if (e.getResultCode() == ResultCode.KEY_EXISTS_ERROR) {
+                    return false;
+                }
+                if (e.getResultCode() == ResultCode.KEY_BUSY) {
+                    lastBusy = e;
+                    backoff(attempt);
+                    continue;
+                }
+                throw e;
+            }
+        }
+        throw lastBusy; // sustained hot key beyond the retry budget — surface as transient
+    }
+
+    private static void backoff(int attempt) {
+        try {
+            Thread.sleep(Math.min(2L + attempt * 2L, 25L));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+    }
+
     // --- mapping -----------------------------------------------------------------
 
-    private WritePolicy createOnly() {
+    private WritePolicy createOnlyPolicy() {
         WritePolicy wp = new WritePolicy(client.getWritePolicyDefault());
         wp.recordExistsAction = RecordExistsAction.CREATE_ONLY;
         wp.expiration = ttlSeconds;

@@ -88,10 +88,14 @@ services:
     container_name: idfc-origination-journey
     depends_on:
       kafka: { condition: service_healthy }
+      aerospike: { condition: service_healthy }
     environment:
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       IDFC_ENGINE_ORIGINATION_TOPICS: orig.sfdc.pl.v1,orig.sfdc.lap.v1,orig.sfdc.bl.v1,orig.sfdc.commercial.v1
+      # Durable journey state (the engine is the audit source-of-truth).
+      IDFC_ENGINE_STATE_STORE: aerospike
+      AEROSPIKE_HOST: aerospike
 
   customer-party:
     image: idfc/customer-party:0.1.0-SNAPSHOT

@@ -23,6 +23,15 @@ idfc:
     decision-topic: orig.decision.v1
     origination-topics: orig.sfdc.pl.v1
     type-to-journey: {}
+    # Journey-instance state: "in-memory" (default, Docker-free) or "aerospike"
+    # (durable — the engine is the audit source-of-truth for what ran).
+    state-store: ${IDFC_ENGINE_STATE_STORE:in-memory}
+    aerospike:
+      host: ${AEROSPIKE_HOST:localhost}
+      port: ${AEROSPIKE_PORT:3000}
+      namespace: ${AEROSPIKE_NAMESPACE:idfc}
+      instance-set: journey_instance
+      ttl-seconds: ${JOURNEY_STATE_TTL_SECONDS:604800}
 
 management:
   endpoints:
