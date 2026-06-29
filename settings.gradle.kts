@@ -31,3 +31,8 @@ include("capabilities:payments")
 
 // orchestration/ — long-running journeys (stubs in Slice 1)
 include("orchestration:origination-journey")
+
+// full-flow demo integration test (no main code). Wires the engine + all five
+// capability services to prove the end-to-end choreography (edge output ->
+// engine -> capabilities -> branch -> decision) both ways.
+include("full-flow-it")

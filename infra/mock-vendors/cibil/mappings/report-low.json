@@ -4,7 +4,7 @@
     "method": "POST",
     "urlPath": "/cibil/report",
     "bodyPatterns": [
-      { "matchesJsonPath": "$[?(@.pan =~ /.*LOW.*/i)]" }
+      { "matchesJsonPath": "$[?(@.applicationRef =~ /.*LOW.*/i)]" }
     ]
   },
   "response": {

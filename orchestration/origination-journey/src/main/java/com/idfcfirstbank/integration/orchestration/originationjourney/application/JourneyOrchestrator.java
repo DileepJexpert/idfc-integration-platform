@@ -94,15 +94,24 @@ public class JourneyOrchestrator {
         store.save(instance);
     }
 
-    @SuppressWarnings("unchecked")
+    private static final java.util.List<String> IDENTITY_FIELDS = java.util.List.of(
+            "applicationRef", "type", "orgId", "correlationId", "notificationId", "sfdcRecordId");
+
     private static Map<String, Object> payloadOf(Map<String, Object> envelope) {
-        Object payload = envelope.get("payload");
-        if (payload instanceof Map<?, ?> m) {
-            return (Map<String, Object>) m;
+        // Always surface the envelope's identity fields so capabilities can read
+        // them regardless of inline-payload vs S3 claim-check (applicationRef is
+        // always present; the inline PAN may not be in the live path).
+        Map<String, Object> payload = new java.util.LinkedHashMap<>();
+        for (String field : IDENTITY_FIELDS) {
+            if (envelope.get(field) != null) {
+                payload.put(field, envelope.get(field));
+            }
         }
-        // No inline payload (e.g. S3 claim-check in prod): pass the envelope itself
-        // so capabilities can still read identity fields (applicationRef, type, ...).
-        return envelope;
+        Object inline = envelope.get("payload");
+        if (inline instanceof Map<?, ?> m) {
+            m.forEach((k, v) -> payload.put(String.valueOf(k), v));
+        }
+        return payload;
     }
 
     private static String str(Object v) {
