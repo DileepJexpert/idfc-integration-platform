@@ -3,7 +3,7 @@ package com.idfcfirstbank.integration.edges.sfdcingress.adapter.out.kafka;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.edges.sfdcingress.config.EdgeProperties;
-import com.idfcfirstbank.integration.edges.sfdcingress.domain.model.CanonicalEnvelope;
+import com.idfcfirstbank.integration.shared.domain.envelope.CanonicalEnvelope;
 import com.idfcfirstbank.integration.edges.sfdcingress.domain.model.RoutingDecision;
 import com.idfcfirstbank.integration.edges.sfdcingress.domain.port.MessagePublisherPort;
 import org.apache.kafka.clients.producer.ProducerRecord;

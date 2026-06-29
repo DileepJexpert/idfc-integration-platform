@@ -19,6 +19,7 @@ include("platform:platform-messaging")    // shared Kafka helpers
 // edges/ — protocol edges (thin; no business logic)
 include("edges:sfdc-ingress-edge")     // *** Slice 1 — IMPLEMENTED FOR REAL ***
 include("edges:sfdc-egress-edge")      // stub (later slice)
+include("edges:digital-partner-edge")  // digital twin: partner REST -> SAME envelope/topic/engine
 
 // capabilities/ — business capabilities (stubs in Slice 1)
 include("capabilities:kyc")

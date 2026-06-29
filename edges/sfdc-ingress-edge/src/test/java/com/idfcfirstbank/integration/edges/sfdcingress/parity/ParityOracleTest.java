@@ -5,10 +5,10 @@ import com.idfcfirstbank.integration.edges.sfdcingress.adapter.out.mock.MockS3Bl
 import com.idfcfirstbank.integration.edges.sfdcingress.application.DedupeResult;
 import com.idfcfirstbank.integration.edges.sfdcingress.application.DedupeService;
 import com.idfcfirstbank.integration.edges.sfdcingress.application.Normalizer;
-import com.idfcfirstbank.integration.edges.sfdcingress.domain.model.CanonicalEnvelope;
+import com.idfcfirstbank.integration.shared.domain.envelope.CanonicalEnvelope;
 import com.idfcfirstbank.integration.edges.sfdcingress.domain.model.RoutingDecision;
 import com.idfcfirstbank.integration.edges.sfdcingress.domain.model.SfdcInboundEvent;
-import com.idfcfirstbank.integration.edges.sfdcingress.domain.model.SourceSystem;
+import com.idfcfirstbank.integration.shared.domain.envelope.SourceSystem;
 import com.idfcfirstbank.integration.edges.sfdcingress.support.InMemoryIdempotencyStore;
 import com.idfcfirstbank.integration.edges.sfdcingress.support.MutableOrgConfig;
 import org.junit.jupiter.api.Test;

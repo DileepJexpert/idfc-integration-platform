@@ -11,8 +11,9 @@
 #
 # Usage:
 #   ./demo.sh up        # build images + start everything
-#   ./demo.sh approved  # POST a high-score application
-#   ./demo.sh rejected  # POST a low-score application
+#   ./demo.sh approved  # POST a high-score application (assisted / SFDC edge)
+#   ./demo.sh rejected  # POST a low-score application (assisted / SFDC edge)
+#   ./demo.sh digital   # POST via the DIGITAL partner edge -> SAME engine/core
 #   ./demo.sh decisions # tail the engine's decision topic
 #   ./demo.sh burst     # 10x burst on the edge (scale story)
 #   ./demo.sh down
@@ -42,6 +43,15 @@ case "${1:-}" in
     ;;
   approved) post "ntf-$(date +%s)" "APP-HIGH-1" ;;
   rejected) post "ntf-$(date +%s)" "APP-LOW-1" ;;
+  digital)
+    # A fintech partner (CRED) originates over the DIGITAL edge (:8081) — the SAME
+    # engine + capabilities handle it (envelope-identical proof). LOW -> rejected.
+    REF="${2:-APP-HIGH-D1}"
+    curl -s -XPOST "localhost:8081/api/v1/digital/origination" \
+      -H "X-Partner-Token: ${CRED_TOKEN:-cred-dev-token}" -H 'Content-Type: application/json' \
+      -d "{\"requestId\":\"req-$(date +%s)\",\"applicationRef\":\"$REF\",\"type\":\"PERSONAL_LOAN\",
+           \"orgId\":\"ORG1\",\"payload\":{\"amount\":300000}}"
+    echo ;;
   decisions)
     echo "Tailing orig.decision.v1 (Ctrl-C to stop)…"
     docker exec idfc-kafka /opt/kafka/bin/kafka-console-consumer.sh \

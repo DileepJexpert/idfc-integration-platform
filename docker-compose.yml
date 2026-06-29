@@ -70,6 +70,19 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       IDFC_AEROSPIKE_HOST: aerospike
 
+  digital-partner-edge:
+    image: idfc/digital-partner-edge:0.1.0-SNAPSHOT
+    container_name: idfc-digital-partner-edge
+    depends_on:
+      kafka: { condition: service_healthy }
+      aerospike: { condition: service_healthy }
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      AEROSPIKE_HOST: aerospike
+
   origination-journey:
     image: idfc/origination-journey:0.1.0-SNAPSHOT
     container_name: idfc-origination-journey

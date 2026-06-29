@@ -2,7 +2,7 @@ package com.idfcfirstbank.integration.edges.sfdcingress.adapter.out.mock;
 
 import com.idfcfirstbank.integration.edges.sfdcingress.config.EdgeProperties;
 import com.idfcfirstbank.integration.edges.sfdcingress.domain.model.RoutingDecision;
-import com.idfcfirstbank.integration.edges.sfdcingress.domain.model.SourceSystem;
+import com.idfcfirstbank.integration.shared.domain.envelope.SourceSystem;
 import com.idfcfirstbank.integration.edges.sfdcingress.domain.port.OrgConfigPort;
 import org.springframework.stereotype.Component;
 

@@ -1,6 +1,6 @@
 package com.idfcfirstbank.integration.edges.sfdcingress.domain.port;
 
-import com.idfcfirstbank.integration.edges.sfdcingress.domain.model.CanonicalEnvelope;
+import com.idfcfirstbank.integration.shared.domain.envelope.CanonicalEnvelope;
 import com.idfcfirstbank.integration.edges.sfdcingress.domain.model.RoutingDecision;
 
 import java.util.Map;

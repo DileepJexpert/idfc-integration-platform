@@ -8,6 +8,10 @@ plugins {
 description = "SFDC ingress edge — thin protocol edge with idempotent dedupe (Slice 1)"
 
 dependencies {
+    // The canonical origination envelope is a SHARED platform contract (so every
+    // channel edge emits the identical shape the engine consumes).
+    implementation(project(":shared:shared-domain"))
+
     // Messaging — Kafka is a REAL local dependency (docker-compose), not mocked.
     implementation("org.springframework.kafka:spring-kafka:${property("springKafkaVersion")}")
 
