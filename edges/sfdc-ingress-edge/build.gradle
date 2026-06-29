@@ -37,6 +37,20 @@ tasks.register('integrationTest', Test) {
         includeTags 'integration'
     }
     shouldRunAfter tasks.named('test')
+
+    // Point Testcontainers at the daemon socket and skip Ryuk (the reaper needs
+    // privileges this sandbox doesn't grant). Honour an externally-set DOCKER_HOST
+    // if present. CI with a standard Docker setup needs none of this.
+    def dockerHost = System.getenv('DOCKER_HOST') ?: 'unix:///var/run/docker.sock'
+    environment 'DOCKER_HOST', dockerHost
+    environment 'TESTCONTAINERS_RYUK_DISABLED', 'true'
+    environment 'TESTCONTAINERS_CHECKS_DISABLE', 'true'
+    // docker-java defaults to API 1.32; modern daemons require >= 1.40. Pin it
+    // both ways: the env var for docker-java's env loader and the system property
+    // its config builder reads directly.
+    def dockerApi = System.getenv('DOCKER_API_VERSION') ?: '1.43'
+    environment 'DOCKER_API_VERSION', dockerApi
+    systemProperty 'api.version', dockerApi
 }
 
 tasks.named('test') {
