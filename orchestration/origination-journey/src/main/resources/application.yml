@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: origination-journey
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus   # locked down: no env/heapdump/etc.
+  endpoint:
+    health:
+      probes:
+        enabled: true

@@ -1,0 +1,28 @@
+# IDFC Integration Platform — code ownership (placeholder).
+# Replace teams with real GitHub teams once orgs/teams exist.
+
+# Default
+*                               @idfc-integration/platform-leads
+
+# Build + platform plumbing
+/buildSrc/                      @idfc-integration/platform-leads
+/platform/                      @idfc-integration/platform-leads
+
+# Edges
+/edges/sfdc-ingress-edge/       @idfc-integration/sfdc-edge-team
+/edges/                         @idfc-integration/sfdc-edge-team
+
+# Capabilities
+/capabilities/kyc/              @idfc-integration/kyc-team
+/capabilities/bureau/           @idfc-integration/bureau-team
+/capabilities/scoring/          @idfc-integration/scoring-team
+/capabilities/lending-origination/  @idfc-integration/lending-team
+/capabilities/lending-servicing/    @idfc-integration/lending-team
+/capabilities/customer-party/   @idfc-integration/customer-team
+/capabilities/payments/         @idfc-integration/payments-team
+
+# Orchestration
+/orchestration/                 @idfc-integration/orchestration-team
+
+# Specs
+/docs/                          @idfc-integration/architecture

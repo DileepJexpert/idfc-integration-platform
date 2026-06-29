@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: lending-servicing
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus   # locked down: no env/heapdump/etc.
+  endpoint:
+    health:
+      probes:
+        enabled: true
