@@ -1,11 +1,8 @@
 // Convention for runnable Spring Boot apps (edges/*, capabilities/*,
 // orchestration/*, some platform/*). Bundles the cross-cutting stack the punch
 // list mandates: actuator, micrometer + OTel, testcontainers, container-image.
-// House style applies the `application` plugin alongside Spring Boot, so each app
-// module sets its own mainClass.
 plugins {
     id("idfc.java-conventions")
-    application
     id("org.springframework.boot")
     id("io.spring.dependency-management")
 }

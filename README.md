@@ -18,8 +18,8 @@ real external URLs**.
   the `buildSrc` convention plugins (`idfc.java-conventions`,
   `idfc.library-conventions`, `idfc.spring-boot-app-conventions`).
 - **group** `com.idfcfirstbank`; Java base package `com.idfcfirstbank.integration.*`.
-- Plugins applied via the conventions/root: `application`, `org.springframework.boot`,
-  `jacoco`, `maven-publish`, and `org.sonarqube` (root-level, multi-module).
+- Spring Boot apps use `org.springframework.boot` + `io.spring.dependency-management`;
+  `shared/*` libraries use `java-library`.
 - **Dependency management:** pure Spring — the public
   `org.springframework.boot:spring-boot-dependencies` BOM (plus the Testcontainers
   and OpenTelemetry BOMs) pins versions; artifacts resolve from Maven Central.

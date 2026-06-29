@@ -1,9 +1,6 @@
 // Base Java conventions shared by EVERY module (libraries and apps).
-// House style: Java 21 toolchain, jacoco coverage, maven-publish.
 plugins {
     java
-    jacoco
-    `maven-publish`
 }
 
 group = "com.idfcfirstbank"
@@ -33,26 +30,8 @@ dependencies {
 
 tasks.named<Test>("test") {
     useJUnitPlatform()
-    finalizedBy(tasks.named("jacocoTestReport"))
     testLogging {
         events("passed", "skipped", "failed")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
-    }
-}
-
-tasks.named<JacocoReport>("jacocoTestReport") {
-    dependsOn(tasks.named("test"))
-    reports {
-        xml.required.set(true)
-        csv.required.set(false)
-        html.required.set(true)
-    }
-}
-
-publishing {
-    publications {
-        register<MavenPublication>("mavenJava") {
-            from(components["java"])
-        }
     }
 }

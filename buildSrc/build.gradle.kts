@@ -19,6 +19,4 @@ val props = Properties().apply {
 dependencies {
     implementation("org.springframework.boot:spring-boot-gradle-plugin:${props["springBootVersion"]}")
     implementation("io.spring.gradle:dependency-management-plugin:${props["springDependencyManagementVersion"]}")
-    // SonarScanner for Gradle (Maven Central coordinate), applied at the root.
-    implementation("org.sonarsource.scanner.gradle:sonarqube-gradle-plugin:6.0.1.5171")
 }

@@ -5,7 +5,3 @@ plugins {
 // STUB module (Slice 1). Runnable Spring Boot app exposing /actuator/health.
 // Real implementation arrives in a later slice; see docs/SLICE1_PUNCH_LIST.md scope fence.
 description = "platform-idempotency (Slice 1 stub)"
-
-application {
-    mainClass = "com.idfcfirstbank.integration.platform.idempotency.PlatformIdempotencyApplication"
-}

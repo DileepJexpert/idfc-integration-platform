@@ -7,10 +7,6 @@ plugins {
 // ports with mock (local/test) and real (prod, later slice) adapters.
 description = "SFDC ingress edge — thin protocol edge with idempotent dedupe (Slice 1)"
 
-application {
-    mainClass = "com.idfcfirstbank.integration.edges.sfdcingress.SfdcIngressEdgeApplication"
-}
-
 dependencies {
     // Messaging — Kafka is a REAL local dependency (docker-compose), not mocked.
     implementation("org.springframework.kafka:spring-kafka:${property("springKafkaVersion")}")
