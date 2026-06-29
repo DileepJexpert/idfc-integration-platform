@@ -1,0 +1,16 @@
+{
+  "name": "NEGATIVE: expected CIBIL score differs from capability output -> parity must fail",
+  "request": {
+    "applicant": { "firstName": "Asha", "lastName": "Rao", "dob": "1990-01-01",
+                   "pan": "ABCPR1234F", "phone": "9999999999", "email": "asha@example.com" },
+    "bureauTypes": ["CIBIL"],
+    "purpose": "ELIGIBILITY",
+    "consentRef": "consent-001"
+  },
+  "expected": {
+    "status": "SUCCESS",
+    "byType": {
+      "CIBIL": { "scoreValue": 999, "scoreModel": "CIBIL_V3", "segment": "PRIME", "totalTradelines": 3, "totalOutstanding": "250000.00", "overdueAmount": "0" }
+    }
+  }
+}

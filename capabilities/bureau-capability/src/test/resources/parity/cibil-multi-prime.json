@@ -1,0 +1,19 @@
+{
+  "name": "PRIME applicant, all four bureaus (synthetic placeholder for a captured old-call fixture)",
+  "request": {
+    "applicant": { "firstName": "Asha", "lastName": "Rao", "dob": "1990-01-01",
+                   "pan": "ABCPR1234F", "phone": "9999999999", "email": "asha@example.com" },
+    "bureauTypes": ["CIBIL", "MULTI_BUREAU", "COMMERCIAL", "BUREAU_SCORE"],
+    "purpose": "ELIGIBILITY",
+    "consentRef": "consent-001"
+  },
+  "expected": {
+    "status": "SUCCESS",
+    "byType": {
+      "CIBIL":        { "scoreValue": 852, "scoreModel": "CIBIL_V3",        "segment": "PRIME", "totalTradelines": 3, "totalOutstanding": "250000.00", "overdueAmount": "0" },
+      "MULTI_BUREAU": { "scoreValue": 852, "scoreModel": "MULTIBUREAU_V1",  "segment": "PRIME", "totalTradelines": 3, "totalOutstanding": "250000.00", "overdueAmount": "0" },
+      "COMMERCIAL":   { "scoreValue": 852, "scoreModel": "COMMERCIAL_RANK", "segment": "PRIME", "totalTradelines": 3, "totalOutstanding": "250000.00", "overdueAmount": "0" },
+      "BUREAU_SCORE": { "scoreValue": 852, "scoreModel": "BIL_V2",          "segment": "PRIME", "totalTradelines": 3, "totalOutstanding": "250000.00", "overdueAmount": "0" }
+    }
+  }
+}
