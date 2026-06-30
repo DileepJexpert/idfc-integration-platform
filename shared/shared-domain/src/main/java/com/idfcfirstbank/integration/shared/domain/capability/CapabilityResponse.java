@@ -22,5 +22,25 @@ public record CapabilityResponse(
         String nodeId,
         String capabilityKey,
         CapabilityStatus status,
-        Map<String, Object> result) {
+        Map<String, Object> result,
+        /** Failure classification (BRD §2) — null on OK; TRANSIENT/PERMANENT on ERROR. */
+        ErrorClass errorClass) {
+
+    /** Back-compat 6-arg form (errorClass = null) — existing callers unchanged. */
+    public CapabilityResponse(String journeyInstanceId, String correlationId, String nodeId,
+                              String capabilityKey, CapabilityStatus status, Map<String, Object> result) {
+        this(journeyInstanceId, correlationId, nodeId, capabilityKey, status, result, null);
+    }
+
+    /** OK result for a request, echoing its routing identity. */
+    public static CapabilityResponse ok(CapabilityRequest req, Map<String, Object> output) {
+        return new CapabilityResponse(req.journeyInstanceId(), req.correlationId(), req.nodeId(),
+                req.capabilityKey(), CapabilityStatus.OK, output, null);
+    }
+
+    /** ERROR result classified for the engine's retry policy. */
+    public static CapabilityResponse error(CapabilityRequest req, ErrorClass errorClass) {
+        return new CapabilityResponse(req.journeyInstanceId(), req.correlationId(), req.nodeId(),
+                req.capabilityKey(), CapabilityStatus.ERROR, java.util.Map.of(), errorClass);
+    }
 }

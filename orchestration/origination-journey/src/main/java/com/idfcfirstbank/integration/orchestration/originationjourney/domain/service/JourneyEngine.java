@@ -134,18 +134,18 @@ public final class JourneyEngine {
     }
 
     private CapabilityRequest buildRequest(JourneyInstance instance, JourneyNode node) {
-        // T1 DEFERRED ASSUMPTION: the §7 node carries `operation`, but capabilities
-        // are single-operation today so it is NOT transmitted (CapabilityRequest has
-        // no operation field). The moment a capability exposes >1 operation, add
-        // `operation` to CapabilityRequest and pass node.operation() here, and have
-        // the capability dispatch on it. Tracked in CHARTER_BUILD_PLAN.md §0.
+        // The §7 node's `operation` is now transmitted so a multi-operation
+        // capability can dispatch on it; idempotencyKey = runId:nodeId makes a
+        // redelivered capability request a no-op at the capability (BRD §2).
         return new CapabilityRequest(
                 instance.journeyInstanceId(),
                 instance.correlationId(),
                 node.capability(),
                 node.id(),
                 instance.payload(),
-                instance.collectedResults());
+                instance.collectedResults(),
+                node.operation(),
+                instance.journeyInstanceId() + ":" + node.id());
     }
 
     private JourneyDecision buildDecision(JourneyInstance instance, JourneyNode terminal) {

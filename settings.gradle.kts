@@ -9,6 +9,7 @@ rootProject.name = "idfc-integration-platform"
 // shared/ — cross-cutting libraries (no Spring Boot app of their own)
 include("shared:shared-domain")        // canonical envelope + common value objects (NO framework imports)
 include("shared:shared-observability") // otel/micrometer wiring helpers
+include("shared:shared-capability")    // THE homogeneous capability framework (engine-invokable shell)
 
 // platform/ — horizontal platform services (future homes for extracted code)
 include("platform:platform-idempotency") // later extraction target for the Aerospike store
@@ -29,6 +30,7 @@ include("capabilities:lending-origination")
 include("capabilities:lending-servicing")
 include("capabilities:customer-party")
 include("capabilities:payments")
+include("capabilities:echo")           // trivial reference capability — proves the framework (BRD §9 step 1)
 
 // orchestration/ — long-running journeys (stubs in Slice 1)
 include("orchestration:origination-journey")

@@ -26,5 +26,15 @@ public record CapabilityRequest(
         String capabilityKey,
         String nodeId,
         Map<String, Object> payload,
-        Map<String, Object> collectedResults) {
+        Map<String, Object> collectedResults,
+        /** Which capability operation to run (BRD §2, e.g. "register"). Null = the capability's single/default op. */
+        String operation,
+        /** Dedup key for exactly-once execution; null => the engine/dispatcher derives {@code journeyInstanceId:nodeId}. */
+        String idempotencyKey) {
+
+    /** Back-compat 6-arg form (no operation/idempotencyKey) — existing callers unchanged. */
+    public CapabilityRequest(String journeyInstanceId, String correlationId, String capabilityKey,
+                             String nodeId, Map<String, Object> payload, Map<String, Object> collectedResults) {
+        this(journeyInstanceId, correlationId, capabilityKey, nodeId, payload, collectedResults, null, null);
+    }
 }
