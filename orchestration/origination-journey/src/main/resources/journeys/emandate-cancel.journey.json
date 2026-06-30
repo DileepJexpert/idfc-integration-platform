@@ -1,0 +1,67 @@
+{
+  "journeyKey": "emandate-cancel",
+  "version": 1,
+  "context": {
+    "schemaRef": "emandate-context@1"
+  },
+  "startNodeId": "n_cancel",
+  "nodes": [
+    {
+      "id": "n_cancel",
+      "type": "task",
+      "capability": "mandate",
+      "operation": "cancel",
+      "output": "context.cancel",
+      "next": [
+        "n_decide"
+      ]
+    },
+    {
+      "id": "n_decide",
+      "type": "branch",
+      "arms": [
+        {
+          "when": "context.cancel.found == true",
+          "next": "n_done"
+        }
+      ],
+      "default": "n_notFound"
+    },
+    {
+      "id": "n_done",
+      "type": "terminal",
+      "action": "notify_channel",
+      "emit": [
+        "MandateCancelled"
+      ],
+      "status": "completed"
+    },
+    {
+      "id": "n_notFound",
+      "type": "terminal",
+      "action": "notify_channel",
+      "emit": [
+        "MandateNotFound"
+      ],
+      "status": "rejected"
+    }
+  ],
+  "layout": {
+    "n_cancel": {
+      "x": 80.0,
+      "y": 200.0
+    },
+    "n_decide": {
+      "x": 320.0,
+      "y": 200.0
+    },
+    "n_done": {
+      "x": 560.0,
+      "y": 120.0
+    },
+    "n_notFound": {
+      "x": 560.0,
+      "y": 300.0
+    }
+  }
+}

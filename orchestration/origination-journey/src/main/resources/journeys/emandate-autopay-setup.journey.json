@@ -1,0 +1,39 @@
+{
+  "journeyKey": "emandate-autopay-setup",
+  "version": 1,
+  "context": {
+    "schemaRef": "emandate-context@1"
+  },
+  "startNodeId": "n_setup",
+  "nodes": [
+    {
+      "id": "n_setup",
+      "type": "task",
+      "capability": "mandate",
+      "operation": "setupAutopayLink",
+      "output": "context.autopay",
+      "next": [
+        "n_done"
+      ]
+    },
+    {
+      "id": "n_done",
+      "type": "terminal",
+      "action": "notify_channel",
+      "emit": [
+        "AutopayLinkSent"
+      ],
+      "status": "completed"
+    }
+  ],
+  "layout": {
+    "n_setup": {
+      "x": 80.0,
+      "y": 160.0
+    },
+    "n_done": {
+      "x": 320.0,
+      "y": 160.0
+    }
+  }
+}

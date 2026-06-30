@@ -10,11 +10,13 @@ description = "full-flow demo integration test"
 
 dependencies {
     testImplementation(project(":shared:shared-domain"))
+    testImplementation(project(":shared:shared-capability"))
     testImplementation(project(":orchestration:origination-journey"))
     testImplementation(project(":capabilities:customer-party"))
     testImplementation(project(":capabilities:kyc"))
     testImplementation(project(":capabilities:bureau"))
     testImplementation(project(":capabilities:scoring"))
     testImplementation(project(":capabilities:lending-origination"))
+    testImplementation(project(":capabilities:mandate"))
     testImplementation("com.fasterxml.jackson.core:jackson-databind")
 }
