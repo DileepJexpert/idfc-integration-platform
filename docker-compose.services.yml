@@ -1,0 +1,105 @@
+# IDFC SERVICES — the idfc/* images (built by `./gradlew bootBuildImage`).
+# They attach to the shared `idfc` network and reach infra by hostname
+# (kafka:9092, aerospike, mock-*). Bring INFRA up first (docker-compose.infra.yml),
+# then:
+#
+#   ./gradlew bootBuildImage
+#   docker compose -f docker-compose.services.yml up -d
+#
+# No cross-file depends_on here (so this file runs standalone against already-up
+# infra); the services tolerate infra-not-ready (Kafka consumers retry, the
+# Aerospike client doesn't hard-fail startup, the FinnOne datasource is lazy).
+
+networks:
+  idfc:
+    name: idfc          # the same shared network infra creates
+
+services:
+  sfdc-ingress-edge:
+    image: idfc/sfdc-ingress-edge:0.1.0-SNAPSHOT
+    container_name: idfc-sfdc-ingress-edge
+    networks: [idfc]
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      IDFC_AEROSPIKE_HOST: aerospike
+
+  digital-partner-edge:
+    image: idfc/digital-partner-edge:0.1.0-SNAPSHOT
+    container_name: idfc-digital-partner-edge
+    networks: [idfc]
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      AEROSPIKE_HOST: aerospike
+
+  origination-journey:
+    image: idfc/origination-journey:0.1.0-SNAPSHOT
+    container_name: idfc-origination-journey
+    networks: [idfc]
+    environment:
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      IDFC_ENGINE_ORIGINATION_TOPICS: orig.sfdc.pl.v1,orig.sfdc.lap.v1,orig.sfdc.bl.v1,orig.sfdc.commercial.v1
+      # Durable journey state (the engine is the audit source-of-truth).
+      IDFC_ENGINE_STATE_STORE: aerospike
+      AEROSPIKE_HOST: aerospike
+
+  customer-party:
+    image: idfc/customer-party:0.1.0-SNAPSHOT
+    container_name: idfc-customer-party
+    networks: [idfc]
+    environment:
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      POSIDEX_MODE: real
+      POSIDEX_URL: http://mock-posidex:8080
+
+  kyc:
+    image: idfc/kyc:0.1.0-SNAPSHOT
+    container_name: idfc-kyc
+    networks: [idfc]
+    environment:
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      NSDL_MODE: real
+      NSDL_URL: http://mock-nsdl:8080
+
+  bureau:
+    image: idfc/bureau:0.1.0-SNAPSHOT
+    container_name: idfc-bureau
+    networks: [idfc]
+    environment:
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      # Bureau pulls CIBIL by default; the same mock serves multi-bureau/commercial
+      # endpoints, so BUREAU_TYPES can be widened to fan out (all real adapters).
+      CIBIL_MODE: real
+      CIBIL_URL: http://mock-cibil:8080
+      MULTI_BUREAU_MODE: real
+      MULTI_BUREAU_URL: http://mock-cibil:8080
+      COMMERCIAL_MODE: real
+      COMMERCIAL_URL: http://mock-cibil:8080
+
+  scoring:
+    image: idfc/scoring:0.1.0-SNAPSHOT
+    container_name: idfc-scoring
+    networks: [idfc]
+    environment:
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      FICO_MODE: real
+      FICO_URL: http://mock-fico:8080
+      SCORING_THRESHOLD: "700"
+
+  lending-origination:
+    image: idfc/lending-origination:0.1.0-SNAPSHOT
+    container_name: idfc-lending-origination
+    networks: [idfc]
+    environment:
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      FINNONE_MODE: real
+      SPRING_DATASOURCE_URL: jdbc:oracle:thin:@mock-finnone:1521/XEPDB1
+      SPRING_DATASOURCE_USERNAME: finnone
+      SPRING_DATASOURCE_PASSWORD: finnone
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: oracle.jdbc.OracleDriver

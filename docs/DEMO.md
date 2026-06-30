@@ -34,7 +34,12 @@ names and the locked journey contract (`scoring`, not `scoring-decisioning`).
 ## Run
 
 ```bash
-./demo.sh up          # ./gradlew bootBuildImage && docker compose up -d
+./demo.sh infra       # infra ONLY (Aerospike+Kafka+mocks) — pull-only, no build
+./demo.sh up          # infra (wait healthy) -> ./gradlew bootBuildImage -> services
+# layers also stand alone:
+#   docker compose -f docker-compose.infra.yml up -d      # infra
+#   ./gradlew bootBuildImage                               # build idfc/* images
+#   docker compose -f docker-compose.services.yml up -d    # services (infra must be up)
 ./demo.sh approved    # high-score application -> APPROVED + loanId
 ./demo.sh rejected    # applicationRef contains LOW -> CIBIL 540 -> REJECTED
 ./demo.sh decisions   # tail orig.decision.v1
