@@ -69,4 +69,42 @@ class AerospikeJourneyInstanceStoreIT {
     void findReturnsEmptyForUnknownInstance() {
         assertThat(store.find("ji-does-not-exist")).isEmpty();
     }
+
+    /**
+     * The durable half of the exactly-once-start gate: 32 threads race
+     * {@code insertIfAbsent} on the SAME instance id; the Aerospike CREATE_ONLY
+     * write (with KEY_BUSY hot-key retry) must admit exactly ONE winner.
+     */
+    @Test
+    void concurrentInsertIfAbsentAdmitsExactlyOneWinner() throws Exception {
+        String id = "ji-race-1";
+        int threads = 32;
+        java.util.concurrent.ExecutorService pool =
+                java.util.concurrent.Executors.newFixedThreadPool(threads);
+        java.util.concurrent.CyclicBarrier barrier = new java.util.concurrent.CyclicBarrier(threads);
+        java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(threads);
+        java.util.concurrent.atomic.AtomicInteger winners = new java.util.concurrent.atomic.AtomicInteger();
+
+        for (int i = 0; i < threads; i++) {
+            pool.submit(() -> {
+                try {
+                    barrier.await();
+                    JourneyInstance inst = new JourneyInstance(
+                            id, "corr-race", "loan-origination", "APP-R", Map.of("pan", "X"));
+                    if (store.insertIfAbsent(inst)) {
+                        winners.incrementAndGet();
+                    }
+                } catch (Exception ignored) {
+                    // a non-KEY_EXISTS failure would surface as a missing winner
+                } finally {
+                    done.countDown();
+                }
+            });
+        }
+        done.await();
+        pool.shutdownNow();
+
+        assertThat(winners.get()).as("exactly one CREATE_ONLY winner").isEqualTo(1);
+        assertThat(store.find(id)).isPresent();
+    }
 }

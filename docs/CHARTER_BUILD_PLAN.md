@@ -103,6 +103,29 @@ subset proves limiting.
 **N**. 3. Digio/Ingenico/NPCI **callback contracts** + correlation keys. 4. **Capability
 registry** (capability/operation names = Designer palette). 5. **CEL vs subset** confirm.
 
+## 5b. T1 deferred assumptions (tracked, not silent)
+- **`operation` not transmitted.** The §7 task carries `capability` + `operation`,
+  but `CapabilityRequest` has no `operation` field — capabilities are
+  single-operation today. When a capability exposes >1 operation: add `operation`
+  to `CapabilityRequest`, pass `node.operation()` in `JourneyEngine.buildRequest`,
+  and dispatch on it in the capability. (TODO is in `JourneyEngine.buildRequest`.)
+- **Policies authored, not enforced.** `meter`/`retry`/`circuitBreaker` and saga
+  `compensation` parse + validate now but are NOT executed until T2. The Designer
+  marks such nodes with a "T2" badge so no one assumes they run.
+
+## 5c. T1 correctness gates (status)
+- ✅ **Exactly-once start.** The engine derives a DETERMINISTIC instance id from
+  the inbound origination and the store's atomic `insertIfAbsent` (in-memory
+  `putIfAbsent`; Aerospike `CREATE_ONLY` + KEY_BUSY retry) admits one winner —
+  redelivered/concurrent originations are no-ops. Proven by
+  `JourneyStartIdempotencyTest` (32-thread + sequential, Docker-free) and the
+  Aerospike `concurrentInsertIfAbsentAdmitsExactlyOneWinner` IT.
+- ✅ **Crash-safe resume.** Durable run state (incl. the typed context) round-trips
+  through `AerospikeJourneyInstanceStore` (`AerospikeJourneyInstanceStoreIT`).
+- ⏳ **Postgres run-state store (T1-c).** The charter names Postgres; the engine
+  runs on in-memory/Aerospike. A `PostgresJourneyInstanceStore` behind the port is
+  the remaining T1 item (no new inputs needed).
+
 ## 6. Suggested commit sequence
 1. (this) charter + plan committed.
 2. T1-a: §7 models + serializer + validator in the Designer; migrate the fixture to

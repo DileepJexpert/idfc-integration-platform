@@ -54,10 +54,21 @@ public class JourneyOrchestrator {
                 str(envelope.get("notificationId")), "unknown");
 
         JourneyDefinition def = registry.resolveForType(type);
-        String instanceId = instanceIdSupplier.get();
+
+        // Deterministic instance id derived from the inbound origination's stable
+        // key, so a redelivered origination (Kafka is at-least-once) maps to the
+        // SAME instance id and is caught by the insert-if-absent gate below —
+        // exactly-once start without a second random run.
+        String dedupKey = firstNonNull(correlationId, str(envelope.get("notificationId")), applicationRef);
+        String instanceId = dedupKey != null ? "ji-" + dedupKey : instanceIdSupplier.get();
         JourneyInstance instance = new JourneyInstance(
                 instanceId, correlationId, def.key(), applicationRef, payloadOf(envelope));
-        store.save(instance);
+
+        if (!store.insertIfAbsent(instance)) {
+            log.info("journey.start.duplicate instanceId={} — already started, dropping redelivery",
+                    instanceId);
+            return instanceId;
+        }
 
         log.info("journey.start instanceId={} key={} correlationId={} applicationRef={}",
                 instanceId, def.key(), correlationId, applicationRef);

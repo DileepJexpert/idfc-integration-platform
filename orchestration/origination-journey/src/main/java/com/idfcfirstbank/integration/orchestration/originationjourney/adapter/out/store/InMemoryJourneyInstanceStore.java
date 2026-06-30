@@ -15,6 +15,12 @@ public class InMemoryJourneyInstanceStore implements JourneyInstanceStore {
     private final ConcurrentHashMap<String, JourneyInstance> byId = new ConcurrentHashMap<>();
 
     @Override
+    public boolean insertIfAbsent(JourneyInstance instance) {
+        // Atomic: exactly one concurrent caller for a given id sees null returned.
+        return byId.putIfAbsent(instance.journeyInstanceId(), instance) == null;
+    }
+
+    @Override
     public void save(JourneyInstance instance) {
         byId.put(instance.journeyInstanceId(), instance);
     }

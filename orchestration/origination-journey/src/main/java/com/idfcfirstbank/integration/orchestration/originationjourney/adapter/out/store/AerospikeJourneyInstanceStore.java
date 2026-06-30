@@ -1,9 +1,12 @@
 package com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.store;
 
+import com.aerospike.client.AerospikeException;
 import com.aerospike.client.Bin;
 import com.aerospike.client.IAerospikeClient;
 import com.aerospike.client.Key;
 import com.aerospike.client.Record;
+import com.aerospike.client.ResultCode;
+import com.aerospike.client.policy.RecordExistsAction;
 import com.aerospike.client.policy.WritePolicy;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -56,11 +59,46 @@ public class AerospikeJourneyInstanceStore implements JourneyInstanceStore {
         this.ttlSeconds = ttlSeconds;
     }
 
+    // Hot-key handling mirrors the edge idempotency store: KEY_BUSY (result code
+    // 14) is transient same-key contention, NOT "already exists" — retry briefly.
+    private static final int HOT_KEY_MAX_RETRIES = 12;
+
+    @Override
+    public boolean insertIfAbsent(JourneyInstance instance) {
+        WritePolicy wp = new WritePolicy(client.getWritePolicyDefault());
+        wp.expiration = ttlSeconds;
+        wp.recordExistsAction = RecordExistsAction.CREATE_ONLY; // atomic insert-if-absent
+        for (int attempt = 0; ; attempt++) {
+            try {
+                client.put(wp, key(instance.journeyInstanceId()), bins(instance));
+                return true; // we created it — the single winner
+            } catch (AerospikeException e) {
+                if (e.getResultCode() == ResultCode.KEY_EXISTS_ERROR) {
+                    return false; // someone already started this journey — duplicate
+                }
+                if (e.getResultCode() == ResultCode.KEY_BUSY && attempt < HOT_KEY_MAX_RETRIES) {
+                    try {
+                        Thread.sleep(Math.min(2L + attempt * 2L, 25L));
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw e;
+                    }
+                    continue;
+                }
+                throw e;
+            }
+        }
+    }
+
     @Override
     public void save(JourneyInstance instance) {
         WritePolicy wp = new WritePolicy(client.getWritePolicyDefault());
         wp.expiration = ttlSeconds;
-        client.put(wp, key(instance.journeyInstanceId()),
+        client.put(wp, key(instance.journeyInstanceId()), bins(instance));
+    }
+
+    private Bin[] bins(JourneyInstance instance) {
+        return new Bin[]{
                 new Bin(B_CORR, instance.correlationId()),
                 new Bin(B_KEY, instance.journeyKey()),
                 new Bin(B_APPREF, instance.applicationRef()),
@@ -69,7 +107,8 @@ public class AerospikeJourneyInstanceStore implements JourneyInstanceStore {
                 new Bin(B_COLLECTED, json(instance.collectedResults())),
                 new Bin(B_CONTEXT, json(instance.context())),
                 new Bin(B_COMPLETED, json(instance.completedNodeIds())),
-                new Bin(B_DISPATCHED, json(instance.dispatchedNodeIds())));
+                new Bin(B_DISPATCHED, json(instance.dispatchedNodeIds())),
+        };
     }
 
     @Override

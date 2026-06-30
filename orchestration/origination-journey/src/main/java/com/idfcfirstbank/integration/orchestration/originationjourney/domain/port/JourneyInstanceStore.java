@@ -10,6 +10,20 @@ import java.util.Optional;
  * only datastore) with no change to the engine.
  */
 public interface JourneyInstanceStore {
+    /**
+     * Atomically create the instance IF it does not already exist. Returns
+     * {@code true} when THIS call created it (the caller is the single winner and
+     * must start the journey), {@code false} when an instance with the same id is
+     * already present (a redelivered / concurrent duplicate start — drop it).
+     *
+     * <p>This is the engine's exactly-once-start gate: combined with a
+     * deterministic instance id derived from the inbound origination, it makes a
+     * redelivered origination event (Kafka is at-least-once) a no-op rather than a
+     * second run. Implementations MUST be atomic under concurrency (CAS / insert
+     * if absent), not a read-then-write.
+     */
+    boolean insertIfAbsent(JourneyInstance instance);
+
     void save(JourneyInstance instance);
 
     Optional<JourneyInstance> find(String journeyInstanceId);
