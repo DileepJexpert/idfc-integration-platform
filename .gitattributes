@@ -1,0 +1,10 @@
+# Normalize line endings to LF on checkout for ALL platforms. The shared DAG
+# contract fixtures are asserted byte-for-byte against LF serializer output, so a
+# CRLF checkout on Windows would (wrongly) fail those tests. Keep text as LF.
+* text=auto eol=lf
+
+# Binaries — never touch.
+*.png binary
+*.jar binary
+*.class binary
+*.ico binary

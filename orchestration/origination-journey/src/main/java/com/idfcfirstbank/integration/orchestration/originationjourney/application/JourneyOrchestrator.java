@@ -95,7 +95,8 @@ public class JourneyOrchestrator {
     }
 
     private static final java.util.List<String> IDENTITY_FIELDS = java.util.List.of(
-            "applicationRef", "type", "orgId", "correlationId", "notificationId", "sfdcRecordId");
+            "applicationRef", "type", "orgId", "correlationId", "notificationId", "sfdcRecordId",
+            "source");
 
     private static Map<String, Object> payloadOf(Map<String, Object> envelope) {
         // Always surface the envelope's identity fields so capabilities can read

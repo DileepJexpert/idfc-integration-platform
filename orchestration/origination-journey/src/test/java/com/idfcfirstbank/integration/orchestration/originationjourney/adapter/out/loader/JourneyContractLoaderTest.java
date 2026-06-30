@@ -29,7 +29,8 @@ class JourneyContractLoaderTest {
         JourneyDefinition def = load();
         assertThat(def.key()).isEqualTo("loan-origination");
         assertThat(def.startNodeId()).isEqualTo("n_customer");
-        assertThat(def.nodes()).hasSize(8);
+        // 8 graph nodes + the n_reverse compensation terminal.
+        assertThat(def.nodes()).hasSize(9);
     }
 
     @Test

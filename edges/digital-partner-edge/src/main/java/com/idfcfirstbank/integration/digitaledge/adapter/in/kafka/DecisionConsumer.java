@@ -40,6 +40,13 @@ public class DecisionConsumer {
     public void onMessage(String decisionJson) {
         try {
             Map<String, Object> decision = objectMapper.readValue(decisionJson, MAP);
+            // Only act on DIGITAL-originated decisions; the SFDC edge owns its own.
+            // (The status store already scopes us to apps we published; this is the
+            // explicit, cheap guard now that the decision carries its source.)
+            String source = str(decision.get("source"));
+            if (source != null && !"DIGITAL".equalsIgnoreCase(source)) {
+                return;
+            }
             String applicationRef = str(decision.get("applicationRef"));
             String outcome = str(decision.get("outcome"));
             String loanId = str(decision.get("loanId"));

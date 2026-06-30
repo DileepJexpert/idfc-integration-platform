@@ -96,6 +96,51 @@ class JourneyEngineTest {
         assertThat(instance.status()).isEqualTo(InstanceStatus.FAILED);
     }
 
+    @Test
+    void bookingErrorRunsTheDeclaredCompensation() {
+        JourneyInstance instance = newInstance();
+        engine.start(def, instance);
+        advance(instance, "n_customer", "customer-party", Map.of("crn", "CRN-1"));
+        advance(instance, "n_kyc", "kyc", Map.of("kycStatus", "VERIFIED"));
+        advance(instance, "n_bureau", "bureau", Map.of("bureauScore", 780));
+        advance(instance, "n_score", "scoring", Map.of("decision", "APPROVED", "score", 780));
+
+        // The booking capability FAILS — the engine must run n_book.compensation
+        // (n_reverse) rather than emit a bare ERROR.
+        EngineOutcome afterBookError = engine.onCapabilityResponse(def, instance,
+                new CapabilityResponse("ji-1", "corr-1", "n_book", "lending-origination",
+                        CapabilityStatus.ERROR, Map.of()));
+
+        assertThat(afterBookError.requests()).isEmpty();
+        assertThat(afterBookError.decision()).hasValueSatisfying(d -> {
+            assertThat(d.outcome()).isEqualTo(JourneyDecision.ERROR);
+            assertThat(d.terminalNodeId()).isEqualTo("n_reverse");
+            assertThat(d.emitted()).containsExactly("BookingReversed");
+        });
+        assertThat(instance.status()).isEqualTo(InstanceStatus.FAILED);
+    }
+
+    @Test
+    void decisionEchoesTheInboundEdgeIdentity() {
+        // The engine echoes source/notificationId from the run payload so an edge
+        // can route the decision back over Kafka (P1 decision-return path).
+        JourneyInstance instance = new JourneyInstance("ji-2", "corr-2", def.key(), "APP-2",
+                Map.of("source", "SFDC", "notificationId", "ntf-9", "sfdcRecordId", "rec-9"));
+        engine.start(def, instance);
+        advance(instance, "n_customer", "customer-party", Map.of("crn", "CRN-1"));
+        advance(instance, "n_kyc", "kyc", Map.of("kycStatus", "VERIFIED"));
+        advance(instance, "n_bureau", "bureau", Map.of("bureauScore", 540));
+        EngineOutcome afterScore =
+                engine.onCapabilityResponse(def, instance, new CapabilityResponse("ji-2", "corr-2",
+                        "n_score", "scoring", CapabilityStatus.OK, Map.of("decision", "REJECTED")));
+
+        assertThat(afterScore.decision()).hasValueSatisfying(d -> {
+            assertThat(d.source()).isEqualTo("SFDC");
+            assertThat(d.notificationId()).isEqualTo("ntf-9");
+            assertThat(d.sfdcRecordId()).isEqualTo("rec-9");
+        });
+    }
+
     private void assertEmits(EngineOutcome outcome, String expectCap, String expectNode) {
         assertThat(outcome.requests()).singleElement().satisfies(r -> {
             assertThat(r.capabilityKey()).isEqualTo(expectCap);

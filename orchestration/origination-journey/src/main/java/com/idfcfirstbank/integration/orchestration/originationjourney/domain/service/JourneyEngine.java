@@ -45,9 +45,16 @@ public final class JourneyEngine {
 
         if (response.status() == CapabilityStatus.ERROR) {
             instance.fail();
-            outcome.decide(new JourneyDecision(instance.journeyInstanceId(), instance.correlationId(),
-                    instance.applicationRef(), JourneyDecision.ERROR, null, response.nodeId(),
-                    java.util.List.of()));
+            // Saga compensation: if the failed node declares a compensation node,
+            // run it (e.g. reverse a booking) instead of failing bare. The DAG
+            // contract guarantees the target exists (the designer validates it).
+            JourneyNode failed = def.node(response.nodeId());
+            String comp = failed.compensation();
+            if (comp != null && !comp.isBlank()) {
+                runCompensation(def, instance, def.node(comp), outcome);
+            } else {
+                outcome.decide(errorDecision(instance, response.nodeId(), java.util.List.of()));
+            }
             return outcome;
         }
 
@@ -114,12 +121,54 @@ public final class JourneyEngine {
                 instance.collectedResults());
     }
 
+    /** Run the compensation node for a failed step (e.g. reverse a booking). */
+    private void runCompensation(JourneyDefinition def, JourneyInstance instance, JourneyNode comp,
+                                 EngineOutcome outcome) {
+        if (instance.isDispatched(comp.id())) {
+            return;
+        }
+        instance.markDispatched(comp.id());
+        switch (comp.type()) {
+            // A reversal capability: dispatch and let its response advance the DAG.
+            case TASK -> outcome.emit(buildRequest(instance, comp));
+            case BRANCH -> executeNode(def, instance, def.node(chooseArm(comp, instance)), outcome);
+            // The usual shape: a terminal that records the reversal. The journey
+            // stays FAILED (booking didn't stick), but carries the comp's events.
+            case TERMINAL -> {
+                instance.markCompleted(comp.id());
+                outcome.decide(errorDecision(instance, comp.id(), comp.emit()));
+            }
+        }
+    }
+
     private JourneyDecision buildDecision(JourneyInstance instance, JourneyNode terminal) {
         Map<String, Object> ctx = instance.evaluationContext();
         String outcome = resolveOutcome(ctx, terminal);
         String loanId = ctx.get("loanId") == null ? null : String.valueOf(ctx.get("loanId"));
-        return new JourneyDecision(instance.journeyInstanceId(), instance.correlationId(),
-                instance.applicationRef(), outcome, loanId, terminal.id(), terminal.emit());
+        return decisionOf(instance, outcome, loanId, terminal.id(), terminal.emit());
+    }
+
+    private JourneyDecision errorDecision(JourneyInstance instance, String terminalNodeId,
+                                          java.util.List<String> emitted) {
+        Object loan = instance.evaluationContext().get("loanId");
+        return decisionOf(instance, JourneyDecision.ERROR,
+                loan == null ? null : String.valueOf(loan), terminalNodeId, emitted);
+    }
+
+    /** Build a decision, echoing the inbound edge's routing identity from the run payload. */
+    private JourneyDecision decisionOf(JourneyInstance instance, String outcome, String loanId,
+                                       String terminalNodeId, java.util.List<String> emitted) {
+        return new JourneyDecision(
+                instance.journeyInstanceId(), instance.correlationId(), instance.applicationRef(),
+                outcome, loanId, terminalNodeId, emitted,
+                payloadStr(instance, "source"),
+                payloadStr(instance, "notificationId"),
+                payloadStr(instance, "sfdcRecordId"));
+    }
+
+    private static String payloadStr(JourneyInstance instance, String key) {
+        Object v = instance.payload().get(key);
+        return v == null ? null : String.valueOf(v);
     }
 
     /** Prefer the explicit scoring decision; fall back to the terminal's emitted event. */

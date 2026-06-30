@@ -24,7 +24,10 @@ idfc:
     journey-resources:
       - journeys/loan-origination.journey.json
     decision-topic: orig.decision.v1
-    origination-topics: orig.sfdc.pl.v1
+    # Consume EVERY origination topic the edges route to (PL/LAP/BL/Commercial),
+    # not just PL — otherwise a non-PL request is ACKed by the edge and then sits
+    # unprocessed. Override with IDFC_ENGINE_ORIGINATION_TOPICS (CSV).
+    origination-topics: ${IDFC_ENGINE_ORIGINATION_TOPICS:orig.sfdc.pl.v1,orig.sfdc.lap.v1,orig.sfdc.bl.v1,orig.sfdc.commercial.v1}
     type-to-journey: {}
     # Journey-instance state: "in-memory" (default, Docker-free) or "aerospike"
     # (durable — the engine is the audit source-of-truth for what ran).

@@ -25,7 +25,7 @@ curl ─▶ sfdc-ingress-edge ──orig.sfdc.pl.v1──▶ origination-journey
 | `orig.sfdc.pl.v1` (+ lap/bl/commercial) | sfdc-ingress-edge | origination-journey (`idfc.engine.origination-topics`) |
 | `cap.<key>.request.v1` | engine | the matching capability (`CapabilityTopics.request`) |
 | `cap.<key>.response.v1` | each capability | engine (pattern `cap\..*\.response\.v1`) |
-| `orig.decision.v1` | engine | *(see seam #1)* |
+| `orig.decision.v1` | engine | both edges (`SfdcDecisionConsumer` / digital `DecisionConsumer`), filtered by `source` |
 
 PERSONAL_LOAN routes to `orig.sfdc.pl.v1`, which is exactly the engine's default
 origination topic — confirmed aligned. Capability keys match the real module
@@ -53,13 +53,15 @@ this is applicationRef and not the inline PAN.
 
 ## Seams found during wiring (noted, not silently bent)
 
-1. **Engine decision → edge push-back.** The engine publishes the final decision
-   to `orig.decision.v1`. The edge today exposes an HTTP decision endpoint
-   (`POST /api/v1/sfdc/decisions`), not a Kafka consumer, so the loop back into
-   the edge's SFDC push-back is **not yet closed in code** — a scoped follow-up
-   (add a thin decision consumer in the edge that calls `DecisionService`, keyed
-   by notificationId). The full-flow proof asserts on `orig.decision.v1`, the
-   engine's authoritative output.
+1. **Engine decision → edge push-back. (CLOSED)** The engine publishes the final
+   decision to `orig.decision.v1`, and each edge now consumes it: the SFDC edge's
+   `SfdcDecisionConsumer` CASes the idempotency record by `notificationId` (firing
+   the SFDC callback exactly on the transition into DECIDED — the C1 guard), and
+   the digital edge's `DecisionConsumer` pushes the partner callback. To make this
+   possible the `JourneyDecision` now carries `source` + `notificationId` +
+   `sfdcRecordId`, echoed from the inbound `CanonicalEnvelope`; each consumer
+   filters on `source` so it only acts on its own decisions. The REST endpoint
+   (`POST /api/v1/sfdc/decisions`) remains for manual testing.
 2. **Applicant data via S3 claim-check.** The edge's canonical envelope carries a
    `payloadRef` (S3 claim-check), not the inline PAN, so capabilities can't read
    the PAN in the live path. The engine now always surfaces the envelope's
