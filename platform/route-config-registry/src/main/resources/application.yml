@@ -1,0 +1,14 @@
+server:
+  port: ${SERVER_PORT:8100}   # route-config-registry (platform control-plane)
+
+spring:
+  application:
+    name: route-config-registry
+
+# Aerospike sets crm-api-router-endpoint / crm-api-router-gateway are MOCKED
+# in-memory locally; a real Aerospike adapter swaps in behind RouteConfigStorePort.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus

@@ -69,8 +69,15 @@ public class LendingOriginationConfiguration {
     }
 
     @Bean
-    LendingOriginationService lendingOriginationService(FinnOneBookingPort finnOneBookingPort) {
-        return new LendingOriginationService(finnOneBookingPort);
+    com.idfcfirstbank.integration.capabilities.lending.origination.domain.port.BrandValidationPort brandValidationPort() {
+        // Mocked, config-as-data (brand-config/{brand}.json). Real brand API + Kong is a later step.
+        return new com.idfcfirstbank.integration.capabilities.lending.origination.adapter.out.brand.MockBrandValidationAdapter();
+    }
+
+    @Bean
+    LendingOriginationService lendingOriginationService(FinnOneBookingPort finnOneBookingPort,
+            com.idfcfirstbank.integration.capabilities.lending.origination.domain.port.BrandValidationPort brandValidationPort) {
+        return new LendingOriginationService(finnOneBookingPort, brandValidationPort);
     }
 
     @Bean

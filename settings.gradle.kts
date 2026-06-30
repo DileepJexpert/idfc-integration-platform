@@ -16,6 +16,10 @@ include("platform:platform-idempotency") // later extraction target for the Aero
 include("platform:platform-auth")         // Hydra + Kong two-token auth
 include("platform:platform-config")       // org-config-as-data store
 include("platform:platform-messaging")    // shared Kafka helpers
+include("platform:route-config-registry") // API-router endpoint/gateway config registry (BRD §7)
+
+// integration/ — thin routing adapters (not capabilities)
+include("integration:brand-router")       // SFDC brand routing Kafka|ActiveMQ (BRD §6)
 
 // edges/ — protocol edges (thin; no business logic)
 include("edges:sfdc-ingress-edge")     // *** Slice 1 — IMPLEMENTED FOR REAL ***

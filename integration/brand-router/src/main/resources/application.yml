@@ -1,0 +1,29 @@
+server:
+  port: ${SERVER_PORT:8099}   # brand-router
+
+spring:
+  application:
+    name: brand-router
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+idfc:
+  brand-router:
+    wrapper-topic: ${BRAND_WRAPPER_TOPIC:brand.wrapper.topic}
+    response-topic: ${BRAND_RESPONSE_TOPIC:brand.response.v1}
+    activemq-queue: ${BRAND_ACTIVEMQ_QUEUE:brand.activemq.queue}
+    # config-as-data: partitioned brands go to Kafka; the rest fall to ActiveMQ.
+    partitions: [GODREJ, BOSCH, TCL, KENSTAR, BPL]
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus

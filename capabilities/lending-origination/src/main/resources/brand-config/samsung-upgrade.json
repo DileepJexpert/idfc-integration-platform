@@ -1,0 +1,7 @@
+{
+  "brand": "SAMSUNG",
+  "product": "samsung-upgrade",
+  "auth_type": "EntAuth",
+  "endpoint": "https://samsung.example/emi/validate",
+  "passLogic": { "fieldPath": "Status", "equals": "0" }
+}

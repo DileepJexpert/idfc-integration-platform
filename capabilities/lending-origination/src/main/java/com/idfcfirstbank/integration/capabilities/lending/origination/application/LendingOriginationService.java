@@ -25,12 +25,27 @@ public class LendingOriginationService {
     private static final Logger log = LoggerFactory.getLogger(LendingOriginationService.class);
 
     private final FinnOneBookingPort finnOne;
+    private final com.idfcfirstbank.integration.capabilities.lending.origination.domain.port.BrandValidationPort brandValidation;
 
     public LendingOriginationService(FinnOneBookingPort finnOne) {
+        // brand validation not wired (book-only) — calling validateDeviceFinancing fails loud.
+        this(finnOne, (brand, payload) -> {
+            throw new IllegalStateException("brand validation adapter not configured");
+        });
+    }
+
+    public LendingOriginationService(FinnOneBookingPort finnOne,
+            com.idfcfirstbank.integration.capabilities.lending.origination.domain.port.BrandValidationPort brandValidation) {
         this.finnOne = finnOne;
+        this.brandValidation = brandValidation;
     }
 
     public CapabilityResponse handle(CapabilityRequest request) {
+        // Dispatch by §7 operation: the brand device-financing validation step
+        // (BRD §5) shares this capability; everything else is the booking path.
+        if ("validateDeviceFinancing".equals(request.operation())) {
+            return validateDeviceFinancing(request);
+        }
         try {
             Map<String, Object> application = buildApplication(request);
             LoanBooking booking = finnOne.book(application);
@@ -40,6 +55,22 @@ public class LendingOriginationService {
             return ok(request, result);
         } catch (RuntimeException e) {
             log.error("lending-origination.book failed for instance {}", request.journeyInstanceId(), e);
+            return error(request);
+        }
+    }
+
+    private CapabilityResponse validateDeviceFinancing(CapabilityRequest request) {
+        try {
+            Map<String, Object> payload = request.payload() == null ? Map.of() : request.payload();
+            String brand = String.valueOf(payload.get("brand"));
+            Object device = payload.get("devicePayload");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> devicePayload =
+                    device instanceof Map ? (Map<String, Object>) device : Map.of();
+            return ok(request, brandValidation.validate(brand, devicePayload));
+        } catch (RuntimeException e) {
+            log.error("lending-origination.validateDeviceFinancing failed for instance {}",
+                    request.journeyInstanceId(), e);
             return error(request);
         }
     }
