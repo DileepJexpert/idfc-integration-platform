@@ -7,12 +7,19 @@
 # With infra up you can run the IDFC services either as containers
 # (docker-compose.services.yml) OR straight from your IDE / `./gradlew bootRun`.
 #
-# Host ports: kafka 9092 + 29092 · aerospike 3000-3002 · mock-posidex 9101 ·
-# mock-cibil 9102 · mock-fico 9103 · mock-nsdl 9104 · mock-finnone(Oracle) 1521.
+# Host ports: kafka 9092 + 29092 · kafka-ui 8085 · cloudbeaver 8978 ·
+# aerospike 3000-3002 · mock-posidex 9101 · mock-cibil 9102 · mock-fico 9103 ·
+# mock-nsdl 9104 · mock-finnone(Oracle) 1521.
+#
+# Browser UIs: Kafka -> http://localhost:8085 ; SQL/Oracle -> http://localhost:8978.
+# Aerospike has no free CE web UI; inspect it with ./demo.sh aql (or asadm).
 
 networks:
   idfc:
     name: idfc          # a stable, shared docker network both compose files attach to
+
+volumes:
+  cloudbeaver-data:     # persists CloudBeaver's saved connections + admin login
 
 services:
   aerospike:
@@ -23,9 +30,13 @@ services:
       - "3000:3000"
       - "3001:3001"
       - "3002:3002"
-    command: ["--config-file", "/etc/aerospike/aerospike.conf"]
+    # The aerospike image entrypoint regenerates /etc/aerospike/aerospike.conf from
+    # its bundled template on EVERY start, so mounting our config there is futile
+    # (and a :ro mount makes that rewrite fail and crash-loop on Docker 29). Mount
+    # our real config at a SIDE path the entrypoint never touches and point asd there.
+    command: ["--config-file", "/etc/aerospike/idfc.conf"]
     volumes:
-      - ./infra/aerospike/aerospike.conf:/etc/aerospike/aerospike.conf:ro
+      - ./infra/aerospike/aerospike.conf:/etc/aerospike/idfc.conf:ro
     healthcheck:
       test: ["CMD", "asinfo", "-v", "status"]
       interval: 5s
@@ -59,13 +70,44 @@ services:
       timeout: 5s
       retries: 20
 
+  # Browser UI for Kafka — browse topics/messages/consumer groups at
+  # http://localhost:8085 (e.g. watch orig.decision.v1 and cap.*.response.v1).
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: idfc-kafka-ui
+    networks: [idfc]
+    ports:
+      - "8085:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: idfc
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      DYNAMIC_CONFIG_ENABLED: "true"
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  # Web SQL UI for the relational DBs (FinnOne/Oracle, and any JDBC source) at
+  # http://localhost:8978. First run: create an admin user in the browser, then add
+  # a connection — Oracle host=mock-finnone port=1521 service=XEPDB1 user/pass=finnone.
+  cloudbeaver:
+    image: dbeaver/cloudbeaver:latest
+    container_name: idfc-cloudbeaver
+    networks: [idfc]
+    ports:
+      - "8978:8978"
+    volumes:
+      - cloudbeaver-data:/opt/cloudbeaver/workspace
+
   # --- external-vendor mocks (WireMock + Oracle-XE; real protocol, fixtures) ------
 
   mock-posidex:
     image: wiremock/wiremock:3.9.1
     container_name: idfc-mock-posidex
     networks: [idfc]
-    command: ["--port", "8080", "--disable-banner"]
+    # --disable-http2-plain: the capability HTTP adapters use the JDK HttpClient,
+    # which upgrades to HTTP/2 cleartext (h2c); WireMock 3.9.1 mishandles that and
+    # the connection EOFs. Disabling h2c forces a clean HTTP/1.1 fallback.
+    command: ["--port", "8080", "--disable-banner", "--disable-http2-plain"]
     ports: ["9101:8080"]
     volumes:
       - ./infra/mock-vendors/posidex/mappings:/home/wiremock/mappings:ro
@@ -74,7 +116,10 @@ services:
     image: wiremock/wiremock:3.9.1
     container_name: idfc-mock-cibil
     networks: [idfc]
-    command: ["--port", "8080", "--disable-banner"]
+    # --disable-http2-plain: the capability HTTP adapters use the JDK HttpClient,
+    # which upgrades to HTTP/2 cleartext (h2c); WireMock 3.9.1 mishandles that and
+    # the connection EOFs. Disabling h2c forces a clean HTTP/1.1 fallback.
+    command: ["--port", "8080", "--disable-banner", "--disable-http2-plain"]
     ports: ["9102:8080"]
     volumes:
       - ./infra/mock-vendors/cibil/mappings:/home/wiremock/mappings:ro
@@ -83,7 +128,10 @@ services:
     image: wiremock/wiremock:3.9.1
     container_name: idfc-mock-fico
     networks: [idfc]
-    command: ["--port", "8080", "--disable-banner"]
+    # --disable-http2-plain: the capability HTTP adapters use the JDK HttpClient,
+    # which upgrades to HTTP/2 cleartext (h2c); WireMock 3.9.1 mishandles that and
+    # the connection EOFs. Disabling h2c forces a clean HTTP/1.1 fallback.
+    command: ["--port", "8080", "--disable-banner", "--disable-http2-plain"]
     ports: ["9103:8080"]
     volumes:
       - ./infra/mock-vendors/fico/mappings:/home/wiremock/mappings:ro
@@ -92,7 +140,10 @@ services:
     image: wiremock/wiremock:3.9.1
     container_name: idfc-mock-nsdl
     networks: [idfc]
-    command: ["--port", "8080", "--disable-banner"]
+    # --disable-http2-plain: the capability HTTP adapters use the JDK HttpClient,
+    # which upgrades to HTTP/2 cleartext (h2c); WireMock 3.9.1 mishandles that and
+    # the connection EOFs. Disabling h2c forces a clean HTTP/1.1 fallback.
+    command: ["--port", "8080", "--disable-banner", "--disable-http2-plain"]
     ports: ["9104:8080"]
     volumes:
       - ./infra/mock-vendors/nsdl/mappings:/home/wiremock/mappings:ro
