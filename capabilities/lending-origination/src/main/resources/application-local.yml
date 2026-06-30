@@ -1,0 +1,22 @@
+# LOCAL profile — run this service on your machine against the
+# docker-compose infra:  docker compose -f docker-compose.infra.yml up -d
+# Kafka is reached via the HOST listener (29092); the INTERNAL listener
+# (kafka:9092) only resolves inside the docker network.
+#
+# FinnOne real mode needs the Oracle-XE mock (mock-finnone, port 1521), which
+# takes ~1-2 min to become healthy on first boot. To skip Oracle locally,
+# override FINNONE_MODE=mock in the run config.
+
+spring:
+  kafka:
+    bootstrap-servers: localhost:29092
+  datasource:
+    url: jdbc:oracle:thin:@localhost:1521/XEPDB1
+    username: finnone
+    password: finnone
+    driver-class-name: oracle.jdbc.OracleDriver
+
+idfc:
+  lending-origination:
+    finnone:
+      mode: real

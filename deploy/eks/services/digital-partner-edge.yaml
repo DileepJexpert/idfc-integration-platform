@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: digital-partner-edge
+  namespace: idfc
+  labels: { app: digital-partner-edge, tier: edge, platform: idfc-integration }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: digital-partner-edge }
+  template:
+    metadata:
+      labels: { app: digital-partner-edge, tier: edge }
+    spec:
+      containers:
+        - name: digital-partner-edge
+          image: idfc/digital-partner-edge:0.1.0-SNAPSHOT   # over/registry set via kustomize images:
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: http, containerPort: 8081 }
+          env:
+            - { name: SPRING_PROFILES_ACTIVE, value: eks }
+            - { name: SERVER_PORT, value: "8081" }
+          envFrom:
+            - configMapRef: { name: idfc-platform-config }
+            - secretRef: { name: idfc-platform-secrets }
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: 8081 }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8081 }
+            initialDelaySeconds: 40
+            periodSeconds: 15
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits:   { cpu: "1",    memory: "1Gi"  }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: digital-partner-edge
+  namespace: idfc
+  labels: { app: digital-partner-edge }
+spec:
+  type: ClusterIP
+  selector: { app: digital-partner-edge }
+  ports:
+    - { name: http, port: 80, targetPort: 8081 }

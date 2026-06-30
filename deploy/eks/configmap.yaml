@@ -1,0 +1,38 @@
+# Shared, non-secret configuration for every IDFC service in the cluster.
+#
+# These keys are the env-var names the services' application.yml placeholders
+# read (e.g. ${KAFKA_BOOTSTRAP_SERVERS}, ${AEROSPIKE_HOST}, ${CIBIL_URL}). The
+# `eks` Spring profile (application-eks.yml) sets the production BEHAVIOUR
+# (real vendors, durable engine state); this ConfigMap supplies the production
+# ENDPOINTS. Update the placeholders below for your environment.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: idfc-platform-config
+  namespace: idfc
+data:
+  # --- Messaging (AWS MSK or in-cluster Kafka) -------------------------------
+  KAFKA_BOOTSTRAP_SERVERS: "b-1.idfc-msk.xxxxx.kafka.ap-south-1.amazonaws.com:9092,b-2.idfc-msk.xxxxx.kafka.ap-south-1.amazonaws.com:9092"
+
+  # --- Aerospike (platform idempotency + durable engine state) ---------------
+  AEROSPIKE_HOST: "aerospike.idfc.svc.cluster.local"
+  AEROSPIKE_PORT: "3000"
+  AEROSPIKE_NAMESPACE: "idfc"
+  IDEMPOTENCY_TTL_SECONDS: "2592000"     # 30d — must exceed SFDC max retry window
+  JOURNEY_STATE_TTL_SECONDS: "604800"    # 7d engine run-state retention
+
+  # --- Engine ----------------------------------------------------------------
+  IDFC_ENGINE_STATE_STORE: "aerospike"
+  IDFC_ENGINE_ORIGINATION_TOPICS: "orig.sfdc.pl.v1,orig.sfdc.lap.v1,orig.sfdc.bl.v1,orig.sfdc.commercial.v1"
+
+  # --- Vendor endpoints (real systems / gateways) ----------------------------
+  POSIDEX_URL: "https://posidex.idfc.internal"
+  NSDL_URL: "https://nsdl.idfc.internal"
+  CIBIL_URL: "https://cibil.idfc.internal"
+  MULTI_BUREAU_URL: "https://multibureau.idfc.internal"
+  COMMERCIAL_URL: "https://commercial-bureau.idfc.internal"
+  FICO_URL: "https://fico.idfc.internal"
+
+  # --- FinnOne (Oracle SoR) — host/url here, PASSWORD in the Secret ----------
+  FINNONE_JDBC_URL: "jdbc:oracle:thin:@finnone-db.idfc.internal:1521/FINNONE"
+  FINNONE_DB_USER: "finnone_app"

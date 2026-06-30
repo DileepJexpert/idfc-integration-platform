@@ -1,0 +1,14 @@
+# LOCAL profile — run this service on your machine against the
+# docker-compose infra:  docker compose -f docker-compose.infra.yml up -d
+# Kafka is reached via the HOST listener (29092); the INTERNAL listener
+# (kafka:9092) only resolves inside the docker network.
+
+spring:
+  kafka:
+    bootstrap-servers: localhost:29092
+
+idfc:
+  kyc:
+    nsdl:
+      mode: real
+      url: http://localhost:9104

@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lending-origination
+  namespace: idfc
+  labels: { app: lending-origination, tier: capability, platform: idfc-integration }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: lending-origination }
+  template:
+    metadata:
+      labels: { app: lending-origination, tier: capability }
+    spec:
+      containers:
+        - name: lending-origination
+          image: idfc/lending-origination:0.1.0-SNAPSHOT   # over/registry set via kustomize images:
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: http, containerPort: 8094 }
+          env:
+            - { name: SPRING_PROFILES_ACTIVE, value: eks }
+            - { name: SERVER_PORT, value: "8094" }
+          envFrom:
+            - configMapRef: { name: idfc-platform-config }
+            - secretRef: { name: idfc-platform-secrets }
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: 8094 }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8094 }
+            initialDelaySeconds: 40
+            periodSeconds: 15
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits:   { cpu: "1",    memory: "1Gi"  }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lending-origination
+  namespace: idfc
+  labels: { app: lending-origination }
+spec:
+  type: ClusterIP
+  selector: { app: lending-origination }
+  ports:
+    - { name: http, port: 80, targetPort: 8094 }

@@ -1,0 +1,35 @@
+# External entry points. Only the two EDGES are exposed; the engine and
+# capabilities are internal (ClusterIP) and reached over Kafka, never HTTP.
+#
+# This uses the AWS Load Balancer Controller (ALB). Adjust the host, certificate
+# ARN, and group name for your environment. The capability/engine Services have
+# NO Ingress on purpose — that is the security boundary.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: idfc-edges
+  namespace: idfc
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    # alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:ap-south-1:ACCOUNT:certificate/XXXX
+    alb.ingress.kubernetes.io/healthcheck-path: /actuator/health
+spec:
+  rules:
+    - host: origination.idfc.example.com
+      http:
+        paths:
+          - path: /api/v1/sfdc
+            pathType: Prefix
+            backend:
+              service:
+                name: sfdc-ingress-edge
+                port: { number: 80 }
+          - path: /api/v1/digital
+            pathType: Prefix
+            backend:
+              service:
+                name: digital-partner-edge
+                port: { number: 80 }

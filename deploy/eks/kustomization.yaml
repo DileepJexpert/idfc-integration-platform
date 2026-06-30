@@ -1,0 +1,50 @@
+# Deploy the whole platform to EKS:
+#
+#   kubectl apply -k deploy/eks
+#
+# Prereqs (provided by the platform team, NOT by this kustomization):
+#   * an EKS cluster + the AWS Load Balancer Controller (for the Ingress)
+#   * Kafka (AWS MSK or in-cluster) reachable at KAFKA_BOOTSTRAP_SERVERS
+#   * Aerospike reachable at AEROSPIKE_HOST
+#   * the idfc/* images pushed to your registry (see `images:` below)
+#
+# Override the image registry/tag without editing every file, e.g.:
+#   images:
+#     - name: idfc/customer-party
+#       newName: 1234567890.dkr.ecr.ap-south-1.amazonaws.com/idfc/customer-party
+#       newTag: 1.4.2
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: idfc
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secret.yaml
+  - ingress.yaml
+  - services/sfdc-ingress-edge.yaml
+  - services/digital-partner-edge.yaml
+  - services/origination-journey.yaml
+  - services/customer-party.yaml
+  - services/kyc.yaml
+  - services/bureau.yaml
+  - services/scoring.yaml
+  - services/lending-origination.yaml
+  - services/lending-servicing.yaml
+  - services/payments.yaml
+
+commonLabels:
+  platform: idfc-integration
+
+# Point these at your ECR registry + release tag at deploy time.
+images:
+  - { name: idfc/sfdc-ingress-edge,    newTag: 0.1.0-SNAPSHOT }
+  - { name: idfc/digital-partner-edge, newTag: 0.1.0-SNAPSHOT }
+  - { name: idfc/origination-journey,  newTag: 0.1.0-SNAPSHOT }
+  - { name: idfc/customer-party,       newTag: 0.1.0-SNAPSHOT }
+  - { name: idfc/kyc,                  newTag: 0.1.0-SNAPSHOT }
+  - { name: idfc/bureau,               newTag: 0.1.0-SNAPSHOT }
+  - { name: idfc/scoring,              newTag: 0.1.0-SNAPSHOT }
+  - { name: idfc/lending-origination,  newTag: 0.1.0-SNAPSHOT }
+  - { name: idfc/lending-servicing,    newTag: 0.1.0-SNAPSHOT }
+  - { name: idfc/payments,             newTag: 0.1.0-SNAPSHOT }

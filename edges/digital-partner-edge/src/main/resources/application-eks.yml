@@ -1,0 +1,6 @@
+# EKS profile — production posture. Infra ENDPOINTS come from the cluster
+# (deploy/eks ConfigMap + Secret -> env vars, consumed by the ${...}
+# placeholders in application.yml). This file sets the production
+# BEHAVIOUR: real vendors, durable engine state, real datasources.
+
+# digital-partner-edge: infra + partner registry from ConfigMap/Secret.

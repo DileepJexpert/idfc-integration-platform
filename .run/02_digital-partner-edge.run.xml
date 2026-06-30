@@ -2,6 +2,7 @@
   <configuration default="false" name="2. digital-partner-edge :8081" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
     <module name="idfc-integration-platform.edges.digital-partner-edge.main" />
     <option name="SPRING_BOOT_MAIN_CLASS" value="com.idfcfirstbank.integration.digitaledge.DigitalPartnerEdgeApplication" />
+    <option name="ACTIVE_PROFILES" value="local" />
     <option name="ALTERNATIVE_JRE_PATH_ENABLED" value="false" />
     <option name="SHORTEN_COMMAND_LINE" value="NONE" />
     <method v="2">
