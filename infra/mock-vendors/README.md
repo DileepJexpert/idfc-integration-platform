@@ -23,11 +23,14 @@ When the request body's `pan` matches `/.*LOW.*/i` it returns **score 540
 
 ## Run
 
+The mock vendors live in the **infra** compose layer (alongside Aerospike +
+Kafka) — they are pull-only images, no build needed:
+
 ```bash
-docker compose -f infra/mock-vendors/docker-compose.mock-vendors.yml up -d
-# smoke:
-curl -s localhost:9102/cibil/report -H 'Content-Type: application/json' -d '{"pan":"ABCDE1234F"}'   # -> score 780
-curl -s localhost:9102/cibil/report -H 'Content-Type: application/json' -d '{"pan":"LOWAB0000X"}'   # -> score 540
+docker compose -f docker-compose.infra.yml up -d   # or: ./demo.sh infra
+# smoke (note: bureau low/high keys on applicationRef, not pan):
+curl -s localhost:9102/cibil/report -H 'Content-Type: application/json' -d '{"applicationRef":"APP-HIGH"}' # -> 780
+curl -s localhost:9102/cibil/report -H 'Content-Type: application/json' -d '{"applicationRef":"APP-LOW"}'  # -> 540
 ```
 
 Oracle-XE takes ~1–2 min to become healthy on first boot (it runs

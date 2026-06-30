@@ -10,7 +10,11 @@
 # an applicationRef containing "LOW" is REJECTED (CIBIL 540).
 #
 # Usage:
-#   ./demo.sh up        # build images + start everything
+#   ./demo.sh infra     # infra only (Aerospike+Kafka+mocks) — PULL-ONLY, no build
+#   ./demo.sh images    # build the idfc/* service images (./gradlew bootBuildImage)
+#   ./demo.sh services  # start the IDFC services (assumes infra is up)
+#   ./demo.sh up        # infra (wait healthy) -> build images -> services
+#   ./demo.sh ps        # status of the whole stack
 #   ./demo.sh approved  # POST a high-score application (assisted / SFDC edge)
 #   ./demo.sh rejected  # POST a low-score application (assisted / SFDC edge)
 #   ./demo.sh digital   # POST via the DIGITAL partner edge -> SAME engine/core
@@ -18,6 +22,18 @@
 #   ./demo.sh burst     # 10x burst on the edge (scale story)
 #   ./demo.sh down
 set -euo pipefail
+
+INFRA="docker compose -f docker-compose.infra.yml"
+SERVICES="docker compose -f docker-compose.services.yml"
+
+wait_healthy() { # wait until kafka + aerospike report healthy (or time out)
+  echo "Waiting for infra to be healthy…"
+  for _ in $(seq 1 60); do
+    if docker inspect --format '{{.State.Health.Status}}' idfc-kafka idfc-aerospike 2>/dev/null \
+         | grep -qv healthy; then sleep 3; else echo "infra healthy."; return 0; fi
+  done
+  echo "WARNING: infra not healthy after timeout; services will retry anyway."
+}
 
 EDGE="${EDGE:-localhost:8080}"
 URL="$EDGE/api/v1/sfdc/notifications"
@@ -34,13 +50,27 @@ post() { # $1=notificationId $2=applicationRef
 }
 
 case "${1:-}" in
-  up)
-    echo "Building service images (Spring Boot buildpacks)…"
-    ./gradlew bootBuildImage
-    echo "Starting infra + services + mock vendors…"
-    docker compose up -d
-    echo "Up. Watch health:  docker compose ps"
+  infra)
+    echo "Starting infra (Aerospike + Kafka + vendor mocks) — no build needed…"
+    $INFRA up -d
+    wait_healthy
     ;;
+  images)
+    echo "Building idfc/* service images (Spring Boot buildpacks)…"
+    ./gradlew bootBuildImage
+    ;;
+  services)
+    echo "Starting IDFC services (infra must already be up)…"
+    $SERVICES up -d
+    echo "Up. Watch health:  ./demo.sh ps"
+    ;;
+  up)
+    echo "1/3 infra…"; $INFRA up -d; wait_healthy
+    echo "2/3 building images…"; ./gradlew bootBuildImage
+    echo "3/3 services…"; $SERVICES up -d
+    echo "Up. Status:  ./demo.sh ps"
+    ;;
+  ps) docker compose ps ;;
   approved) post "ntf-$(date +%s)" "APP-HIGH-1" ;;
   rejected) post "ntf-$(date +%s)" "APP-LOW-1" ;;
   digital)
