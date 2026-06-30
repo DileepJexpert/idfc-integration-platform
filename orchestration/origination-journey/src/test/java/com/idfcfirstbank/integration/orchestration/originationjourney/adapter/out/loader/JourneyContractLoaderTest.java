@@ -29,8 +29,8 @@ class JourneyContractLoaderTest {
         JourneyDefinition def = load();
         assertThat(def.key()).isEqualTo("loan-origination");
         assertThat(def.startNodeId()).isEqualTo("n_customer");
-        // 8 graph nodes + the n_reverse compensation terminal.
-        assertThat(def.nodes()).hasSize(9);
+        // §7 loan journey: customer, kyc, bureau, score, decide, book, done, reject.
+        assertThat(def.nodes()).hasSize(8);
     }
 
     @Test
@@ -38,7 +38,7 @@ class JourneyContractLoaderTest {
         JourneyDefinition def = load();
         assertThat(def.nodes().stream()
                 .filter(n -> n.type() == NodeType.TASK)
-                .map(JourneyNode::capabilityKey))
+                .map(JourneyNode::capability))
                 .contains("customer-party", "kyc", "bureau", "scoring", "lending-origination")
                 .doesNotContain("scoring-decisioning");
     }
@@ -47,19 +47,20 @@ class JourneyContractLoaderTest {
     void branchHasTwoArmsRoutingOnDecision() {
         JourneyNode decide = load().node("n_decide");
         assertThat(decide.type()).isEqualTo(NodeType.BRANCH);
-        assertThat(decide.arms()).hasSize(2);
-        assertThat(decide.arms().get(0).expression()).isEqualTo("decision == 'APPROVED'");
+        assertThat(decide.arms()).hasSize(1);
+        assertThat(decide.arms().get(0).when()).isEqualTo("context.scoring.decision == 'APPROVED'");
         assertThat(decide.arms().get(0).next()).isEqualTo("n_book");
-        assertThat(decide.arms().get(1).next()).isEqualTo("n_reject");
+        assertThat(decide.defaultNext()).isEqualTo("n_reject");
     }
 
     @Test
     void bookingNodeIsMeteredWithCompensation() {
         JourneyNode book = load().node("n_book");
         assertThat(book.type()).isEqualTo(NodeType.TASK);
-        assertThat(book.capabilityKey()).isEqualTo("lending-origination");
-        assertThat(book.meter()).isEqualTo("finnone_pool");
-        assertThat(book.compensation()).isEqualTo("n_reverse");
+        assertThat(book.capability()).isEqualTo("lending-origination");
+        assertThat(book.meterPool()).isEqualTo("finnone_pool");
+        assertThat(book.compensation().operation()).isEqualTo("reverseBooking");
+        assertThat(book.onFailure()).isEqualTo("compensate");
         assertThat(book.isMetered()).isTrue();
     }
 

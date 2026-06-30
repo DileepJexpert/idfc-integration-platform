@@ -97,7 +97,7 @@ class JourneyEngineTest {
     }
 
     @Test
-    void bookingErrorRunsTheDeclaredCompensation() {
+    void bookingErrorFailsTheJourney_compensationIsT2() {
         JourneyInstance instance = newInstance();
         engine.start(def, instance);
         advance(instance, "n_customer", "customer-party", Map.of("crn", "CRN-1"));
@@ -105,8 +105,8 @@ class JourneyEngineTest {
         advance(instance, "n_bureau", "bureau", Map.of("bureauScore", 780));
         advance(instance, "n_score", "scoring", Map.of("decision", "APPROVED", "score", 780));
 
-        // The booking capability FAILS — the engine must run n_book.compensation
-        // (n_reverse) rather than emit a bare ERROR.
+        // The booking capability FAILS. n_book declares onFailure: "compensate", but
+        // saga compensation execution is a T2 capability — at T1 the journey fails.
         EngineOutcome afterBookError = engine.onCapabilityResponse(def, instance,
                 new CapabilityResponse("ji-1", "corr-1", "n_book", "lending-origination",
                         CapabilityStatus.ERROR, Map.of()));
@@ -114,8 +114,7 @@ class JourneyEngineTest {
         assertThat(afterBookError.requests()).isEmpty();
         assertThat(afterBookError.decision()).hasValueSatisfying(d -> {
             assertThat(d.outcome()).isEqualTo(JourneyDecision.ERROR);
-            assertThat(d.terminalNodeId()).isEqualTo("n_reverse");
-            assertThat(d.emitted()).containsExactly("BookingReversed");
+            assertThat(d.terminalNodeId()).isEqualTo("n_book");
         });
         assertThat(instance.status()).isEqualTo(InstanceStatus.FAILED);
     }

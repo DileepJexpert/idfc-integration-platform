@@ -32,10 +32,27 @@ public final class ExpressionEvaluator {
             }
             String lhsKey = expression.substring(0, idx).trim();
             String rhsRaw = expression.substring(idx + op.length()).trim();
-            Object lhsValue = context.get(lhsKey);
+            Object lhsValue = resolvePath(lhsKey, context);
             return compare(lhsValue, op, rhsRaw);
         }
         throw new IllegalArgumentException("unsupported branch expression: " + expression);
+    }
+
+    /**
+     * Resolve a dotted §7 path (e.g. {@code context.scoring.decision}) by walking
+     * nested maps from the evaluation root. A missing segment resolves to null.
+     */
+    @SuppressWarnings("unchecked")
+    private static Object resolvePath(String path, Map<String, Object> root) {
+        Object current = root;
+        for (String segment : path.split("\\.")) {
+            if (current instanceof Map<?, ?> m) {
+                current = ((Map<String, Object>) m).get(segment);
+            } else {
+                return null;
+            }
+        }
+        return current;
     }
 
     private boolean compare(Object lhsValue, String op, String rhsRaw) {

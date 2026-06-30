@@ -9,19 +9,20 @@ import com.idfcfirstbank.integration.shared.domain.capability.CapabilityRequest;
 import com.idfcfirstbank.integration.shared.domain.capability.CapabilityResponse;
 import com.idfcfirstbank.integration.shared.domain.capability.CapabilityStatus;
 
+import java.util.List;
 import java.util.Map;
 
 /**
- * The pure orchestration core — NO Spring, NO Kafka. Given a journey definition
- * and a mutable {@link JourneyInstance}, it advances the DAG one event at a time
- * and returns an {@link EngineOutcome} (capability requests to publish and/or the
- * final decision). The adapters do the I/O; this is fully unit-testable.
+ * The pure orchestration core (Charter §8) — NO Spring, NO Kafka. Given a §7
+ * journey definition and a mutable {@link JourneyInstance}, it advances the DAG
+ * one event at a time and returns an {@link EngineOutcome} (capability requests
+ * to publish and/or the final decision).
  *
- * <p>Execution model (mirrors the DAG Designer's preview engine, but real and
- * async): a task node dispatches a capability request and waits for its response;
- * a branch node routes synchronously by evaluating its arms; a terminal node ends
- * the run with a decision. A node with {@code joinOn} waits for all listed
- * predecessors before it runs; a task with multiple {@code next} fans out.
+ * <p>Engine tier T1 executes: task, branch (with default + condition), parallel,
+ * join (allOf), terminal, plus {@code condition} gating and {@code onFailure}
+ * routing to a node. Other §7 node kinds (wait/timer/human/foreach/subjourney)
+ * load but throw here until their tier ships. Saga {@code compensation} and the
+ * {@code meter}/retry/circuitBreaker policies are authored now, enforced in T2.
  */
 public final class JourneyEngine {
 
@@ -31,37 +32,32 @@ public final class JourneyEngine {
         this.evaluator = evaluator;
     }
 
-    /** Begin a run: execute the start node. */
     public EngineOutcome start(JourneyDefinition def, JourneyInstance instance) {
         EngineOutcome outcome = new EngineOutcome();
         executeNode(def, instance, def.startNode(), outcome);
         return outcome;
     }
 
-    /** Advance a run on a capability response. */
     public EngineOutcome onCapabilityResponse(JourneyDefinition def, JourneyInstance instance,
                                               CapabilityResponse response) {
         EngineOutcome outcome = new EngineOutcome();
+        JourneyNode node = def.node(response.nodeId());
 
         if (response.status() == CapabilityStatus.ERROR) {
             instance.fail();
-            // Saga compensation: if the failed node declares a compensation node,
-            // run it (e.g. reverse a booking) instead of failing bare. The DAG
-            // contract guarantees the target exists (the designer validates it).
-            JourneyNode failed = def.node(response.nodeId());
-            String comp = failed.compensation();
-            if (comp != null && !comp.isBlank()) {
-                runCompensation(def, instance, def.node(comp), outcome);
+            String onFailure = node.onFailure();
+            if (onFailure != null && isNodeId(def, onFailure)) {
+                // T1 failure routing: jump to the recovery node (often a terminal).
+                executeNode(def, instance, def.node(onFailure), outcome);
             } else {
-                outcome.decide(errorDecision(instance, response.nodeId(), java.util.List.of()));
+                // "compensate"/"dlq"/"fail"/none -> fail (saga compensation is T2).
+                outcome.decide(errorDecision(instance, response.nodeId()));
             }
             return outcome;
         }
 
-        instance.recordResult(response.nodeId(), response.capabilityKey(), response.result());
-
-        // Try to advance into every successor that is now ready.
-        for (String successorId : def.node(response.nodeId()).successors()) {
+        instance.recordResult(response.nodeId(), response.capabilityKey(), node.output(), response.result());
+        for (String successorId : node.successors()) {
             tryExecute(def, instance, successorId, outcome);
         }
         return outcome;
@@ -86,78 +82,82 @@ public final class JourneyEngine {
         }
         instance.markDispatched(node.id());
 
+        // condition gating: if present and false, skip the node and advance.
+        if (node.condition() != null && !evaluator.evaluate(node.condition(), instance.evaluationContext())) {
+            instance.markCompleted(node.id());
+            for (String s : node.successors()) {
+                tryExecute(def, instance, s, outcome);
+            }
+            return;
+        }
+
         switch (node.type()) {
             case TASK -> outcome.emit(buildRequest(instance, node));
             case BRANCH -> {
                 instance.markCompleted(node.id());
                 executeNode(def, instance, def.node(chooseArm(node, instance)), outcome);
             }
+            case PARALLEL -> {
+                instance.markCompleted(node.id());
+                for (String b : node.branches()) {
+                    executeNode(def, instance, def.node(b), outcome);
+                }
+            }
+            case JOIN -> {
+                instance.markCompleted(node.id());
+                for (String s : node.next()) {
+                    executeNode(def, instance, def.node(s), outcome);
+                }
+            }
             case TERMINAL -> {
                 instance.markCompleted(node.id());
                 instance.complete();
                 outcome.decide(buildDecision(instance, node));
             }
+            default -> throw new UnsupportedOperationException(
+                    "node type " + node.type() + " ('" + node.id() + "') is not supported in engine tier T1");
         }
     }
 
     private String chooseArm(JourneyNode branch, JourneyInstance instance) {
         Map<String, Object> ctx = instance.evaluationContext();
         for (BranchArm arm : branch.arms()) {
-            if (evaluator.evaluate(arm.expression(), ctx)) {
+            if (evaluator.evaluate(arm.when(), ctx)) {
                 return arm.next();
             }
         }
+        if (branch.defaultNext() != null) {
+            return branch.defaultNext();
+        }
         throw new IllegalStateException(
-                "no branch arm matched at node '" + branch.id() + "' (context=" + ctx + ")");
+                "no branch arm matched and no default at node '" + branch.id() + "' (context=" + ctx + ")");
     }
 
     private CapabilityRequest buildRequest(JourneyInstance instance, JourneyNode node) {
         return new CapabilityRequest(
                 instance.journeyInstanceId(),
                 instance.correlationId(),
-                node.capabilityKey(),
+                node.capability(),
                 node.id(),
                 instance.payload(),
                 instance.collectedResults());
     }
 
-    /** Run the compensation node for a failed step (e.g. reverse a booking). */
-    private void runCompensation(JourneyDefinition def, JourneyInstance instance, JourneyNode comp,
-                                 EngineOutcome outcome) {
-        if (instance.isDispatched(comp.id())) {
-            return;
-        }
-        instance.markDispatched(comp.id());
-        switch (comp.type()) {
-            // A reversal capability: dispatch and let its response advance the DAG.
-            case TASK -> outcome.emit(buildRequest(instance, comp));
-            case BRANCH -> executeNode(def, instance, def.node(chooseArm(comp, instance)), outcome);
-            // The usual shape: a terminal that records the reversal. The journey
-            // stays FAILED (booking didn't stick), but carries the comp's events.
-            case TERMINAL -> {
-                instance.markCompleted(comp.id());
-                outcome.decide(errorDecision(instance, comp.id(), comp.emit()));
-            }
-        }
-    }
-
     private JourneyDecision buildDecision(JourneyInstance instance, JourneyNode terminal) {
-        Map<String, Object> ctx = instance.evaluationContext();
-        String outcome = resolveOutcome(ctx, terminal);
-        String loanId = ctx.get("loanId") == null ? null : String.valueOf(ctx.get("loanId"));
-        return decisionOf(instance, outcome, loanId, terminal.id(), terminal.emit());
+        String outcome = switch (terminal.status() == null ? "completed" : terminal.status()) {
+            case "rejected" -> JourneyDecision.REJECTED;
+            case "failed" -> JourneyDecision.ERROR;
+            default -> JourneyDecision.APPROVED;
+        };
+        return decisionOf(instance, outcome, loanIdFrom(instance), terminal.id(), terminal.emit());
     }
 
-    private JourneyDecision errorDecision(JourneyInstance instance, String terminalNodeId,
-                                          java.util.List<String> emitted) {
-        Object loan = instance.evaluationContext().get("loanId");
-        return decisionOf(instance, JourneyDecision.ERROR,
-                loan == null ? null : String.valueOf(loan), terminalNodeId, emitted);
+    private JourneyDecision errorDecision(JourneyInstance instance, String terminalNodeId) {
+        return decisionOf(instance, JourneyDecision.ERROR, loanIdFrom(instance), terminalNodeId, List.of());
     }
 
-    /** Build a decision, echoing the inbound edge's routing identity from the run payload. */
     private JourneyDecision decisionOf(JourneyInstance instance, String outcome, String loanId,
-                                       String terminalNodeId, java.util.List<String> emitted) {
+                                       String terminalNodeId, List<String> emitted) {
         return new JourneyDecision(
                 instance.journeyInstanceId(), instance.correlationId(), instance.applicationRef(),
                 outcome, loanId, terminalNodeId, emitted,
@@ -166,26 +166,28 @@ public final class JourneyEngine {
                 payloadStr(instance, "sfdcRecordId"));
     }
 
+    /** The booking node binds its result at {@code context.loan}; pull the loan id out. */
+    @SuppressWarnings("unchecked")
+    private static String loanIdFrom(JourneyInstance instance) {
+        Object loan = instance.context().get("loan");
+        if (loan instanceof Map<?, ?> m) {
+            Object id = ((Map<String, Object>) m).getOrDefault("loanId", ((Map<String, Object>) m).get("id"));
+            return id == null ? null : String.valueOf(id);
+        }
+        return null;
+    }
+
+    private static boolean isNodeId(JourneyDefinition def, String value) {
+        try {
+            def.node(value);
+            return true;
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
     private static String payloadStr(JourneyInstance instance, String key) {
         Object v = instance.payload().get(key);
         return v == null ? null : String.valueOf(v);
-    }
-
-    /** Prefer the explicit scoring decision; fall back to the terminal's emitted event. */
-    private String resolveOutcome(Map<String, Object> ctx, JourneyNode terminal) {
-        Object decision = ctx.get("decision");
-        if (JourneyDecision.APPROVED.equals(decision)) {
-            return JourneyDecision.APPROVED;
-        }
-        if (JourneyDecision.REJECTED.equals(decision)) {
-            return JourneyDecision.REJECTED;
-        }
-        if (terminal.emit().contains("LoanBooked")) {
-            return JourneyDecision.APPROVED;
-        }
-        if (terminal.emit().contains("LoanRejected")) {
-            return JourneyDecision.REJECTED;
-        }
-        return decision == null ? JourneyDecision.ERROR : String.valueOf(decision);
     }
 }

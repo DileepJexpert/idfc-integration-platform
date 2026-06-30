@@ -1,86 +1,104 @@
 {
-  "key": "loan-origination",
+  "journeyKey": "loan-origination",
+  "version": 1,
+  "context": {
+    "schemaRef": "loan-origination-context@1"
+  },
+  "pools": {
+    "finnone_pool": {
+      "maxConcurrent": 20
+    }
+  },
   "startNodeId": "n_customer",
   "nodes": [
     {
-      "type": "task",
       "id": "n_customer",
-      "capabilityKey": "customer-party",
+      "type": "task",
+      "capability": "customer-party",
+      "operation": "resolve",
+      "output": "context.customer",
       "next": [
         "n_kyc"
       ]
     },
     {
-      "type": "task",
       "id": "n_kyc",
-      "capabilityKey": "kyc",
+      "type": "task",
+      "capability": "kyc",
+      "operation": "verify",
+      "output": "context.kyc",
       "next": [
         "n_bureau"
       ]
     },
     {
-      "type": "task",
       "id": "n_bureau",
-      "capabilityKey": "bureau",
+      "type": "task",
+      "capability": "bureau",
+      "operation": "pull",
+      "output": "context.bureau",
       "next": [
         "n_score"
       ]
     },
     {
-      "type": "task",
       "id": "n_score",
-      "capabilityKey": "scoring",
+      "type": "task",
+      "capability": "scoring",
+      "operation": "decide",
+      "output": "context.scoring",
       "next": [
         "n_decide"
       ]
     },
     {
-      "type": "branch",
       "id": "n_decide",
+      "type": "branch",
       "arms": [
         {
-          "expression": "decision == 'APPROVED'",
+          "when": "context.scoring.decision == 'APPROVED'",
           "next": "n_book"
-        },
-        {
-          "expression": "decision == 'REJECTED'",
-          "next": "n_reject"
         }
-      ]
+      ],
+      "default": "n_reject"
     },
     {
-      "type": "task",
       "id": "n_book",
-      "capabilityKey": "lending-origination",
+      "type": "task",
+      "capability": "lending-origination",
+      "operation": "book",
+      "output": "context.loan",
       "next": [
         "n_done"
       ],
-      "meter": "finnone_pool",
-      "compensation": "n_reverse"
+      "onFailure": "compensate",
+      "policies": {
+        "meter": {
+          "pool": "finnone_pool"
+        }
+      },
+      "compensation": {
+        "operation": "reverseBooking",
+        "input": "{ loanId: context.loan.id }"
+      }
     },
     {
-      "type": "terminal",
       "id": "n_done",
+      "type": "terminal",
       "action": "push_decision_to_channel",
       "emit": [
         "LoanBooked"
-      ]
+      ],
+      "status": "completed"
     },
     {
-      "type": "terminal",
       "id": "n_reject",
+      "type": "terminal",
       "action": "push_decision_to_channel",
       "emit": [
         "LoanRejected"
-      ]
-    },
-    {
-      "type": "terminal",
-      "id": "n_reverse",
-      "action": "reverse_booking",
-      "emit": [
-        "BookingReversed"
-      ]
+      ],
+      "status": "rejected"
     }
   ],
   "layout": {
@@ -114,10 +132,6 @@
     },
     "n_reject": {
       "x": 980.0,
-      "y": 300.0
-    },
-    "n_reverse": {
-      "x": 1160.0,
       "y": 300.0
     }
   }

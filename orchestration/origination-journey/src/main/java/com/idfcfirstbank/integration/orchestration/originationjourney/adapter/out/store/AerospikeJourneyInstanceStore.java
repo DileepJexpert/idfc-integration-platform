@@ -37,6 +37,7 @@ public class AerospikeJourneyInstanceStore implements JourneyInstanceStore {
     private static final String B_STATUS = "status";
     private static final String B_PAYLOAD = "payload";
     private static final String B_COLLECTED = "collected";
+    private static final String B_CONTEXT = "context";
     private static final String B_COMPLETED = "completed";
     private static final String B_DISPATCHED = "dispatched";
 
@@ -66,6 +67,7 @@ public class AerospikeJourneyInstanceStore implements JourneyInstanceStore {
                 new Bin(B_STATUS, instance.status().name()),
                 new Bin(B_PAYLOAD, json(instance.payload())),
                 new Bin(B_COLLECTED, json(instance.collectedResults())),
+                new Bin(B_CONTEXT, json(instance.context())),
                 new Bin(B_COMPLETED, json(instance.completedNodeIds())),
                 new Bin(B_DISPATCHED, json(instance.dispatchedNodeIds())));
     }
@@ -80,6 +82,7 @@ public class AerospikeJourneyInstanceStore implements JourneyInstanceStore {
                 journeyInstanceId,
                 r.getString(B_CORR), r.getString(B_KEY), r.getString(B_APPREF),
                 readMap(r.getString(B_PAYLOAD)), readMap(r.getString(B_COLLECTED)),
+                readMap(r.getString(B_CONTEXT)),
                 readSet(r.getString(B_COMPLETED)), readSet(r.getString(B_DISPATCHED)),
                 InstanceStatus.valueOf(r.getString(B_STATUS))));
     }

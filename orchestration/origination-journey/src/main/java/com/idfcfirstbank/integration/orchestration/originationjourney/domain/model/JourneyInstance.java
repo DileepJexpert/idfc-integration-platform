@@ -24,6 +24,8 @@ public final class JourneyInstance {
     private final Map<String, Object> payload;
 
     private final Map<String, Object> collectedResults = new LinkedHashMap<>();
+    /** The typed §7 run document: nodes write their `output` here; expressions read it. */
+    private final Map<String, Object> context = new LinkedHashMap<>();
     private final Set<String> completedNodeIds = new HashSet<>();
     private final Set<String> dispatchedNodeIds = new HashSet<>();
     private InstanceStatus status = InstanceStatus.RUNNING;
@@ -43,6 +45,7 @@ public final class JourneyInstance {
     public String applicationRef() { return applicationRef; }
     public Map<String, Object> payload() { return payload; }
     public Map<String, Object> collectedResults() { return collectedResults; }
+    public Map<String, Object> context() { return context; }
     public InstanceStatus status() { return status; }
 
     public boolean isDispatched(String nodeId) { return dispatchedNodeIds.contains(nodeId); }
@@ -61,12 +64,16 @@ public final class JourneyInstance {
      */
     public static JourneyInstance restore(String journeyInstanceId, String correlationId, String journeyKey,
                                           String applicationRef, Map<String, Object> payload,
-                                          Map<String, Object> collectedResults, Set<String> completedNodeIds,
+                                          Map<String, Object> collectedResults, Map<String, Object> context,
+                                          Set<String> completedNodeIds,
                                           Set<String> dispatchedNodeIds, InstanceStatus status) {
         JourneyInstance instance = new JourneyInstance(journeyInstanceId, correlationId, journeyKey,
                 applicationRef, payload);
         if (collectedResults != null) {
             instance.collectedResults.putAll(collectedResults);
+        }
+        if (context != null) {
+            instance.context.putAll(context);
         }
         if (completedNodeIds != null) {
             instance.completedNodeIds.addAll(completedNodeIds);
@@ -80,11 +87,22 @@ public final class JourneyInstance {
         return instance;
     }
 
-    /** Record a node's result and mark it complete. Results are keyed by capability. */
-    public void recordResult(String nodeId, String capabilityKey, Map<String, Object> result) {
+    /**
+     * Record a node's result and mark it complete. Results are keyed by capability
+     * (so downstream tasks read {@code collectedResults().get("bureau")}) AND bound
+     * into the typed {@code context} at the node's {@code output} key (so §7
+     * expressions like {@code context.scoring.decision} resolve).
+     */
+    public void recordResult(String nodeId, String capabilityKey, String output, Map<String, Object> result) {
         completedNodeIds.add(nodeId);
         if (capabilityKey != null && result != null) {
             collectedResults.put(capabilityKey, result);
+        }
+        if (output != null && result != null) {
+            String key = output.startsWith("context.") ? output.substring("context.".length()) : output;
+            if (!key.isBlank()) {
+                context.put(key, result);
+            }
         }
     }
 
@@ -95,17 +113,16 @@ public final class JourneyInstance {
     public void fail() { this.status = InstanceStatus.FAILED; }
 
     /**
-     * Flat evaluation context for branch expressions: the payload overlaid with
-     * every collected result map. So {@code decision} (from the scoring result)
-     * and {@code score} are reachable by bare name.
+     * The §7 evaluation root for expressions: a map whose {@code context} entry is
+     * the typed run document (so {@code context.scoring.decision} navigates into
+     * the bound results), plus the inbound identity fields under {@code context}
+     * for convenience.
      */
     public Map<String, Object> evaluationContext() {
         Map<String, Object> ctx = new LinkedHashMap<>(payload);
-        for (Object value : collectedResults.values()) {
-            if (value instanceof Map<?, ?> m) {
-                m.forEach((k, v) -> ctx.put(String.valueOf(k), v));
-            }
-        }
-        return ctx;
+        ctx.putAll(context);
+        Map<String, Object> root = new LinkedHashMap<>();
+        root.put("context", ctx);
+        return root;
     }
 }

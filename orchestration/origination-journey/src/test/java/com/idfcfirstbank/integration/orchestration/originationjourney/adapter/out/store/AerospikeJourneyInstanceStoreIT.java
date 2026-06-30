@@ -47,8 +47,8 @@ class AerospikeJourneyInstanceStoreIT {
         JourneyInstance original = new JourneyInstance(
                 "ji-it-1", "corr-it", "loan-origination", "APP-1", Map.of("pan", "ABCDE1234F"));
         original.markDispatched("n_customer");
-        original.recordResult("n_customer", "customer-party", Map.of("crn", "CRN-1"));
-        original.recordResult("n_bureau", "bureau", Map.of("bureauScore", 780));
+        original.recordResult("n_customer", "customer-party", "context.customer", Map.of("crn", "CRN-1"));
+        original.recordResult("n_bureau", "bureau", "context.bureau", Map.of("bureauScore", 780));
         original.complete();
 
         store.save(original);
