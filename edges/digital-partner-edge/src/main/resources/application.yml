@@ -1,5 +1,5 @@
 server:
-  port: 8081   # distinct from the SFDC edge (8080) so both run side by side
+  port: ${SERVER_PORT:8081}   # digital edge — distinct from the SFDC edge (8080)
 
 spring:
   application:

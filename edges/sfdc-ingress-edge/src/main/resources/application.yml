@@ -1,3 +1,6 @@
+server:
+  port: ${SERVER_PORT:8080}   # assisted (SFDC) edge — REST in
+
 spring:
   application:
     name: sfdc-ingress-edge

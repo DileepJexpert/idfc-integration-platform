@@ -1,0 +1,11 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="10. payments :8096" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
+    <module name="idfc-integration-platform.capabilities.payments.main" />
+    <option name="SPRING_BOOT_MAIN_CLASS" value="com.idfcfirstbank.integration.capabilities.payments.PaymentsApplication" />
+    <option name="ALTERNATIVE_JRE_PATH_ENABLED" value="false" />
+    <option name="SHORTEN_COMMAND_LINE" value="NONE" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>
