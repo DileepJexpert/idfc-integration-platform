@@ -1,49 +1,121 @@
-# Architecture — Scoring / Decisioning Capability
-*(keep this file in: capabilities/scoring/ARCHITECTURE.md)*
+# Scoring Capability — Architecture
 
-## 1. What this is (one line)
-Takes the applicant + bureau data and produces the actual credit DECISION (APPROVED / REJECTED + reasons) —
-this is where the loan decision is genuinely made.
+> **Module:** `capabilities/scoring` · **Type:** capability · **Port:** 8093 · **Runtime:** Spring Boot (Java, hexagonal)
 
-## 2. Why it exists (the business problem)
-The real decisioning logic lives in scoring engines (FICO, scorecards, BSA). Today it's reached through a maze
-of orchestrators (fico-loan-eligibility, scorecard-analyser) that fan out and merge. This capability is the
-clean home for "decide the loan" — invoked by the journey, returning a decision the branch routes on.
+## 1. Purpose & Context
+The scoring capability is the decisioning capability — this is where the credit decision is actually made. The orchestration engine invokes it over Kafka (`cap.scoring.request.v1`) after the bureau node has run; scoring reads the upstream bureau score from `collectedResults`, enriches it with a FICO score, applies the pure `DecisionRule` against a configured cutoff threshold, and replies on `cap.scoring.response.v1` with `APPROVED`/`REJECTED` plus reasons. The engine's branch node then routes on that `decision`.
 
-## 3. Classification (why it's DECISIONING, distinct from Bureau)
-Bureau FETCHES data; Scoring DECIDES. Separating them is deliberate: data retrieval and decisioning change for
-different reasons (a new bureau vs a new risk policy) and must be independently ownable. This capability owns
-the decision; it consumes bureau data as input.
+## 2. High-Level Block Diagram
 
-## 4. Design approach
-- Hexagonal. domain: ScoringDecision + the decision rule (pure, unit-tested — the most important tests here).
-  port/out: FicoPort (and/or internal scorecard).
-- adapter/in/kafka: engine contract. adapter/out/fico: real HTTP to FICO (URL via config -> mock for demo).
-- The decision threshold/rules are config-as-data (a policy change = config, not code).
+```mermaid
+flowchart LR
+    ENGINE[Orchestration Engine]
+    REQ[(cap.scoring.request.v1)]
+    RES[(cap.scoring.response.v1)]
+    SCORING[scoring capability<br/>port 8093]
+    FICO[FICO scoring vendor]
 
-## 5. Business flow handled
-1. Engine sends a scoring request with the applicant + the bureau result (from collectedResults).
-2. Capability calls FICO (and/or applies the bank's decision rules) -> derives a decision.
-3. Returns { decision: APPROVED|REJECTED, score, reasons[] } -> the engine's BRANCH node routes on this.
+    ENGINE -->|CapabilityRequest<br/>incl. bureau result in collectedResults| REQ --> SCORING
+    SCORING -->|CapabilityResponse<br/>decision APPROVED/REJECTED| RES --> ENGINE
+    SCORING -->|HTTP score| FICO
+```
 
-## 6. Key decisions & rationale
-| Decision | Why |
-|---|---|
-| Separate from Bureau | decisioning vs data-fetch change for different reasons; independent ownership |
-| Decision rules as config | a policy change (threshold, rule) = config, not a code deploy |
-| FICO behind a port | vendor is an adapter; swappable; real decisioning can be FICO + bank rules |
-| Reasons[] in the response | regulators/ops need WHY a loan was rejected — carry the reason codes |
+## 3. Low-Level Block Diagram
 
-## 7. What it is NOT (scope boundary)
-Does not fetch bureau data (that's Bureau — it consumes the result). Does not book the loan (that's Lending-
-Origination). Does not own customer data. It decides, and only decides.
+```mermaid
+flowchart TB
+    subgraph Inbound
+        CONSUMER[ScoringRequestConsumer<br/>@KafkaListener cap.scoring.request.v1]
+    end
 
-## 8. External dependencies
-FICO / internal scorecard engines (docker mock for demo, real in prod via config). Kafka (engine contract).
+    subgraph AppDomain[Application / Domain]
+        SVC[ScoringService<br/>handle - reads bureauScore from collectedResults]
+        RULE[DecisionRule<br/>decide bureauScore vs threshold + negativeFlags]
+        THRESH[[threshold cutoff<br/>idfc.scoring.threshold default 700]]
+        DEC[ScoringDecision<br/>APPROVED / REJECTED + reasons]
+    end
 
-## 9. Likely cross-questions & answers
-- "Where is the loan actually decided?" -> Here. Bureau gives the data; Scoring applies the policy and returns
-  APPROVED/REJECTED with reasons.
-- "Can risk change the policy without a release?" -> Yes — the rules/threshold are config-as-data; a policy
-  change is a config change, audited, not a code deploy.
-- "Is this a black box?" -> No — the response carries score + reason codes, so every decision is explainable.
+    subgraph OutPorts[Outbound Ports]
+        FICOP[FicoPort.score]
+        RESPP[CapabilityResponsePort]
+    end
+
+    subgraph Adapters
+        FICOA[FicoHttpAdapter / MockFicoAdapter]
+        PUB[KafkaCapabilityResponsePublisher<br/>cap.scoring.response.v1]
+    end
+
+    CONSUMER --> SVC
+    SVC -->|enrich| FICOP --> FICOA
+    SVC --> RULE
+    THRESH --> RULE
+    RULE --> DEC
+    DEC --> SVC
+    SVC --> RESPP --> PUB
+```
+
+## 4. Flow Diagram
+
+```mermaid
+sequenceDiagram
+    participant Engine as Orchestration Engine
+    participant Consumer as ScoringRequestConsumer
+    participant Service as ScoringService
+    participant Fico as FicoPort
+    participant Rule as DecisionRule
+    participant Pub as KafkaCapabilityResponsePublisher
+
+    Engine->>Consumer: cap.scoring.request.v1 (CapabilityRequest JSON)
+    Consumer->>Service: handle(request)
+    Service->>Service: read collectedResults["bureau"].bureauScore
+    Service->>Service: read payload.negativeFlags
+    Service->>Fico: score(payload) -> ficoScore
+    Fico-->>Service: ficoScore
+    Service->>Rule: decide(bureauScore, negativeFlags, threshold)
+    Rule->>Rule: APPROVED if score >= threshold AND no negative flags, else REJECTED
+    Rule-->>Service: ScoringDecision(decision, score, reasons)
+    Service->>Service: append "fico=<score>" to reasons; build result {decision, score, reasons}
+    Service->>Pub: publish(CapabilityResponse OK)
+    Pub->>Engine: cap.scoring.response.v1 (CapabilityResponse JSON)
+```
+
+## 5. Key Classes & Files
+
+| File | Role |
+| --- | --- |
+| `src/main/java/.../scoring/ScoringApplication.java` | Spring Boot entry point for the scoring capability. |
+| `src/main/java/.../scoring/adapter/in/kafka/ScoringRequestConsumer.java` | Inbound Kafka adapter; `@KafkaListener` on `cap.scoring.request.v1`, deserializes the `CapabilityRequest`, invokes the service, publishes the response. |
+| `src/main/java/.../scoring/application/ScoringService.java` | Framework-free handler; reads the bureau score from `collectedResults`, enriches via `FicoPort`, applies `DecisionRule`, maps `ScoringDecision` into a `CapabilityResponse`. |
+| `src/main/java/.../scoring/domain/service/DecisionRule.java` | Pure decision rule (no framework/IO); `APPROVED` when `bureauScore >= threshold` AND no negative flags, else `REJECTED`. |
+| `src/main/java/.../scoring/domain/model/ScoringDecision.java` | Decision record (`decision`, `score`, `reasons`); constants `APPROVED` / `REJECTED`. |
+| `src/main/java/.../scoring/domain/port/FicoPort.java` | Outbound port to the FICO vendor (`score(payload)`). |
+| `src/main/java/.../scoring/domain/port/CapabilityResponsePort.java` | Outbound port to publish the `CapabilityResponse`. |
+| `src/main/java/.../scoring/adapter/out/fico/FicoHttpAdapter.java` | Real FICO adapter; HTTP `POST /fico/score`. |
+| `src/main/java/.../scoring/adapter/out/fico/MockFicoAdapter.java` | Mock FICO adapter; deterministic fixed score (750). |
+| `src/main/java/.../scoring/adapter/out/kafka/KafkaCapabilityResponsePublisher.java` | Outbound Kafka adapter; publishes JSON to `cap.scoring.response.v1`. |
+| `src/main/java/.../scoring/config/ScoringConfiguration.java` | Wires `FicoPort` (mock vs real), `DecisionRule`, `ScoringService` (with threshold), Kafka producer/template, response port. |
+| `src/main/java/.../scoring/config/ScoringProperties.java` | `idfc.scoring.*` config (`ficoMode`, `ficoUrl`, `threshold` default 700). |
+| `src/main/resources/application.yml` | Base config (port 8093, Kafka, threshold, FICO mode/url). |
+
+## 6. Interfaces
+
+- **Inbound:** consumes `cap.scoring.request.v1` (topic derived via `CapabilityTopics.request("scoring")`); SPI entry is `ScoringRequestConsumer.onMessage(String)` → `ScoringService.handle(CapabilityRequest)`. Reads the upstream bureau result from `request.collectedResults().get("bureau").bureauScore` and `payload.negativeFlags`.
+- **Outbound:** produces `cap.scoring.response.v1` (via `CapabilityTopics.response(capabilityKey)`); calls vendor port `FicoPort.score(payload)` (real → `POST /fico/score`). No domain events emitted.
+- **Contract:** `CapabilityRequest` / `CapabilityResponse` (`CapabilityStatus.OK` / `CapabilityStatus.ERROR`) from `shared:shared-domain`. The OK result map carries `decision` (`APPROVED`/`REJECTED`), `score`, and `reasons[]` (the rule's reasons plus `fico=<score>`).
+
+## 7. Configuration & How to Run
+
+- **Server port:** `8093` (`server.port`, overridable via `SERVER_PORT`).
+- **Spring profiles:**
+  - `local` (`application-local.yml`): Kafka on `localhost:29092`; `fico-mode: real` against the docker-compose mock (`http://localhost:9103`).
+  - `eks` (`application-eks.yml`): production posture — `fico-mode: real` with `FICO_URL` from cluster env.
+- **Key `application.yml` settings:**
+  - `idfc.scoring.threshold` — the bureau-score cutoff for the decision rule (default `700`, override via `SCORING_THRESHOLD`).
+  - `idfc.scoring.fico-mode` = `mock` | `real` and `idfc.scoring.fico-url` (default `http://localhost:9103`).
+  - `spring.kafka.bootstrap-servers` (default `localhost:9092`).
+  - Actuator exposes only `health,info,prometheus`.
+- **Run locally:**
+  ```bash
+  docker compose -f docker-compose.infra.yml up -d
+  ./gradlew :capabilities:scoring:bootRun --args='--spring.profiles.active=local'
+  ```

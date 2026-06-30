@@ -1,45 +1,120 @@
-# Architecture — Customer/Party Capability
-*(keep this file in: capabilities/customer-party/ARCHITECTURE.md)*
+# Customer / Party — Architecture
 
-## 1. What this is (one line)
-Resolves and deduplicates the customer for an application against the bank's customer source-of-truth
-(CDP/Posidex) — it does NOT own the customer master; it integrates with it.
+> **Module:** `capabilities/customer-party` · **Type:** capability · **Port:** 8090 · **Runtime:** Spring Boot (Java, hexagonal)
 
-## 2. Why it exists (the business problem)
-Customer resolution (find/dedup the customer, fetch CRN/customerId) was happening inside multiple services,
-each calling Posidex/CDP its own way. This capability centralizes "resolve the customer" once.
+## 1. Purpose & Context
 
-## 3. Classification (why it's an INTEGRATION capability, not a built master)
-**Confirmed (A1): CDP/Posidex IS the customer source-of-truth.** So this capability does not BUILD a customer
-master — it INTEGRATES with the existing one. It owns the "resolve/dedup" function, not the customer data.
-This is an important distinction for cross-questions: we are not rebuilding CDP.
+The customer-party capability resolves (and dedups) a customer against the bank's customer source of truth, Posidex, returning the customer's CRN, customer id, name, and status. It is a capability microservice in the IDFC integration platform's hexagonal architecture: the orchestration engine invokes it over Kafka for a single DAG task node, passing the applicant identity in the `CapabilityRequest` payload. The capability resolves the customer and replies with a `CapabilityResponse` so the engine can store the result and advance the journey. Customer / Party is an integration — it resolves against the master, it does not own it.
 
-## 4. Design approach
-- Hexagonal. domain: CustomerProfile + resolve logic (framework-free). port/out: PosidexPort.
-- adapter/in/kafka: implements the engine's capability contract (consume request -> resolve -> respond).
-- adapter/out/posidex: real HTTP to Posidex (URL via config -> docker mock for demo -> real Posidex in prod).
-- Stateless: it resolves and returns; the customer record lives in CDP/Posidex.
+## 2. High-Level Block Diagram
 
-## 5. Business flow handled
-1. Engine sends a customer-party request (applicant identity: name, dob, pan...).
-2. Capability calls Posidex (dedup + lookup) -> resolves the customer.
-3. Returns { customerId/crn, profile, isExisting } in the response result -> the journey proceeds to bureau.
+```mermaid
+flowchart LR
+    ENGINE[Orchestration Engine]
+    REQ[["cap.customer-party.request.v1"]]
+    RES[["cap.customer-party.response.v1"]]
+    CP[customer-party capability]
+    POSIDEX[(Posidex<br/>customer source of truth)]
 
-## 6. Key decisions & rationale
-| Decision | Why |
-|---|---|
-| Integration, not a built master | A1: CDP/Posidex is the SoR — we don't duplicate it |
-| Stateless resolve | the capability owns the function, not the data |
-| Posidex behind a port | vendor is an adapter; swappable; URL via config |
+    ENGINE -->|publishes CapabilityRequest| REQ
+    REQ --> CP
+    CP -->|publishes CapabilityResponse| RES
+    RES --> ENGINE
+    CP -->|HTTP POST /posidex/resolve| POSIDEX
+```
 
-## 7. What it is NOT (scope boundary)
-Does not own/store the customer master (CDP does). No KYC (that's the KYC capability — identity verification is
-a different function from customer resolution). No scoring. No journey logic.
+## 3. Low-Level Block Diagram
 
-## 8. External dependencies
-Posidex/CDP (customer SoR — docker mock for demo, real in prod), Kafka (engine contract).
+```mermaid
+flowchart TB
+    subgraph Inbound
+        CONSUMER[CustomerPartyRequestConsumer<br/>@KafkaListener]
+    end
 
-## 9. Likely cross-questions & answers
-- "Aren't you rebuilding the customer master?" -> No. CDP/Posidex stays the SoR; we integrate, we resolve.
-- "Why a separate capability then?" -> Because customer-resolution is a distinct, reusable function every
-  journey needs; centralizing it removes the duplicated Posidex calls scattered across services.
+    subgraph AppDomain["Application / Domain"]
+        SERVICE[CustomerPartyService<br/>handle CapabilityRequest]
+        PROFILE[CustomerProfile<br/>domain record]
+    end
+
+    subgraph Ports["Outbound Ports"]
+        POSIDEXPORT[PosidexPort<br/>resolve]
+        RESPPORT[CapabilityResponsePort<br/>publish]
+    end
+
+    subgraph Adapters
+        HTTP[PosidexHttpAdapter<br/>real - RestClient]
+        MOCK[MockPosidexAdapter<br/>mock]
+        PUB[KafkaCapabilityResponsePublisher<br/>KafkaTemplate]
+    end
+
+    CONSUMER --> SERVICE
+    SERVICE --> POSIDEXPORT
+    SERVICE --> PROFILE
+    POSIDEXPORT -. real .-> HTTP
+    POSIDEXPORT -. mock .-> MOCK
+    CONSUMER --> RESPPORT
+    RESPPORT --> PUB
+```
+
+## 4. Flow Diagram
+
+```mermaid
+sequenceDiagram
+    participant Engine as Orchestration Engine
+    participant Consumer as CustomerPartyRequestConsumer
+    participant Service as CustomerPartyService
+    participant Port as PosidexPort
+    participant Posidex as Posidex (HTTP/mock)
+    participant Pub as CapabilityResponsePort
+
+    Engine->>Consumer: cap.customer-party.request.v1 (CapabilityRequest JSON)
+    Consumer->>Consumer: objectMapper.readValue -> CapabilityRequest
+    Consumer->>Service: handle(request)
+    Service->>Port: resolve(request.payload())
+    Port->>Posidex: resolve identity
+    Posidex-->>Port: CustomerProfile (crn, customerId, name, status)
+    Port-->>Service: CustomerProfile
+    Service-->>Consumer: CapabilityResponse (OK + result)
+    Consumer->>Pub: publish(response)
+    Pub->>Engine: cap.customer-party.response.v1 (CapabilityResponse JSON)
+```
+
+On any `RuntimeException` from `posidex.resolve(...)`, `CustomerPartyService.handle()` returns a `CapabilityResponse` with `CapabilityStatus.ERROR` and an empty result, and the engine fails the journey.
+
+## 5. Key Classes & Files
+
+| File | Role |
+| --- | --- |
+| `src/main/java/.../party/CustomerPartyApplication.java` | Spring Boot entry point (`@SpringBootApplication`). |
+| `src/main/java/.../party/adapter/in/kafka/CustomerPartyRequestConsumer.java` | Inbound Kafka adapter; `@KafkaListener` on the request topic; deserializes `CapabilityRequest`, calls the service, publishes the response. |
+| `src/main/java/.../party/application/CustomerPartyService.java` | Framework-free application service; `handle(CapabilityRequest)` resolves the customer and maps it to a `CapabilityResponse`. |
+| `src/main/java/.../party/domain/model/CustomerProfile.java` | Domain record: `crn`, `customerId`, `name`, `status`. |
+| `src/main/java/.../party/domain/port/PosidexPort.java` | Outbound port: `CustomerProfile resolve(Map<String,Object> identity)`. |
+| `src/main/java/.../party/domain/port/CapabilityResponsePort.java` | Outbound port: `void publish(CapabilityResponse)`. |
+| `src/main/java/.../party/adapter/out/posidex/PosidexHttpAdapter.java` | Real Posidex adapter; HTTP `POST /posidex/resolve` via `RestClient`. |
+| `src/main/java/.../party/adapter/out/posidex/MockPosidexAdapter.java` | Mock Posidex adapter; deterministic profile derived from the applicant's PAN. |
+| `src/main/java/.../party/adapter/out/kafka/KafkaCapabilityResponsePublisher.java` | Outbound Kafka adapter; publishes the response JSON keyed by `journeyInstanceId`. |
+| `src/main/java/.../party/config/CustomerPartyConfiguration.java` | Bean wiring; selects mock/real Posidex by config; builds the producer factory, `KafkaTemplate`, and response publisher. |
+| `src/main/java/.../party/config/PosidexProperties.java` | `@ConfigurationProperties(prefix = "idfc.customer-party.posidex")`; `mode` defaults to `mock`, `isReal()` selects the real adapter. |
+| `src/main/resources/application.yml` | Base config: server port, Kafka serde, Posidex mode/url, actuator. |
+
+## 6. Interfaces
+
+- **Inbound:** consumes `cap.customer-party.request.v1` (Kafka, JSON String serde) via `CustomerPartyRequestConsumer` with consumer group `${idfc.capability.group:customer-party}`. The topic is derived from the capability key `customer-party` through `CapabilityTopics.request(...)`.
+- **Outbound:**
+  - Produces `cap.customer-party.response.v1` (topic derived from the response's `capabilityKey` via `CapabilityTopics.response(...)`) through `KafkaCapabilityResponsePublisher`.
+  - Vendor port: `PosidexPort.resolve(...)` — real adapter calls Posidex over HTTP `POST /posidex/resolve`; mock adapter resolves locally.
+  - No separate domain/integration events are emitted beyond the `CapabilityResponse`.
+- **Contract:** the shared capability contract in `shared:shared-domain` — `CapabilityRequest`, `CapabilityResponse`, `CapabilityStatus`, with topic names from `CapabilityTopics`. This capability implements its own `CustomerPartyService.handle(CapabilityRequest)` method directly; it does **not** use the shared-capability framework (`CapabilityDispatcher` / `Capability`).
+
+## 7. Configuration & How to Run
+
+- **Server port:** `8090` (`SERVER_PORT` override).
+- **Spring profiles:**
+  - `local` (`application-local.yml`): Kafka at `localhost:29092` (docker host listener); Posidex `mode: real`, `url: http://localhost:9101` (docker-compose mock vendor).
+  - `eks` (`application-eks.yml`): production posture — Posidex `mode: real`, `url: ${POSIDEX_URL}` injected from the cluster ConfigMap/Secret.
+  - default (no profile, `application.yml`): Kafka at `localhost:9092`, Posidex `mode: mock` (`POSIDEX_MODE`), `url: http://localhost:9101` (`POSIDEX_URL`).
+- **Key `application.yml` settings:** `spring.application.name=customer-party`; Kafka String key/value serde, `auto-offset-reset=earliest`; `idfc.customer-party.posidex.{mode,url}`; actuator exposes only `health,info,prometheus`.
+- **How to run:**
+  - IntelliJ: run `CustomerPartyApplication` (optionally set the active profile `local` or `eks` via `SPRING_PROFILES_ACTIVE`).
+  - Gradle: `./gradlew :capabilities:customer-party:bootRun` (add `-Dspring.profiles.active=local` to run against the docker-compose infra started with `docker compose -f docker-compose.infra.yml up -d`).

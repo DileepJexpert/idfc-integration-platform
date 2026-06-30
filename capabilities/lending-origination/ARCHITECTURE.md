@@ -1,56 +1,133 @@
-# Architecture — Lending-Origination Capability
-*(keep this file in: capabilities/lending-origination/ARCHITECTURE.md)*
+# Lending Origination — Architecture
 
-## 1. What this is (one line)
-Books the loan in FinnOne (the lending system-of-record) once a decision is APPROVED — creating the loan
-record and returning the loan account number.
+> **Module:** `capabilities/lending-origination` · **Type:** capability · **Port:** 8094 · **Runtime:** Spring Boot (Java, hexagonal)
 
-## 2. Why it exists (the business problem)
-Loan booking was happening via finnone-submit + finnone-onboarding-disbursal. This capability is the clean home
-for "create the loan", distinct from servicing a live loan.
+## 1. Purpose & Context
 
-## 3. Classification (Origination vs Servicing — a LOCKED boundary)
-There are TWO lending capabilities, split by lifecycle:
-- **Origination (this one):** CREATES the loan — writes to FinnOne. (finnone-submit + onboarding-disbursal)
-- **Servicing (separate):** operates on a LIVE loan (foreclosure, refund, mandates) — reads FinnOne, writes
-  CBS/SFDC/Montran. (finnone-integration + dl-lms-handler)
-They are separate because they write different systems and change for different reasons. (Evidence: context
-section 7C.)
+`lending-origination` is a capability microservice in the IDFC integration platform's hexagonal architecture. The orchestration engine invokes it over Kafka using the shared capability contract (`CapabilityRequest`/`CapabilityResponse` in `shared-domain`). It exposes two operations, dispatched by `CapabilityRequest.operation()` inside `LendingOriginationService.handle()`: the default **booking** path, which books an APPROVED loan in FinnOne (the loan system of record) via `FinnOneBookingPort` and returns the FinnOne `loanId` (LAN); and **`validateDeviceFinancing`**, a config-driven brand/device-financing EMI validation (BRD §5) via `BrandValidationPort` against `brand-config/{brand}.json`. FinnOne owns the loan — this capability just triggers the booking and reports the LAN back to the engine.
 
-## 4. Design approach (the ODD-ONE-OUT adapter — anticipate this cross-question)
-- Hexagonal. domain: LoanBooking + booking logic. port/out: FinnOneBookingPort.
-- **CRITICAL:** FinnOne is accessed via an **Oracle STORED PROCEDURE (SP_FINNONE_SUBMISSION), NOT REST.** So
-  the adapter is **JDBC + CallableStatement + JSON<->XML**, not an HTTP client. This is the one adapter in the
-  estate that is not HTTP — model it correctly.
-- adapter/in/kafka: engine contract. adapter/out/finnone: JDBC stored-proc adapter (datasource via config ->
-  Oracle-XE docker mock for demo with the proc defined -> real FinnOne in prod).
+## 2. High-Level Block Diagram
 
-## 5. Business flow handled
-1. Engine sends a booking request (only reached on an APPROVED decision, via the branch).
-2. Capability calls SP_FINNONE_SUBMISSION (JDBC) with the application data -> FinnOne creates the loan.
-3. Returns { loanId/LAN, status: BOOKED } -> terminal node -> decision pushed back to SFDC.
+```mermaid
+flowchart LR
+    Engine[Orchestration Engine]
+    ReqTopic[["cap.lending-origination.request.v1"]]
+    RespTopic[["cap.lending-origination.response.v1"]]
+    Svc["lending-origination<br/>(capability, :8094)"]
+    FinnOne[("FinnOne<br/>Oracle stored proc<br/>SP_FINNONE_SUBMISSION")]
+    Brand["Brand / Device-financing API<br/>(brand-config JSON, mocked)"]
 
-## 6. Key decisions & rationale
-| Decision | Why |
-|---|---|
-| FinnOne via JDBC stored proc | that is how FinnOne is actually accessed — NOT REST (evidence-confirmed) |
-| Origination separate from Servicing | different SoR-writes, different lifecycle — a locked boundary |
-| FinnOne = loan SoR (not CBS) | FinnOne owns the loan record; CBS/BaNCS owns the money — distinct SoRs |
-| Idempotency on booking | booking is money-adjacent — must not double-book (ties to the edge's dedupe) |
+    Engine -->|CapabilityRequest| ReqTopic --> Svc
+    Svc -->|CapabilityResponse| RespTopic --> Engine
+    Svc -->|book| FinnOne
+    Svc -->|validateDeviceFinancing| Brand
+```
 
-## 7. What it is NOT (scope boundary)
-Does not service live loans (that's Servicing). Does not move money to CBS (that's Servicing/Payments). Does not
-decide the loan (Scoring did — this only runs on APPROVED). Does not do KYC/bureau.
+## 3. Low-Level Block Diagram
 
-## 8. External dependencies
-FinnOne (Oracle stored proc — Oracle-XE docker mock for demo, real FinnOne in prod via config datasource).
-Kafka (engine contract).
+```mermaid
+flowchart TB
+    subgraph Inbound
+        Consumer["LendingOriginationRequestConsumer<br/>@KafkaListener cap.lending-origination.request.v1"]
+    end
 
-## 9. Likely cross-questions & answers
-- "Why JDBC and not an API?" -> Because FinnOne exposes booking via an Oracle stored procedure
-  (SP_FINNONE_SUBMISSION), not a REST API. The adapter wraps that faithfully; the rest of the system doesn't
-  care — it's behind a port.
-- "What stops a double-booking?" -> The edge's idempotency (dedupe on the application) ensures one journey per
-  application; booking only runs once per approved journey.
-- "FinnOne vs CBS/BaNCS?" -> FinnOne is the loan system-of-record (the loan); CBS/BaNCS is the money/accounts
-  system-of-record. Origination writes the loan to FinnOne; money movement (servicing) is CBS.
+    subgraph "Application / Domain"
+        Service["LendingOriginationService.handle()"]
+        Dispatch{"operation == 'validateDeviceFinancing' ?"}
+        BookPath["book path<br/>buildApplication() -> finnOne.book()"]
+        ValidatePath["validateDeviceFinancing()<br/>brandValidation.validate()"]
+        Model["LoanBooking (loanId, status)"]
+    end
+
+    subgraph "Outbound Ports"
+        FinnOnePort["FinnOneBookingPort"]
+        BrandPort["BrandValidationPort"]
+        RespPort["CapabilityResponsePort"]
+    end
+
+    subgraph Adapters
+        SP["FinnOneStoredProcAdapter<br/>(real, JDBC CallableStatement)"]
+        MockFO["MockFinnOneAdapter (mock)"]
+        BrandAdapter["MockBrandValidationAdapter<br/>(brand-config/{brand}.json)"]
+        Publisher["KafkaCapabilityResponsePublisher<br/>-> cap.lending-origination.response.v1"]
+    end
+
+    Consumer --> Service
+    Service --> Dispatch
+    Dispatch -->|no / default| BookPath
+    Dispatch -->|yes| ValidatePath
+    BookPath --> FinnOnePort
+    BookPath --> Model
+    ValidatePath --> BrandPort
+    FinnOnePort --> SP
+    FinnOnePort --> MockFO
+    BrandPort --> BrandAdapter
+    Service --> RespPort --> Publisher
+    Consumer --> RespPort
+```
+
+## 4. Flow Diagram
+
+Primary path: the **booking** operation.
+
+```mermaid
+sequenceDiagram
+    participant Engine as Orchestration Engine
+    participant K as Kafka (request topic)
+    participant C as LendingOriginationRequestConsumer
+    participant S as LendingOriginationService
+    participant P as FinnOneBookingPort
+    participant A as FinnOneStoredProcAdapter
+    participant R as KafkaCapabilityResponsePublisher
+
+    Engine->>K: CapabilityRequest (operation=null / book)
+    K->>C: onMessage(requestJson)
+    C->>S: handle(request)
+    S->>S: buildApplication(request)
+    S->>P: book(application)
+    P->>A: book(application)
+    A->>A: { call SP_FINNONE_SUBMISSION(?, ?) }
+    A-->>S: LoanBooking(loanId, "BOOKED")
+    S-->>C: CapabilityResponse(OK, {loanId, status})
+    C->>R: publish(response)
+    R->>Engine: cap.lending-origination.response.v1
+```
+
+## 5. Key Classes & Files
+
+| File | Role |
+| --- | --- |
+| `src/main/java/.../LendingOriginationApplication.java` | Spring Boot entry point; excludes `DataSourceAutoConfiguration` so it starts in mock mode without `spring.datasource.*`. |
+| `src/main/java/.../adapter/in/kafka/LendingOriginationRequestConsumer.java` | IN adapter; `@KafkaListener` on the request topic, deserializes `CapabilityRequest`, calls the service, publishes the response. |
+| `src/main/java/.../application/LendingOriginationService.java` | Framework-free handler; dispatches `validateDeviceFinancing` vs the default booking path in `handle()`. |
+| `src/main/java/.../domain/port/FinnOneBookingPort.java` | OUT port — book a loan, returns `LoanBooking`. |
+| `src/main/java/.../domain/port/BrandValidationPort.java` | OUT port — config-driven brand/device-financing validation. |
+| `src/main/java/.../domain/port/CapabilityResponsePort.java` | OUT port — publish the `CapabilityResponse`. |
+| `src/main/java/.../domain/model/LoanBooking.java` | Domain record `(loanId, status)` — FinnOne LAN + booking outcome. |
+| `src/main/java/.../adapter/out/finnone/FinnOneStoredProcAdapter.java` | Real OUT adapter; JDBC `CallableStatement` calling `SP_FINNONE_SUBMISSION(?, ?)`. |
+| `src/main/java/.../adapter/out/finnone/MockFinnOneAdapter.java` | Mock OUT adapter; books locally. |
+| `src/main/java/.../adapter/out/brand/MockBrandValidationAdapter.java` | Brand validation adapter; loads `brand-config/{brand}.json` and applies `passLogic`. |
+| `src/main/java/.../adapter/out/kafka/KafkaCapabilityResponsePublisher.java` | OUT adapter; publishes JSON to `cap.<key>.response.v1`. |
+| `src/main/java/.../config/LendingOriginationConfiguration.java` | Wires ports to adapters; selects the FinnOne adapter by `finnone.mode`; builds the Kafka producer/template. |
+| `src/main/java/.../config/FinnOneProperties.java` | Binds `idfc.lending-origination.finnone.*`. |
+| `src/main/resources/brand-config/samsung-upgrade.json` | Config-as-data brand rule (`passLogic.fieldPath == equals`). |
+| `src/main/resources/application*.yml` | Server port, Kafka, FinnOne mode and (real-mode) datasource. |
+
+## 6. Interfaces
+
+- **Inbound:** Consumes the request topic `cap.lending-origination.request.v1` (derived via `CapabilityTopics.request("lending-origination")`), consumer group `${idfc.capability.group:lending-origination}`. Operations dispatched in `handle()`:
+  - default / `null` operation → **book** (FinnOne loan booking).
+  - `validateDeviceFinancing` → brand/device-financing EMI validation.
+- **Outbound:** Publishes `CapabilityResponse` JSON to `cap.lending-origination.response.v1` (`CapabilityTopics.response(capabilityKey)`). Vendor ports: `FinnOneBookingPort` (Oracle stored proc `SP_FINNONE_SUBMISSION`, JDBC — not HTTP) and `BrandValidationPort` (config-driven brand API, mocked). No additional domain events.
+- **Contract:** `CapabilityRequest` / `CapabilityResponse` / `CapabilityStatus` / `CapabilityTopics` from `shared:shared-domain`. Booking result keys: `loanId` (read by the engine for the decision — must be exactly `loanId`) and `status`. Validation result keys: `brand`, `pass` (`"Y"`/`"N"`), `rule`.
+
+## 7. Configuration & How to Run
+
+- **Server port:** `8094` (`server.port`, overridable via `SERVER_PORT`).
+- **Spring profiles:**
+  - `local` — Kafka on `localhost:29092`; FinnOne `mode: real` against the Oracle-XE mock (`jdbc:oracle:thin:@localhost:1521/XEPDB1`, user/pass `finnone`/`finnone`); override `FINNONE_MODE=mock` to skip Oracle.
+  - `eks` — production posture; FinnOne `mode: real` with the datasource from `FINNONE_JDBC_URL` / `FINNONE_DB_USER` / `FINNONE_DB_PASSWORD` (Oracle driver). Endpoints injected from the cluster ConfigMap/Secret as env vars.
+- **Key `application.yml` settings:** `spring.kafka.bootstrap-servers` (`KAFKA_BOOTSTRAP_SERVERS`, default `localhost:9092`); Kafka String key/value serdes, `auto-offset-reset: earliest`; `idfc.lending-origination.finnone.mode` (`FINNONE_MODE`, default `mock`); Actuator exposes only `health,info,prometheus`.
+- **Run:**
+  - Start infra: `docker compose -f docker-compose.infra.yml up -d`.
+  - Run with the local profile, e.g. `./gradlew :capabilities:lending-origination:bootRun --args='--spring.profiles.active=local'` (or run the built jar). Set `FINNONE_MODE=mock` to start without Oracle.
