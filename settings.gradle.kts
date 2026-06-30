@@ -31,6 +31,7 @@ include("capabilities:lending-servicing")
 include("capabilities:customer-party")
 include("capabilities:payments")
 include("capabilities:echo")           // trivial reference capability — proves the framework (BRD §9 step 1)
+include("capabilities:mandate")        // e-mandate lifecycle — reference capability (BRD §3, step 2)
 
 // orchestration/ — long-running journeys (stubs in Slice 1)
 include("orchestration:origination-journey")

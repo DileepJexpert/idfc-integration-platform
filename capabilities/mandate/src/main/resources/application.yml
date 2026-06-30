@@ -1,0 +1,31 @@
+server:
+  port: ${SERVER_PORT:8098}   # mandate capability
+
+spring:
+  application:
+    name: mandate
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+# All mandate vendors are MOCKED locally (Digio/Ingenico via Kong, ENACH/NPCI,
+# QuickPay, Dwarf, SFDC-SMS, CBS-NACH). Real wiring is a config-driven later step.
+idfc:
+  mandate:
+    callback-topic: ${MANDATE_CALLBACK_TOPIC:mandate.callback.v1}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
