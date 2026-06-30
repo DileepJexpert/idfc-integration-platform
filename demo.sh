@@ -20,11 +20,30 @@
 #   ./demo.sh digital   # POST via the DIGITAL partner edge -> SAME engine/core
 #   ./demo.sh decisions # tail the engine's decision topic
 #   ./demo.sh burst     # 10x burst on the edge (scale story)
+#   ./demo.sh aql       # open Aerospike AQL shell (browse the idfc idempotency set)
+#   ./demo.sh asadm     # open Aerospike admin (asadm) against the node
 #   ./demo.sh down
+#
+# Browser UIs (started with infra): Kafka -> http://localhost:8085 ;
+# SQL/Oracle (FinnOne) -> http://localhost:8978 (CloudBeaver).
 set -euo pipefail
 
 INFRA="docker compose -f docker-compose.infra.yml"
 SERVICES="docker compose -f docker-compose.services.yml"
+VERSION="${VERSION:-0.1.0-SNAPSHOT}"
+
+# Bootable services that need an idfc/* image, mapped to their Gradle module dir.
+# Each module's build/libs holds <name>-$VERSION.jar after `./gradlew bootJar`.
+SERVICE_MODULES="
+sfdc-ingress-edge:edges/sfdc-ingress-edge
+digital-partner-edge:edges/digital-partner-edge
+origination-journey:orchestration/origination-journey
+customer-party:capabilities/customer-party
+kyc:capabilities/kyc
+bureau:capabilities/bureau
+scoring:capabilities/scoring
+lending-origination:capabilities/lending-origination
+"
 
 wait_healthy() { # wait until kafka + aerospike report healthy (or time out)
   echo "Waiting for infra to be healthy…"
@@ -33,6 +52,22 @@ wait_healthy() { # wait until kafka + aerospike report healthy (or time out)
          | grep -qv healthy; then sleep 3; else echo "infra healthy."; return 0; fi
   done
   echo "WARNING: infra not healthy after timeout; services will retry anyway."
+}
+
+build_images() { # boot jars -> idfc/* images via a plain JRE Dockerfile
+  # NOTE: we deliberately avoid `./gradlew bootBuildImage`. Spring Boot 3.4.x's
+  # buildpack plugin uses Docker API v1.24, which Docker Engine 29+ rejects.
+  echo "Assembling boot jars (./gradlew bootJar)…"
+  ./gradlew bootJar
+  echo "Building idfc/* images from jars…"
+  for entry in $SERVICE_MODULES; do
+    name="${entry%%:*}"; module="${entry##*:}"
+    echo "  -> idfc/${name}:${VERSION}"
+    docker build -q -f infra/docker/Dockerfile \
+      --build-arg JAR="${name}-${VERSION}.jar" \
+      -t "idfc/${name}:${VERSION}" "${module}/build/libs" >/dev/null
+  done
+  echo "Images built."
 }
 
 EDGE="${EDGE:-localhost:8080}"
@@ -56,8 +91,7 @@ case "${1:-}" in
     wait_healthy
     ;;
   images)
-    echo "Building idfc/* service images (Spring Boot buildpacks)…"
-    ./gradlew bootBuildImage
+    build_images
     ;;
   services)
     echo "Starting IDFC services (infra must already be up)…"
@@ -66,7 +100,7 @@ case "${1:-}" in
     ;;
   up)
     echo "1/3 infra…"; $INFRA up -d; wait_healthy
-    echo "2/3 building images…"; ./gradlew bootBuildImage
+    echo "2/3 building images…"; build_images
     echo "3/3 services…"; $SERVICES up -d
     echo "Up. Status:  ./demo.sh ps"
     ;;
@@ -92,6 +126,13 @@ case "${1:-}" in
     for i in $(seq 1 10); do post "burst-$i" "APP-HIGH-$i" & done; wait
     echo "Watch FinnOne concurrency stay bounded and the backlog drain:"
     echo "  docker compose logs -f lending-origination origination-journey"
+    ;;
+  aql)
+    # Aerospike has no free CE web UI; AQL is the data-browsing shell.
+    docker run --rm -it --network idfc aerospike/aerospike-tools:latest aql -h aerospike
+    ;;
+  asadm)
+    docker run --rm -it --network idfc aerospike/aerospike-tools:latest asadm -h aerospike
     ;;
   down) docker compose down -v ;;
   *) grep '^#' "$0" | sed 's/^# \{0,1\}//' ;;

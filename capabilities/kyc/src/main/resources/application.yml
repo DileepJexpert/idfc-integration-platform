@@ -30,3 +30,13 @@ management:
     health:
       probes:
         enabled: true
+
+# --- Error/flow tracking (added platform-wide) ----------------------------------
+# Readable console pattern incl. the journey correlationId from MDC (when present),
+# so errors are easy to trace across services. Levels overridable via env.
+logging:
+  level:
+    root: ${LOG_LEVEL_ROOT:INFO}
+    com.idfcfirstbank: ${LOG_LEVEL_APP:INFO}
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [${spring.application.name:-app}] [%X{correlationId:-}] %logger{36} - %msg%n"
