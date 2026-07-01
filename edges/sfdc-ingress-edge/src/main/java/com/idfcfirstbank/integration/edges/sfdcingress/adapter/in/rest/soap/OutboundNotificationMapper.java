@@ -58,15 +58,18 @@ public class OutboundNotificationMapper {
         require(n.svcName(), "SVCNAME__c");
         require(n.requestJson(), "Request__c");
 
-        // Parse the CDATA once; carry the WHOLE object forward, opaque. No reach-in.
+        // Parse the CDATA once; carry the WHOLE object forward, opaque. NO reach-in:
+        // the edge does not inspect the body for ANY field — not even a dedup id.
+        // applicationRef stays null (primary dedup is always Notification/Id); a
+        // business-ref fallback, if ever needed, must come from an ENVELOPE field,
+        // never from the opaque body.
         JsonNode body = parse(n.requestJson());
-        String businessRef = text(body.findValue("msgId"));   // generic optional dedup-fallback id
 
         return new SfdcInboundEvent(
                 n.id(),
                 correlationIdSupplier.get(),
                 n.sfdcRecordId(),
-                businessRef,
+                null,                   // applicationRef — never derived from the opaque body
                 message.organizationId(),
                 n.svcName(),
                 bytes(body),            // claim-check body (opaque bytes)
@@ -88,7 +91,13 @@ public class OutboundNotificationMapper {
         try {
             return objectMapper.readTree(cdataJson);
         } catch (JsonProcessingException e) {
-            throw new NotificationMappingException("Request__c is not valid JSON: " + e.getOriginalMessage(), e);
+            // PII SAFETY: NEVER put the parser detail (getOriginalMessage) in the
+            // exception message — Jackson echoes the offending body token verbatim,
+            // and this message becomes the durable DLQ 'dlqReason' Kafka header. The
+            // body (OTP/mobile/loan) must not persist in cleartext. Keep it generic;
+            // the cause carries the detail for a local stack trace only, never logged
+            // as a string on the SOAP path.
+            throw new NotificationMappingException("Request__c is not valid JSON", e);
         }
     }
 
@@ -98,10 +107,6 @@ public class OutboundNotificationMapper {
         } catch (JsonProcessingException e) {
             throw new NotificationMappingException("could not serialise business payload", e);
         }
-    }
-
-    private static String text(JsonNode node) {
-        return node == null || node.isNull() ? null : node.asText();
     }
 
     private static void require(String value, String field) {

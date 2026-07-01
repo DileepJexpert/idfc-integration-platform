@@ -110,18 +110,22 @@ public class JourneyOrchestrator {
             "source");
 
     private static Map<String, Object> payloadOf(Map<String, Object> envelope) {
-        // Always surface the envelope's identity fields so capabilities can read
-        // them regardless of inline-payload vs S3 claim-check (applicationRef is
-        // always present; the inline PAN may not be in the live path).
+        // Surface the envelope's identity fields so capabilities can read them
+        // regardless of inline-payload vs S3 claim-check (applicationRef is always
+        // present; the inline PAN may not be in the live path).
         Map<String, Object> payload = new java.util.LinkedHashMap<>();
+        // Opaque business body FIRST: it is untrusted edge input (e.g. an SFDC Task
+        // whose keys we do not control). Envelope IDENTITY fields are applied AFTER
+        // and are authoritative, so a colliding body key (a payload carrying its own
+        // "type"/"source"/"orgId") can NEVER shadow the platform's routing identity.
+        Object inline = envelope.get("payload");
+        if (inline instanceof Map<?, ?> m) {
+            m.forEach((k, v) -> payload.put(String.valueOf(k), v));
+        }
         for (String field : IDENTITY_FIELDS) {
             if (envelope.get(field) != null) {
                 payload.put(field, envelope.get(field));
             }
-        }
-        Object inline = envelope.get("payload");
-        if (inline instanceof Map<?, ?> m) {
-            m.forEach((k, v) -> payload.put(String.valueOf(k), v));
         }
         return payload;
     }

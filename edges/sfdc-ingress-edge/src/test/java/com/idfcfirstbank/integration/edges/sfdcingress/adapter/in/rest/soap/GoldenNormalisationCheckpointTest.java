@@ -94,6 +94,7 @@ class GoldenNormalisationCheckpointTest {
         assertThat(env.notificationId()).isEqualTo("04l6D00000AbCdE0001");
         assertThat(env.sfdcRecordId()).isEqualTo("a0X6D00000Rec0001");
         assertThat(env.orgId()).isEqualTo("00D6D00000020HoUAI");
+        assertThat(env.applicationRef()).as("edge never reaches into the body — not even for a dedup id").isNull();
         // OPAQUE: the WHOLE CDATA object is carried — the edge did NOT reach in for msgBdy.
         assertThat(env.payload()).as("opaque CDATA carried whole").containsKey("createGenericAccountReq");
         // The business fields are present but NESTED — the journey owns that navigation, not the edge.

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.edges.sfdcingress.adapter.in.rest.soap.OutboundNotificationMapper;
 import com.idfcfirstbank.integration.edges.sfdcingress.adapter.in.rest.soap.SfdcOutboundMessageParser;
 import com.idfcfirstbank.integration.edges.sfdcingress.adapter.out.mock.MockS3BlobStoreAdapter;
+import com.idfcfirstbank.integration.edges.sfdcingress.domain.model.IdempotencyRecord;
 import com.idfcfirstbank.integration.shared.domain.envelope.CanonicalEnvelope;
 import com.idfcfirstbank.integration.edges.sfdcingress.support.InMemoryIdempotencyStore;
 import com.idfcfirstbank.integration.edges.sfdcingress.support.MutableOrgConfig;
@@ -18,6 +19,7 @@ import java.time.ZoneOffset;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 /**
  * End-to-end (Docker-free) proof of the SOAP front-end wired to the REAL ingress
@@ -116,6 +118,93 @@ class BatchIngestServiceTest {
         BatchAck ack = service.ingestBatch(golden());
 
         assertThat(ack.accepted()).isFalse();             // -> HTTP Ack=false, SFDC resends whole batch
+    }
+
+    @Test
+    void publishedEnvelopesCarryNoApplicationRefAndTheWholeOpaqueBody() throws Exception {
+        // Schema-agnostic (finding #3): the edge never reaches into the CDATA — not
+        // even for a dedup id. applicationRef stays null; the WHOLE object is carried.
+        service.ingestBatch(golden());
+
+        assertThat(publisher.published)
+                .allSatisfy(e -> assertThat(e.applicationRef())
+                        .as("edge must not derive applicationRef from the opaque body").isNull());
+        assertThat(publisher.published)
+                .allSatisfy(e -> assertThat(e.payload())
+                        .as("opaque whole-CDATA carried, not an unwrapped msgBdy")
+                        .containsKey("createGenericAccountReq"));
+    }
+
+    @Test
+    void malformedCdataDlqReasonNeverEchoesTheBodyBytes() {
+        // PII SAFETY (finding #1): a malformed body whose offending token is a mobile
+        // number must NOT land in the durable DLQ reason. "9894873985x" is an invalid
+        // JSON token; a naive parser message would echo it verbatim.
+        String bad = soapWith("Inbound_Wrapper", "9894873985x");
+
+        BatchAck ack = service.ingestBatch(bad);
+
+        assertThat(ack.accepted()).isTrue();                 // permanent -> ACK + DLQ
+        assertThat(publisher.dlqReasons).hasSize(1);
+        assertThat(publisher.dlqReasons.get(0))
+                .as("DLQ reason must not carry the body/PII token")
+                .doesNotContain("9894873985")
+                .isEqualTo("mapping-permanent: Request__c is not valid JSON");
+    }
+
+    @Test
+    void oneNotificationsUnexpectedErrorDoesNotSinkTheRestOfTheBatch() throws Exception {
+        // Per-notification isolation (finding #4): an unexpected (non-Edge) RuntimeException
+        // from the store/dedupe path for ONE notification must not abort the batch loop and
+        // discard the siblings' ACK bookkeeping. The failing one goes transient (batch NAKs);
+        // the healthy sibling still publishes.
+        RecordingPublisher pub = new RecordingPublisher();
+        AtomicInteger seq = new AtomicInteger();
+        AtomicInteger txn = new AtomicInteger();
+        InMemoryIdempotencyStore store =
+                new ThrowingStore(CLOCK, "04l6D00000AbCdE0001");   // first golden notification blows up
+        MutableOrgConfig orgConfig = new MutableOrgConfig()
+                .route("Inbound_Wrapper", "orig.sfdc.pl.v1").knownOrg("00D6D00000020HoUAI");
+        SfdcIngressService ingress = new SfdcIngressService(
+                new DedupeService(store, CLOCK), store, orgConfig, new MockS3BlobStoreAdapter(),
+                pub, new Normalizer(() -> "txn-" + txn.incrementAndGet()), new EdgePolicies(5, 1), CLOCK);
+        BatchIngestService svc = new BatchIngestService(
+                new SfdcOutboundMessageParser(),
+                new OutboundNotificationMapper(new ObjectMapper(), CLOCK, () -> "corr-" + seq.incrementAndGet()),
+                ingress, pub, CLOCK);
+
+        BatchAck ack = assertThatDoesNotThrowAndReturn(() -> svc.ingestBatch(golden()));
+
+        assertThat(ack.total()).isEqualTo(2);
+        assertThat(ack.accepted()).as("a transient notification NAKs the whole batch").isFalse();
+        assertThat(pub.published)
+                .as("the healthy sibling still published — the loop was not aborted")
+                .extracting(CanonicalEnvelope::notificationId)
+                .containsExactly("04l6D00000AbCdE0002");
+    }
+
+    private static BatchAck assertThatDoesNotThrowAndReturn(java.util.concurrent.Callable<BatchAck> call) {
+        BatchAck[] holder = new BatchAck[1];
+        assertThatCode(() -> holder[0] = call.call()).doesNotThrowAnyException();
+        return holder[0];
+    }
+
+    /** A store that blows up (unexpected RuntimeException) on one notification's claim. */
+    private static final class ThrowingStore extends InMemoryIdempotencyStore {
+        private final String failNotificationId;
+
+        ThrowingStore(Clock clock, String failNotificationId) {
+            super(clock);
+            this.failNotificationId = failNotificationId;
+        }
+
+        @Override
+        public InsertOutcome insertIfAbsent(IdempotencyRecord record) {
+            if (failNotificationId.equals(record.notificationId())) {
+                throw new RuntimeException("store blip");   // NOT an EdgeException — the escape path
+            }
+            return super.insertIfAbsent(record);
+        }
     }
 
     /** Minimal single-notification SOAP envelope for the negative cases. */

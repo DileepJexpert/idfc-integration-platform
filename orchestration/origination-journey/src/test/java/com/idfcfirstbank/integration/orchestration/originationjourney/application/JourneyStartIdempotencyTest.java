@@ -116,4 +116,31 @@ class JourneyStartIdempotencyTest {
         assertThat(first).isEqualTo(second);
         assertThat(starts.get()).as("redelivery must not start a second run").isEqualTo(1);
     }
+
+    @Test
+    void opaqueBodyKeyCannotShadowAnEnvelopeIdentityFieldInTheContext() {
+        // Finding #6: the SOAP edge carries the CDATA body OPAQUELY, so a body whose
+        // top-level keys collide with envelope identity ("type"/"orgId") must NOT
+        // override the platform's routing identity in the journey context.
+        JourneyEngine engine = new JourneyEngine(new ExpressionEvaluator());
+        JourneyRegistry registry = new JourneyRegistry(List.of(def), Map.of());
+        InMemoryJourneyInstanceStore store = new InMemoryJourneyInstanceStore();
+        JourneyOrchestrator orchestrator = new JourneyOrchestrator(
+                engine, registry, store, r -> { }, d -> { }, () -> "ji-random");
+
+        Map<String, Object> envelope = new java.util.HashMap<>();
+        envelope.put("type", "PERSONAL_LOAN");
+        envelope.put("orgId", "ORG-REAL");
+        envelope.put("correlationId", "corr-collide");
+        envelope.put("applicationRef", "APP-1");
+        // A hostile/awkward opaque body carrying its OWN "type"/"orgId" plus a real field.
+        envelope.put("payload", Map.of("type", "HACKED", "orgId", "ORG-SPOOF", "customerId", "C1"));
+
+        String id = orchestrator.onOrigination(envelope);
+        Map<String, Object> ctx = store.find(id).orElseThrow().payload();
+
+        assertThat(ctx.get("type")).as("envelope identity wins the collision").isEqualTo("PERSONAL_LOAN");
+        assertThat(ctx.get("orgId")).isEqualTo("ORG-REAL");
+        assertThat(ctx.get("customerId")).as("non-colliding body fields still flow").isEqualTo("C1");
+    }
 }

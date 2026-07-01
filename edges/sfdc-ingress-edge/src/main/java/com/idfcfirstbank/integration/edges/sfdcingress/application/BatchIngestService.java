@@ -83,6 +83,17 @@ public class BatchIngestService {
                     n.id(), e.getMessage());
             return new EdgeResult(EdgeDisposition.ACK_DLQ_PERMANENT, n.id(),
                     "unmappable notification parked in DLQ: " + e.getMessage());
+        } catch (RuntimeException e) {
+            // Per-notification ISOLATION: an unexpected error (e.g. store/kafka blip that
+            // escaped SfdcIngressService's own transient handling) must NOT abort the batch
+            // loop and discard the other notifications' ACK bookkeeping. Treat it as transient
+            // for THIS notification only — acknowledges()==false makes the whole batch NAK, so
+            // SFDC resends and per-Notification/Id dedupe skips the ones that already landed.
+            // Log the throwable (store/kafka cause — not the business body) for diagnosis.
+            log.error("edge.soap-notification-error notificationId={} (transient; batch will NAK) ALERT",
+                    n.id(), e);
+            return new EdgeResult(EdgeDisposition.RETRY_TRANSIENT, n.id(),
+                    "unexpected edge error; not acknowledged so SFDC redelivers");
         }
     }
 
