@@ -3,7 +3,11 @@ package com.idfcfirstbank.integration.edges.sfdcingress.config;
 import com.aerospike.client.AerospikeClient;
 import com.aerospike.client.IAerospikeClient;
 import com.aerospike.client.policy.ClientPolicy;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.idfcfirstbank.integration.edges.sfdcingress.adapter.in.rest.soap.OutboundNotificationMapper;
+import com.idfcfirstbank.integration.edges.sfdcingress.adapter.in.rest.soap.SfdcOutboundMessageParser;
 import com.idfcfirstbank.integration.edges.sfdcingress.adapter.out.aerospike.AerospikeIdempotencyStore;
+import com.idfcfirstbank.integration.edges.sfdcingress.application.BatchIngestService;
 import com.idfcfirstbank.integration.edges.sfdcingress.application.DecisionService;
 import com.idfcfirstbank.integration.edges.sfdcingress.application.DedupeService;
 import com.idfcfirstbank.integration.edges.sfdcingress.application.EdgePolicies;
@@ -50,6 +54,28 @@ public class EdgeBeanConfiguration {
     @Bean
     Normalizer normalizer(Supplier<String> transactionIdSupplier) {
         return new Normalizer(transactionIdSupplier);
+    }
+
+    // --- SOAP Outbound Message front-end (parse → un-batch → normalize → ingest) ---
+
+    @Bean
+    SfdcOutboundMessageParser sfdcOutboundMessageParser() {
+        return new SfdcOutboundMessageParser();
+    }
+
+    @Bean
+    OutboundNotificationMapper outboundNotificationMapper(ObjectMapper objectMapper, Clock clock) {
+        // A distinct correlationId per request (trace only, never a dedup input);
+        // built with an explicit lambda so it does not collide with the
+        // transactionIdSupplier Supplier<String> bean.
+        return new OutboundNotificationMapper(objectMapper, clock, () -> "corr-" + UUID.randomUUID());
+    }
+
+    @Bean
+    BatchIngestService batchIngestService(SfdcOutboundMessageParser parser, OutboundNotificationMapper mapper,
+                                          SfdcIngressService ingressService, MessagePublisherPort publisher,
+                                          Clock clock) {
+        return new BatchIngestService(parser, mapper, ingressService, publisher, clock);
     }
 
     @Bean

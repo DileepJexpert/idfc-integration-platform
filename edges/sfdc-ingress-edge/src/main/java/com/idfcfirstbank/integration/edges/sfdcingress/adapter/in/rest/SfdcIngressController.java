@@ -1,18 +1,14 @@
 package com.idfcfirstbank.integration.edges.sfdcingress.adapter.in.rest;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.idfcfirstbank.integration.edges.sfdcingress.application.EdgeDisposition;
-import com.idfcfirstbank.integration.edges.sfdcingress.application.EdgeResult;
-import com.idfcfirstbank.integration.edges.sfdcingress.application.SfdcIngressService;
-import com.idfcfirstbank.integration.shared.domain.envelope.CanonicalEnvelope;
-import com.idfcfirstbank.integration.edges.sfdcingress.domain.model.SfdcInboundEvent;
-import com.idfcfirstbank.integration.shared.domain.envelope.SourceSystem;
+import com.idfcfirstbank.integration.edges.sfdcingress.adapter.in.rest.soap.SoapAck;
+import com.idfcfirstbank.integration.edges.sfdcingress.adapter.in.rest.soap.SoapParseException;
+import com.idfcfirstbank.integration.edges.sfdcingress.application.BatchAck;
+import com.idfcfirstbank.integration.edges.sfdcingress.application.BatchIngestService;
 import com.idfcfirstbank.integration.edges.sfdcingress.domain.port.AuthTokenPort;
-import com.idfcfirstbank.integration.edges.sfdcingress.domain.port.MessagePublisherPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -20,17 +16,22 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.time.Clock;
-import java.util.Map;
-
 /**
- * The thin inbound edge: authenticate → validate → hand to the ingress service
- * (dedupe → normalize → route → fast-ACK). NO business logic here.
+ * The thin inbound edge: authenticate → hand the raw SOAP Outbound Message to the
+ * batch ingest service (parse → un-batch → normalize → dedupe → route → publish)
+ * → return the SOAP {@code <Ack>}. NO business logic here; NO SOAP parsing here.
  *
- * <p>Transport ACK mapping encodes C2: a disposition that {@code acknowledges()}
- * returns HTTP 200 (SFDC stops redelivering); a transient disposition returns
- * HTTP 503 so SFDC redelivers. A provably-permanent schema-invalid body is ACKed
- * (200) and parked in the DLQ rather than rejected — retrying it would never help.
+ * <p>The engine never sees SOAP — this controller is the only place the SFDC
+ * transport shape enters, and it leaves as N canonical envelopes.
+ *
+ * <p>ACK mapping (normalisation spec §5):
+ * <ul>
+ *   <li>whole batch durably accepted → HTTP 200 + {@code <Ack>true}</li>
+ *   <li>any transient failure → HTTP 200 + {@code <Ack>false} (SFDC resends the
+ *       entire batch; per-{@code Notification/Id} dedup skips the ones that landed)</li>
+ *   <li>unparseable ENVELOPE → HTTP 500 + SOAP fault (cannot even un-batch)</li>
+ *   <li>bad token → HTTP 401 + SOAP fault</li>
+ * </ul>
  */
 @RestController
 @RequestMapping("/api/v1/sfdc")
@@ -38,70 +39,38 @@ public class SfdcIngressController {
 
     private static final Logger log = LoggerFactory.getLogger(SfdcIngressController.class);
 
-    private final SfdcIngressService ingressService;
+    private final BatchIngestService batchIngestService;
     private final AuthTokenPort authTokenPort;
-    private final MessagePublisherPort publisher;
-    private final ObjectMapper objectMapper;
-    private final Clock clock;
 
-    public SfdcIngressController(SfdcIngressService ingressService, AuthTokenPort authTokenPort,
-                                 MessagePublisherPort publisher, ObjectMapper objectMapper, Clock clock) {
-        this.ingressService = ingressService;
+    public SfdcIngressController(BatchIngestService batchIngestService, AuthTokenPort authTokenPort) {
+        this.batchIngestService = batchIngestService;
         this.authTokenPort = authTokenPort;
-        this.publisher = publisher;
-        this.objectMapper = objectMapper;
-        this.clock = clock;
     }
 
-    @PostMapping("/notifications")
-    public ResponseEntity<EdgeResponse> ingest(
+    @PostMapping(
+            value = "/outbound-messages",
+            consumes = {MediaType.TEXT_XML_VALUE, MediaType.APPLICATION_XML_VALUE, "application/soap+xml"},
+            produces = MediaType.TEXT_XML_VALUE)
+    public ResponseEntity<String> receive(
             @RequestHeader(value = "X-Auth-Token", required = false) String authToken,
-            @RequestBody SfdcNotificationRequest request) {
+            @RequestBody String soapXml) {
 
         if (!authTokenPort.authenticate(authToken)) {
-            // Auth failure is not a redelivery concern — reject outright.
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(new EdgeResponse(request.notificationId(), "UNAUTHENTICATED",
-                            "invalid or missing token", request.correlationId()));
+            return xml(HttpStatus.UNAUTHORIZED, SoapAck.fault("invalid or missing token"));
         }
 
-        if (!request.isStructurallyValid()) {
-            return permanentSchemaInvalid(request);
+        try {
+            BatchAck ack = batchIngestService.ingestBatch(soapXml);
+            // HTTP 200 for both true/false: the <Ack> element carries the retry signal.
+            return xml(HttpStatus.OK, SoapAck.ack(ack.accepted()));
+        } catch (SoapParseException e) {
+            // Whole-batch parse failure — do NOT ACK; SFDC resends the entire message.
+            log.error("edge.soap-unparseable ACK-withheld reason={}", e.getMessage());
+            return xml(HttpStatus.INTERNAL_SERVER_ERROR, SoapAck.fault("unparseable envelope: " + e.getMessage()));
         }
-
-        SfdcInboundEvent event = new SfdcInboundEvent(
-                request.notificationId(), request.correlationId(), request.sfdcRecordId(),
-                request.applicationRef(), request.orgId(), request.type(),
-                payloadBytes(request), "application/json", clock.instant());
-
-        EdgeResult result = ingressService.ingest(event);
-        HttpStatus status = result.acknowledges() ? HttpStatus.OK : HttpStatus.SERVICE_UNAVAILABLE;
-        return ResponseEntity.status(status).body(new EdgeResponse(
-                result.notificationId(), result.disposition().name(), result.reason(), request.correlationId()));
     }
 
-    /** C2: schema-invalid is provably permanent — ACK (200) + park in DLQ. */
-    private ResponseEntity<EdgeResponse> permanentSchemaInvalid(SfdcNotificationRequest request) {
-        CanonicalEnvelope dlq = new CanonicalEnvelope("dlq", "sfdc-ingress.v1", SourceSystem.SFDC,
-                request.type(), request.notificationId(), request.orgId(), request.sfdcRecordId(),
-                request.applicationRef(), request.correlationId(), request.correlationId(),
-                null, "application/json", clock.instant());
-        try {
-            publisher.publishToDlq(dlq, Map.of("correlationId", String.valueOf(request.correlationId())),
-                    "schema-invalid: missing required field(s)");
-        } catch (RuntimeException e) {
-            log.error("edge.dlq-publish-failed for schema-invalid notificationId={}", request.notificationId(), e);
-        }
-        log.error("edge.schema-invalid notificationId={} ACK+DLQ (C2 permanent) ALERT", request.notificationId());
-        return ResponseEntity.ok(new EdgeResponse(request.notificationId(),
-                EdgeDisposition.ACK_DLQ_PERMANENT.name(), "schema-invalid; parked in DLQ", request.correlationId()));
-    }
-
-    private byte[] payloadBytes(SfdcNotificationRequest request) {
-        try {
-            return objectMapper.writeValueAsBytes(request.payload());
-        } catch (JsonProcessingException e) {
-            throw new IllegalStateException("unserializable payload", e);
-        }
+    private static ResponseEntity<String> xml(HttpStatus status, String body) {
+        return ResponseEntity.status(status).contentType(MediaType.TEXT_XML).body(body);
     }
 }

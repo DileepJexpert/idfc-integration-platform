@@ -4,21 +4,22 @@
 
 ## 1. Purpose & Context
 
-The SFDC ingress edge is the **channel door for Salesforce (the assisted channel)**: it receives SFDC outbound notifications over REST, and is deliberately thin — it authenticates, validates, dedupes, normalizes, routes, and fast-ACKs, with **no business logic** of its own. Its single contract with the rest of the platform is the `CanonicalEnvelope` (in `shared-domain`): the edge maps the SFDC-specific HTTP shape onto that canonical envelope and publishes it to the engine's origination Kafka topic, so the engine "cannot tell which door" an event entered through. It then closes the loop by consuming the engine's decision topic (`orig.decision.v1`), filtering for `source == SFDC`, and pushing the decision back to SFDC. **Exactly-once is anchored on Aerospike `CREATE_ONLY`**: two concurrent identical notifications contend on an atomic insert keyed by `notificationId`, exactly one wins, and every subsequent status change is a generation compare-and-set (`EXPECT_GEN_EQUAL`) — so a decision is pushed back to SFDC exactly once, never zero or twice (the C1 ownership guard).
+The SFDC ingress edge is the **channel door for Salesforce (the assisted channel)**: it receives a real SFDC **SOAP Outbound Message** and is deliberately thin — it authenticates, parses the SOAP, un-batches, unwraps, normalizes, dedupes, routes, and ACKs, with **no business logic** of its own. A single Outbound Message batches **1..100 `<Notification>`** blocks, each carrying its business payload as JSON inside a `Request__c` CDATA and a `SVCNAME__c` routing key; the edge fans that batch into N canonical requests. **The engine never sees SOAP.** Its single contract with the rest of the platform is the `CanonicalEnvelope` (in `shared-domain`): the edge maps each notification onto that canonical envelope and publishes it to the engine's origination Kafka topic, so the engine "cannot tell which door" an event entered through. It then closes the loop by consuming the engine's decision topic (`orig.decision.v1`), filtering for `source == SFDC`, and pushing the decision back to SFDC. **Exactly-once is anchored on Aerospike `CREATE_ONLY`**: two concurrent identical notifications contend on an atomic insert keyed by the `Notification/Id`, exactly one wins, and every subsequent status change is a generation compare-and-set (`EXPECT_GEN_EQUAL`) — so a decision is pushed back to SFDC exactly once, never zero or twice (the C1 ownership guard). The SOAP `<Ack>` is **all-or-nothing** for the batch: `true` only after every notification is durably accepted; otherwise `false`, and SFDC resends the whole batch while per-`Notification/Id` dedup skips the ones that already landed.
 
 ## 2. High-Level Block Diagram
 
 ```mermaid
 flowchart LR
-    SFDC["SFDC (Salesforce)<br/>outbound notifications + decision sink"]
+    SFDC["SFDC (Salesforce)<br/>SOAP Outbound Message (1..100 Notifications) + decision sink"]
     EDGE["sfdc-ingress-edge<br/>(Spring Boot, port 8080)"]
     AERO["Aerospike<br/>idempotency store<br/>(CREATE_ONLY + gen-CAS)"]
     ORIG["Kafka: origination topics<br/>orig.sfdc.pl.v1 / lap.v1 / bl.v1 / commercial.v1"]
     DEC["Kafka: decision topic<br/>orig.decision.v1"]
     ENGINE["origination engine /<br/>journey (downstream)"]
 
-    SFDC -- "POST /api/v1/sfdc/notifications" --> EDGE
-    EDGE -- "publish CanonicalEnvelope" --> ORIG
+    SFDC -- "POST /api/v1/sfdc/outbound-messages (SOAP)" --> EDGE
+    EDGE -- "SOAP &lt;Ack&gt;true|false (all-or-nothing)" --> SFDC
+    EDGE -- "publish N × CanonicalEnvelope" --> ORIG
     ORIG --> ENGINE
     ENGINE -- "JourneyDecision (source=SFDC)" --> DEC
     DEC -- "consume + filter source==SFDC" --> EDGE
@@ -31,12 +32,15 @@ flowchart LR
 ```mermaid
 flowchart TB
     subgraph IN["Inbound Adapters"]
-        CTRL["SfdcIngressController<br/>@PostMapping /api/v1/sfdc/notifications"]
+        CTRL["SfdcIngressController<br/>@PostMapping /api/v1/sfdc/outbound-messages (SOAP)"]
+        PARSER["SfdcOutboundMessageParser<br/>SOAP → SfdcOutboundMessage (un-batch, XXE-safe)"]
+        MAPPER["OutboundNotificationMapper<br/>SoapNotification → SfdcInboundEvent (unwrap CDATA)"]
         DECCTRL["SfdcDecisionController<br/>@PostMapping /api/v1/sfdc/decisions (manual)"]
         DECCONS["SfdcDecisionConsumer<br/>@KafkaListener orig.decision.v1<br/>filter source==SFDC"]
     end
 
     subgraph APP["Application / Domain"]
+        BATCH["BatchIngestService<br/>fan batch → ingest each → all-or-nothing Ack"]
         ING["SfdcIngressService<br/>dedupe → normalize → route → publish → fast-ACK"]
         DEDUP["DedupeService<br/>4-path verdict + composite key"]
         NORM["Normalizer<br/>SfdcInboundEvent → CanonicalEnvelope"]
@@ -64,8 +68,11 @@ flowchart TB
     end
 
     %% ingest path
-    CTRL --> ING
     CTRL --> AUTHP
+    CTRL --> BATCH
+    BATCH --> PARSER
+    BATCH --> MAPPER
+    BATCH --> ING
     ING --> DEDUP
     ING --> NORM
     ING --> POL
@@ -100,30 +107,31 @@ sequenceDiagram
     participant SFDC
     participant Ctrl as SfdcIngressController
     participant Auth as AuthTokenPort
+    participant Batch as BatchIngestService
+    participant Parser as SfdcOutboundMessageParser
+    participant Mapper as OutboundNotificationMapper
     participant Svc as SfdcIngressService
-    participant Dedup as DedupeService
     participant Store as IdempotencyStorePort<br/>(AerospikeIdempotencyStore)
-    participant Norm as Normalizer
     participant Pub as MessagePublisherPort<br/>(KafkaMessagePublisher)
     participant Kafka as orig.sfdc.&lt;line&gt;.v1
 
-    SFDC->>Ctrl: POST /api/v1/sfdc/notifications<br/>(SfdcNotificationRequest, X-Auth-Token)
+    SFDC->>Ctrl: POST /api/v1/sfdc/outbound-messages<br/>(SOAP Outbound Message, X-Auth-Token)
     Ctrl->>Auth: authenticate(authToken)
-    Ctrl->>Ctrl: request.isStructurallyValid()
-    Ctrl->>Svc: ingest(SfdcInboundEvent)
-    Svc->>Dedup: resolve(event)
-    Dedup->>Store: insertIfAbsent(record)  %% CREATE_ONLY
-    Store-->>Dedup: INSERTED (winner) | ALREADY_EXISTS
-    Dedup-->>Svc: DedupeResult (NEW / IN_FLIGHT / DECIDED / FAILED)
-    Note over Svc: NEW → processForPublish
-    Svc->>Store: compareAndSetStatus(record, IN_FLIGHT)  %% gen-CAS (C4)
-    Svc->>Norm: toEnvelope(event, routing, payloadRef, origCorrId)
-    Norm-->>Svc: CanonicalEnvelope (source=SFDC)
-    Svc->>Pub: publish(envelope, routing, headers)
-    Pub->>Kafka: send(topic, key=notificationId, JSON)  %% sync, acks=all
-    Pub-->>Svc: ok
-    Svc-->>Ctrl: EdgeResult(ACK_PROCESSED)
-    Ctrl-->>SFDC: 200 OK EdgeResponse<br/>(503 if RETRY_TRANSIENT → SFDC redelivers)
+    Ctrl->>Batch: ingestBatch(soapXml)
+    Batch->>Parser: parse(soapXml)
+    Parser-->>Batch: SfdcOutboundMessage (1..100 SoapNotification)
+    loop each Notification (un-batch)
+        Batch->>Mapper: toEvent(notification, message)
+        Note over Mapper: unwrap Request__c CDATA → msgBdy;<br/>typeCode=SVCNAME, dedup key=Notification/Id
+        Mapper-->>Batch: SfdcInboundEvent
+        Batch->>Svc: ingest(event)
+        Svc->>Store: insertIfAbsent(record)  %% CREATE_ONLY dedup
+        Svc->>Pub: publish(CanonicalEnvelope, routing, headers)
+        Pub->>Kafka: send(topic, key=notificationId, JSON)  %% sync, acks=all
+        Svc-->>Batch: EdgeResult (ACK_* | RETRY_TRANSIENT)
+    end
+    Batch-->>Ctrl: BatchAck (accepted = no RETRY_TRANSIENT)
+    Ctrl-->>SFDC: 200 + &lt;Ack&gt;true|false&lt;/Ack&gt;<br/>(500 SOAP fault if envelope unparseable)
 ```
 
 **4b. Decision return**
@@ -161,9 +169,12 @@ sequenceDiagram
 
 | File | Role |
 |------|------|
-| `src/main/java/.../adapter/in/rest/SfdcIngressController.java` | REST `@PostMapping /api/v1/sfdc/notifications`; auth + structural validation → `SfdcIngressService.ingest`; maps `EdgeDisposition` to HTTP 200/503; schema-invalid → ACK + DLQ (C2) |
-| `src/main/java/.../adapter/in/rest/SfdcNotificationRequest.java` | Inbound DTO (HTTP shape of an SFDC outbound message); `isStructurallyValid()` |
-| `src/main/java/.../adapter/in/rest/EdgeResponse.java` | Fast-ACK response body (notificationId, disposition, reason, correlationId) |
+| `src/main/java/.../adapter/in/rest/SfdcIngressController.java` | REST `@PostMapping /api/v1/sfdc/outbound-messages` (consumes SOAP); auth → `BatchIngestService.ingestBatch`; returns SOAP `<Ack>` (HTTP 200), 500 SOAP fault on unparseable envelope, 401 on bad token |
+| `src/main/java/.../adapter/in/rest/soap/SfdcOutboundMessageParser.java` | Framework-free, XXE-safe DOM parser: SOAP Outbound Message → `SfdcOutboundMessage` (envelope metadata + 1..100 `SoapNotification`), matched by local name, direct-child scoped |
+| `src/main/java/.../adapter/in/rest/soap/SfdcOutboundMessage.java`, `SoapNotification.java` | Parsed batch model (org/action ids + notifications) and one parsed `<Notification>` (Id, sf1:Id, SVCNAME, Request__c CDATA) |
+| `src/main/java/.../adapter/in/rest/soap/OutboundNotificationMapper.java` | Pure map `SoapNotification` (+ envelope) → `SfdcInboundEvent`: unwrap CDATA → `msgBdy`, `typeCode=SVCNAME`, `applicationRef=msgId`, generated `correlationId` |
+| `src/main/java/.../adapter/in/rest/soap/SoapAck.java` | Builds the SOAP `<notificationsResponse><Ack>` / `<Fault>` response strings |
+| `src/main/java/.../application/BatchIngestService.java` | Parse → un-batch → ingest each via `SfdcIngressService` → fold into an all-or-nothing `BatchAck`; per-notification bad-CDATA/unknown-SVCNAME → DLQ but still ACKed |
 | `src/main/java/.../domain/model/SfdcInboundEvent.java` | Validated framework-free inbound event; `hasApplicationFallback()` |
 | `src/main/java/.../application/SfdcIngressService.java` | Orchestration: dedupe → normalize → route → claim-check → publish → fast-ACK; C2/C4/C5 error handling |
 | `src/main/java/.../application/DedupeService.java` | 4-path dedupe verdict; primary `notificationId` CREATE_ONLY gate + composite `sfdcRecordId+applicationRef` application-pointer fallback |
@@ -206,7 +217,7 @@ sequenceDiagram
 
 ### Inbound
 
-- **REST:** `POST /api/v1/sfdc/notifications` (`SfdcIngressController`) — the primary SFDC door; header `X-Auth-Token`, body `SfdcNotificationRequest`; returns `EdgeResponse` with HTTP 200 (ACK) or 503 (transient → SFDC redelivers); 401 on auth failure.
+- **REST (SOAP):** `POST /api/v1/sfdc/outbound-messages` (`SfdcIngressController`) — the primary SFDC door; consumes a SOAP Outbound Message (`text/xml`), header `X-Auth-Token`; returns the SOAP `<Ack>true|false</Ack>` at HTTP 200 (all-or-nothing per batch — `false` makes SFDC resend the whole batch), a 500 SOAP fault if the envelope is unparseable, 401 on auth failure. Routing key per notification is `SVCNAME__c` (e.g. `Inbound_Wrapper`).
 - **REST (manual):** `POST /api/v1/sfdc/decisions` (`SfdcDecisionController`) — manual decision callback for the same `DecisionService`.
 - **Kafka (consumed):** `orig.decision.v1` (group `sfdc-ingress-edge-decisions`) via `SfdcDecisionConsumer` — the engine's decision topic; only `source == SFDC` messages are acted on.
 
@@ -232,11 +243,11 @@ sequenceDiagram
 - **Key config values (`application.yml` → `idfc.*`):**
   - `idfc.aerospike`: `namespace=idfc`, `record-set=idem`, `app-pointer-set=idem_app`, `ttl-seconds=2592000` (30d; must exceed the SFDC retry window).
   - `idfc.edge.dlq-topic=orig.sfdc.dlq.v1`; `poison-redelivery-threshold=5` (C5); `max-journey-retry=1` (C3); `finnone.max-concurrency=4` (§G backpressure cap).
-  - `idfc.edge.routing`: type→topic→journey rows — PERSONAL_LOAN→`orig.sfdc.pl.v1`, LAP→`orig.sfdc.lap.v1`, BUSINESS_LOAN→`orig.sfdc.bl.v1`, COMMERCIAL→`orig.sfdc.commercial.v1` (all → `origination-journey`).
+  - `idfc.edge.routing`: **`SVCNAME__c`→topic→journey** rows (config-as-data — a new SVCNAME is a config row, not code): `PERSONAL_LOAN`→`orig.sfdc.pl.v1`, `LAP`→`orig.sfdc.lap.v1`, `BUSINESS_LOAN`→`orig.sfdc.bl.v1`, `COMMERCIAL`→`orig.sfdc.commercial.v1`, and `Inbound_Wrapper`→`orig.sfdc.pl.v1` (`account-creation`; publishes to an engine-consumed topic so — with the engine's `type-to-journey` empty — it starts the default journey, proving the plumbing).
   - **Decision topic / group** (`SfdcDecisionConsumer`): `idfc.edge.decision-topic` (default `orig.decision.v1`), `idfc.edge.decision-group` (default `sfdc-ingress-edge-decisions`).
-  - `idfc.edge.known-orgs`: `ORG1, IDFC_RETAIL, IDFC_BUSINESS` (unknown org → refresh+recheck → DLQ, C2).
+  - `idfc.edge.known-orgs`: `ORG1, IDFC_RETAIL, IDFC_BUSINESS, 00D6D00000020HoUAI` (unknown org → refresh+recheck → DLQ, C2).
 - **Run (local):**
   1. Start infra: `docker compose -f docker-compose.infra.yml up -d` (Kafka on `29092`, Aerospike on `3000`).
   2. `./gradlew :edges:sfdc-ingress-edge:bootRun --args='--spring.profiles.active=local'`.
-  3. Smoke test: `POST http://localhost:8080/api/v1/sfdc/notifications` with header `X-Auth-Token: dev-token` and a body carrying `notificationId`, `orgId`, `type`, `payload`.
+  3. Smoke test: `POST http://localhost:8080/api/v1/sfdc/outbound-messages` with header `X-Auth-Token: dev-token`, `Content-Type: text/xml`, and a SOAP Outbound Message body (see the golden fixture `src/test/resources/sfdc-outbound-golden.xml`). Expect `200` + `<Ack>true</Ack>`.
   - Health: `GET /actuator/health` (exposure limited to `health,info,prometheus`).

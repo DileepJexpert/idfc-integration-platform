@@ -61,11 +61,19 @@ idfc:
       - type: COMMERCIAL
         topic: orig.sfdc.commercial.v1
         downstream-journey: origination-journey
+      # SOAP Outbound Message routing key = SVCNAME__c (normalisation spec §4).
+      # New SVCNAME = a config ROW, not code. Inbound_Wrapper (liabilities/CASA
+      # account creation) publishes to an engine-consumed topic; with the engine's
+      # type->journey map empty it starts the default journey (plumbing proof).
+      - type: Inbound_Wrapper
+        topic: orig.sfdc.pl.v1
+        downstream-journey: account-creation
     # Known orgs (org-config-as-data). Unknown org -> refresh+recheck -> DLQ (C2).
     known-orgs:
       - ORG1
       - IDFC_RETAIL
       - IDFC_BUSINESS
+      - 00D6D00000020HoUAI   # golden-fixture SFDC OrganizationId
 
 # --- Error/flow tracking (added platform-wide) ----------------------------------
 # Readable console pattern incl. the journey correlationId from MDC (when present),
