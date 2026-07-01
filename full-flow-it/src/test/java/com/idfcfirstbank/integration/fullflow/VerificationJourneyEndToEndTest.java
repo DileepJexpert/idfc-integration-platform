@@ -13,7 +13,11 @@ import com.idfcfirstbank.integration.capabilities.verification.adapter.out.route
 import com.idfcfirstbank.integration.capabilities.verification.config.VerificationProperties;
 import com.idfcfirstbank.integration.capabilities.verification.config.VerificationProperties.Retry;
 import com.idfcfirstbank.integration.capabilities.verification.config.VerificationProperties.Route;
+import com.idfcfirstbank.integration.capabilities.verification.domain.port.out.SfdcNotifyPort;
 import com.idfcfirstbank.integration.capabilities.verification.domain.port.out.VerificationDlqPort;
+import com.idfcfirstbank.integration.shared.capability.Backoff;
+import com.idfcfirstbank.integration.shared.capability.RetryExecutor;
+import com.idfcfirstbank.integration.shared.capability.RetryPolicy;
 import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.loader.JourneyDefinitionLoader;
 import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.store.InMemoryJourneyInstanceStore;
 import com.idfcfirstbank.integration.orchestration.originationjourney.application.JourneyOrchestrator;
@@ -43,15 +47,14 @@ import java.util.function.Function;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * STEP-2 TEMPLATE PROOF (Docker-free): the real golden Karza VAHAN-RC verification runs
- * end-to-end — SFDC-style origination -> engine -> verification capability (control-plane
- * route + OAuth adapter + real mappers) -> Karza stub -> {@code task -> branch} -> decision.
- * Proves BOTH branches (ACTIVE/CLEAR -> proceed; blacklisted -> decline) AND the DLQ path
- * (downstream 500 -> retry -> DLQ, never lost). This is the pattern the other 3 svcNames copy.
+ * STEP-2 TEMPLATE PROOF (Docker-free, spec v2): golden Karza VAHAN-RC runs end-to-end
+ * through the engine + verification capability (control-plane route + OAuth adapter + D.1
+ * mappers + classified retry engine) + Karza stub + {@code task->branch}. Proves the full
+ * v2 matrix: proceed, business-decline (->branch, NOT DLQ), TRANSIENT retry -> DLQ+notify,
+ * PERMANENT -> DLQ+notify. The pattern the other svcNames copy.
  */
 class VerificationJourneyEndToEndTest {
 
-    /** In-memory bus: route each capability request to its service, feed the reply back. */
     private static final class InMemoryBus implements CapabilityRequestPort {
         private final Map<String, Function<CapabilityRequest, CapabilityResponse>> fleet;
         private JourneyOrchestrator orchestrator;
@@ -63,23 +66,25 @@ class VerificationJourneyEndToEndTest {
     }
 
     private HttpServer karza;
-    private volatile boolean fail500 = false;
+    private volatile int httpStatus = 200;    // 200 = normal; 503 = TRANSIENT; 400 = PERMANENT
     private final List<String> dlq = new ArrayList<>();
+    private final List<String> notified = new ArrayList<>();
 
     @BeforeEach
     void startKarza() throws IOException {
         karza = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         karza.createContext("/karza/vahan-rc", exchange -> {
             String reqBody = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-            if (fail500) {
-                exchange.sendResponseHeaders(503, -1);
+            if (httpStatus != 200) {
+                exchange.sendResponseHeaders(httpStatus, -1);
                 exchange.close();
                 return;
             }
-            boolean blacklisted = reqBody.contains("XX00YY0000");   // fail stub by reg_no (mirrors WireMock)
-            String body = blacklisted
-                    ? "{\"metadata\":{\"status\":\"ACTIVE\"},\"resource_data\":[{\"rcStatus\":\"ACTIVE\",\"blackListStatus\":\"BLACKLISTED\",\"registrationNumber\":\"XX00YY0000\"}]}"
-                    : "{\"metadata\":{\"status\":\"ACTIVE\"},\"resource_data\":[{\"rcStatus\":\"ACTIVE\",\"blackListStatus\":\"NO\",\"registrationNumber\":\"AB12CD1234\",\"ownerName\":\"ASHA KUMAR\"}]}";
+            boolean blacklisted = reqBody.contains("XX00YY0000");
+            String inner = blacklisted
+                    ? "{\"registrationNumber\":\"XX00YY0000\",\"rcStatus\":\"ACTIVE\",\"blackListStatus\":\"BLACKLIST\"}"
+                    : "{\"registrationNumber\":\"AB12CD1234\",\"ownerName\":\"JOHN DOE\",\"rcStatus\":\"ACTIVE\",\"blackListStatus\":\"CLEAR\"}";
+            String body = "{\"metadata\":{\"status\":\"SUCCESS\"},\"resource_data\":[{\"requestId\":\"req-1\",\"statusCode\":200,\"result\":" + inner + "}]}";
             byte[] out = body.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, out.length);
@@ -96,18 +101,19 @@ class VerificationJourneyEndToEndTest {
         String baseUrl = "http://127.0.0.1:" + karza.getAddress().getPort() + "/karza/vahan-rc";
         VerificationProperties props = new VerificationProperties(
                 List.of(new Route("KARZA_VAHAN_RC", baseUrl, "OAUTH_BEARER")),
-                List.of("127.0.0.1"),
-                new Retry(2, 0),
-                "cap.verification.dlq.v1");
+                List.of("127.0.0.1"), new Retry(3, 0, 0, false),
+                "cap.verification.dlq.v1", "sfdc.response.notify.v1");
 
         MapperRegistry mappers = new MapperRegistry();
         mappers.register("KARZA_VAHAN_RC", new MapperPair(new KarzaVahanRcRequestMapper(), new KarzaVahanRcResponseMapper()));
         VerificationService service = new VerificationService(
                 new ConfigRouteResolver(props),
-                new AdapterRegistry(List.of(new KarzaVehicleRcAdapter(svc -> "tok-" + svc))),
-                mappers);
+                new AdapterRegistry(List.of(new KarzaVehicleRcAdapter(svc -> "tok-" + svc))), mappers);
         VerificationDlqPort dlqPort = (req, reason) -> dlq.add(req.operation() + ":" + reason);
-        VerificationDispatcher dispatcher = new VerificationDispatcher(service, dlqPort, 2, 0);
+        SfdcNotifyPort notifyPort = (req, reason) -> notified.add(req.operation() + ":" + reason);
+        VerificationDispatcher dispatcher = new VerificationDispatcher(
+                service, dlqPort, notifyPort,
+                new RetryExecutor(millis -> { }), RetryPolicy.idempotentReads(3, Backoff.fixed(0)));
 
         InMemoryBus bus = new InMemoryBus(Map.of("verification", dispatcher::handle));
         AtomicReference<JourneyDecision> decision = new AtomicReference<>();
@@ -118,8 +124,7 @@ class VerificationJourneyEndToEndTest {
         JourneyOrchestrator orchestrator = new JourneyOrchestrator(
                 new JourneyEngine(new ExpressionEvaluator()),
                 new JourneyRegistry(List.of(def), Map.of()),
-                new InMemoryJourneyInstanceStore(),
-                bus, decisionPort, () -> "ji-verify");
+                new InMemoryJourneyInstanceStore(), bus, decisionPort, () -> "ji-verify");
         bus.bind(orchestrator);
 
         orchestrator.onOrigination(Map.of(
@@ -132,30 +137,40 @@ class VerificationJourneyEndToEndTest {
     }
 
     @Test
-    void activeAndClearVehicleProceeds() {
+    void activeAndClearProceeds() {
         JourneyDecision d = run("AB12CD1234");
         assertThat(d.outcome()).isEqualTo(JourneyDecision.APPROVED);
         assertThat(d.terminalNodeId()).isEqualTo("n_proceed");
-        assertThat(d.emitted()).contains("VehicleRcApproved");
         assertThat(dlq).isEmpty();
+        assertThat(notified).as("a proceed does not notify a failure").isEmpty();
     }
 
     @Test
-    void blacklistedVehicleDeclines() {
+    void blacklistedDeclines_businessNotTechnical_noDlqNoNotify() {
         JourneyDecision d = run("XX00YY0000");
         assertThat(d.outcome()).isEqualTo(JourneyDecision.REJECTED);
         assertThat(d.terminalNodeId()).isEqualTo("n_decline");
-        assertThat(d.emitted()).contains("VehicleRcDeclined");
-        assertThat(dlq).isEmpty();
+        assertThat(dlq).as("a business decline is NOT a technical failure").isEmpty();
+        assertThat(notified).isEmpty();
     }
 
     @Test
-    void downstream500RetriesThenDeadLettersAndFailsTheNode() {
-        fail500 = true;
+    void transient503RetriesThenDlqPlusNotifyAndFailsTheNode() {
+        httpStatus = 503;
         JourneyDecision d = run("AB12CD1234");
         assertThat(d.outcome()).isEqualTo(JourneyDecision.ERROR);
         assertThat(d.terminalNodeId()).isEqualTo("n_rcError");
-        assertThat(dlq).as("verification was dead-lettered, not lost").hasSize(1);
-        assertThat(dlq.get(0)).contains("KARZA_VAHAN_RC");
+        assertThat(dlq).hasSize(1);
+        assertThat(notified).as("SFDC notified of the FAILED run").hasSize(1);
+    }
+
+    @Test
+    void permanent400GoesStraightToDlqPlusNotify() {
+        httpStatus = 400;
+        JourneyDecision d = run("AB12CD1234");
+        assertThat(d.outcome()).isEqualTo(JourneyDecision.ERROR);
+        assertThat(dlq).hasSize(1);
+        assertThat(dlq.get(0)).contains("PERMANENT");
+        assertThat(notified).hasSize(1);
     }
 }

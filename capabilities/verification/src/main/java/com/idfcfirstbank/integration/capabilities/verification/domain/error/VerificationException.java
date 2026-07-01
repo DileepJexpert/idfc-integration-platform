@@ -1,13 +1,16 @@
 package com.idfcfirstbank.integration.capabilities.verification.domain.error;
 
+import com.idfcfirstbank.integration.shared.domain.capability.Classified;
 import com.idfcfirstbank.integration.shared.domain.capability.ErrorClass;
 
 /**
- * A verification failure classified for retry/DLQ. TRANSIENT is retried (2x200ms);
- * PERMANENT (or exhausted retries) routes to the DLQ — never a silent ack.
+ * A verification TRANSPORT failure classified for the retry-policy engine (spec v2 §C):
+ * TRANSIENT is retried (exp backoff + jitter), AMBIGUOUS is retried only for idempotent
+ * ops, PERMANENT (or exhausted retries) routes to DLQ + notifySfdc — never a silent ack.
+ * Business declines are NOT this: they are HTTP-200 bodies handled by the branch.
  * {@code errorCode} feeds the universal envelope's ERROR block.
  */
-public class VerificationException extends RuntimeException {
+public class VerificationException extends RuntimeException implements Classified {
 
     private final ErrorClass errorClass;
     private final String errorCode;
@@ -18,6 +21,6 @@ public class VerificationException extends RuntimeException {
         this.errorCode = errorCode;
     }
 
-    public ErrorClass errorClass() { return errorClass; }
+    @Override public ErrorClass errorClass() { return errorClass; }
     public String errorCode() { return errorCode; }
 }

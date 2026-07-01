@@ -11,6 +11,7 @@ description = "verification capability — per-svcName adapters/mappers over a c
 
 dependencies {
     implementation(project(":shared:shared-domain"))
+    implementation(project(":shared:shared-capability"))   // the classified retry-policy engine (spec v2 §C)
     implementation("org.springframework.kafka:spring-kafka:${property("springKafkaVersion")}")
     implementation("com.fasterxml.jackson.core:jackson-databind")
 

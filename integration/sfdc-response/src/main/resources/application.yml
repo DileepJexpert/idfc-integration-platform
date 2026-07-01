@@ -1,0 +1,46 @@
+server:
+  port: ${SERVER_PORT:8103}   # sfdc-response egress (health/metrics only)
+
+spring:
+  application:
+    name: sfdc-response
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+      enable-auto-commit: true
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+idfc:
+  sfdc-response:
+    # Inbound: verification (and journeys) publish success decisions + failure notifications here.
+    notify-topic: ${IDFC_SFDC_NOTIFY_TOPIC:sfdc.response.notify.v1}
+    group: ${IDFC_SFDC_RESPONSE_GROUP:sfdc-response}
+    # Per-org egress config (config-as-data) — the ~13 sfdc-<org>-response-service collapsed to rows.
+    # New org = a row here (orgId -> response topic + SFDC object), not a new microservice.
+    default-response-topic: ${IDFC_SFDC_DEFAULT_RESPONSE_TOPIC:sfdc.response.default.v1}
+    orgs:
+      - org-id: 00DC40000014dS1MAI     # CD org
+        response-topic: sfdc.response.cd.v1
+        sfdc-object: Integration_Message__c
+      - org-id: 00D6D00000020HoUAI     # (golden fixture org)
+        response-topic: sfdc.response.bbg.v1
+        sfdc-object: Integration_Message__c
+
+logging:
+  level:
+    com.idfcfirstbank.integration.sfdcresponse: INFO
