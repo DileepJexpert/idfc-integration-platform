@@ -1,7 +1,8 @@
 package com.idfcfirstbank.integration.capabilities.communications.application;
 
+import com.idfcfirstbank.integration.capabilities.communications.domain.port.out.CommsHubPort;
+import com.idfcfirstbank.integration.capabilities.communications.domain.port.out.SendMeterPort;
 import com.idfcfirstbank.integration.capabilities.communications.domain.port.out.SentSmsStorePort;
-import com.idfcfirstbank.integration.capabilities.communications.domain.port.out.SmsSenderPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -9,21 +10,24 @@ import org.springframework.stereotype.Service;
 import java.util.Map;
 
 /**
- * The SENDSMS action: read the OPAQUE Salesforce Task body the edge carried
- * (this capability OWNS the SENDSMS payload contract — Mobile__c/Description),
- * dedupe on the SFDC Notification/Id (a redelivery must not re-send an OTP), and
- * send exactly once. NO OTP/body content is ever logged (PII).
+ * The SENDSMS action: read the OPAQUE Salesforce Task body the edge carried (this
+ * capability OWNS the SENDSMS payload contract — Mobile__c/Description), dedupe on
+ * the SFDC Notification/Id (a redelivery must not re-send an OTP), and send exactly
+ * once through the shared CommsHub — via the {@link SendMeterPort} so a burst can't
+ * flood the internal shared resource. NO OTP/body content is ever logged (PII).
  */
 @Service
 public class CommunicationsService {
 
     private static final Logger log = LoggerFactory.getLogger(CommunicationsService.class);
 
-    private final SmsSenderPort sender;
+    private final CommsHubPort commsHub;
+    private final SendMeterPort meter;
     private final SentSmsStorePort store;
 
-    public CommunicationsService(SmsSenderPort sender, SentSmsStorePort store) {
-        this.sender = sender;
+    public CommunicationsService(CommsHubPort commsHub, SendMeterPort meter, SentSmsStorePort store) {
+        this.commsHub = commsHub;
+        this.meter = meter;
         this.store = store;
     }
 
@@ -46,7 +50,8 @@ public class CommunicationsService {
             log.info("comm.sms.duplicate notificationId={} — already sent, skipping", notificationId);
             return;
         }
-        sender.send(to, message);
+        // Metered: bound concurrent calls to the shared CommsHub (Diwali-burst safe).
+        meter.meter(() -> commsHub.sendSms(to, message));
     }
 
     private static String str(Object o) {

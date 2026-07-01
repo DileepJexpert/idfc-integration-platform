@@ -1,8 +1,9 @@
 package com.idfcfirstbank.integration.fullflow;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.idfcfirstbank.integration.capabilities.communications.adapter.out.meter.SemaphoreSendMeter;
 import com.idfcfirstbank.integration.capabilities.communications.application.CommunicationsService;
-import com.idfcfirstbank.integration.capabilities.communications.domain.port.out.SmsSenderPort;
+import com.idfcfirstbank.integration.capabilities.communications.domain.port.out.CommsHubPort;
 import com.idfcfirstbank.integration.capabilities.communications.domain.port.out.SentSmsStorePort;
 import com.idfcfirstbank.integration.edges.sfdcingress.adapter.in.rest.soap.OutboundNotificationMapper;
 import com.idfcfirstbank.integration.edges.sfdcingress.adapter.in.rest.soap.SfdcOutboundMessage;
@@ -128,9 +129,10 @@ class SfdcSoapEndToEndTest {
         CanonicalEnvelope env = normalise("sfdc-outbound-sendsms-golden.xml").get(0);
 
         List<String> sentTo = new ArrayList<>();
-        SmsSenderPort sender = (to, body) -> sentTo.add(to);
+        CommsHubPort commsHub = (to, body) -> sentTo.add(to);            // the internal shared CommsHub (mock)
         SentSmsStorePort store = new java.util.HashSet<String>()::add;   // markSentIfAbsent = Set.add
-        CommunicationsService comms = new CommunicationsService(sender, store);
+        CommunicationsService comms = new CommunicationsService(
+                commsHub, new SemaphoreSendMeter(4), store);            // metered send path
 
         Map<String, Object> smsEnvelope = asOriginationMap(env);
         comms.onSmsRequest(smsEnvelope);

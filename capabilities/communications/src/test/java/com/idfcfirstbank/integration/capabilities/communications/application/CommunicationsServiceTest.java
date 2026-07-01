@@ -1,7 +1,8 @@
 package com.idfcfirstbank.integration.capabilities.communications.application;
 
+import com.idfcfirstbank.integration.capabilities.communications.adapter.out.meter.SemaphoreSendMeter;
 import com.idfcfirstbank.integration.capabilities.communications.adapter.out.store.InMemorySentSmsStore;
-import com.idfcfirstbank.integration.capabilities.communications.domain.port.out.SmsSenderPort;
+import com.idfcfirstbank.integration.capabilities.communications.domain.port.out.CommsHubPort;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -12,16 +13,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * The SENDSMS action over the OPAQUE Task body the edge carries: the capability
- * reads Mobile__c/Description itself (it owns the payload contract), sends once,
- * and is idempotent on Notification/Id so a redelivered OTP is not re-sent.
+ * reads Mobile__c/Description itself (it owns the payload contract), sends once
+ * through the metered shared CommsHub, and is idempotent on Notification/Id so a
+ * redelivered OTP is not re-sent.
  */
 class CommunicationsServiceTest {
 
     private record Sent(String to, String body) {}
 
     private final List<Sent> sends = new ArrayList<>();
-    private final SmsSenderPort recorder = (to, body) -> sends.add(new Sent(to, body));
-    private final CommunicationsService service = new CommunicationsService(recorder, new InMemorySentSmsStore());
+    private final CommsHubPort commsHub = (to, body) -> sends.add(new Sent(to, body));
+    private final CommunicationsService service = new CommunicationsService(
+            commsHub, new SemaphoreSendMeter(4), new InMemorySentSmsStore());
 
     private static Map<String, Object> smsEnvelope(String notificationId, String mobile, String desc) {
         return Map.of(

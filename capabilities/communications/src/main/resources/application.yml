@@ -27,6 +27,11 @@ idfc:
     # The topic the SFDC edge routes SENDSMS to (SVCNAME -> topic, config-as-data).
     sms-topic: ${IDFC_COMM_SMS_TOPIC:comm.sms.send.v1}
     group: ${IDFC_COMM_GROUP:communications}
+    commshub:
+      # CommsHub is an INTERNAL SHARED bank service (the whole bank uses it), NOT an
+      # external vendor. Cap this service's concurrent sends so an OTP burst (e.g.
+      # Diwali) queues as lag instead of flooding a shared resource.
+      max-concurrency: ${IDFC_COMMSHUB_MAX_CONCURRENCY:4}
 
 logging:
   level:
