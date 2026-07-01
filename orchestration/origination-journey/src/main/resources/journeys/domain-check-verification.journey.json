@@ -1,0 +1,41 @@
+{
+  "journeyKey": "domain-check-verification",
+  "version": 1,
+  "context": { "schemaRef": "verification-context@1" },
+  "startNodeId": "n_domainCheck",
+  "nodes": [
+    {
+      "id": "n_domainCheck",
+      "type": "task",
+      "capability": "verification",
+      "operation": "KARZA_DOMAIN_CHECK",
+      "input": "{ organizationName: context.organizationName, individualName: context.individualName, email: context.email, consent: 'Y' }",
+      "output": "context.domainCheck",
+      "idempotent": true,
+      "policies": { "retry": { "retryOn": ["TRANSIENT"], "maxAttempts": 3, "backoff": { "type": "exponential", "base": "200ms", "max": "5s", "jitter": true } } },
+      "onFailure": "n_domainError",
+      "next": [ "n_domainDecision" ]
+    },
+    {
+      "id": "n_domainDecision",
+      "type": "branch",
+      "arms": [
+        {
+          "when": "context.domainCheck.ISSUCCESS == 'True' && context.domainCheck.DATA.result[0].result.result == true && context.domainCheck.DATA.result[0].result.data.disposable == false && context.domainCheck.DATA.result[0].result.additional_info.company_info.org_domain_match[0].match == true",
+          "next": "n_proceed"
+        }
+      ],
+      "default": "n_decline"
+    },
+    { "id": "n_proceed", "type": "terminal", "action": "push_decision_to_channel", "emit": [ "DomainCheckApproved" ], "status": "completed" },
+    { "id": "n_decline", "type": "terminal", "action": "push_decision_to_channel", "emit": [ "DomainCheckDeclined" ], "status": "rejected" },
+    { "id": "n_domainError", "type": "terminal", "action": "push_decision_to_channel", "emit": [ "DomainCheckError" ], "status": "failed" }
+  ],
+  "layout": {
+    "n_domainCheck": { "x": 80.0, "y": 160.0 },
+    "n_domainDecision": { "x": 320.0, "y": 160.0 },
+    "n_proceed": { "x": 560.0, "y": 80.0 },
+    "n_decline": { "x": 560.0, "y": 240.0 },
+    "n_domainError": { "x": 320.0, "y": 320.0 }
+  }
+}

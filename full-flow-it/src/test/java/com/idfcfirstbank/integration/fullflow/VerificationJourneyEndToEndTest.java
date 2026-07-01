@@ -8,6 +8,7 @@ import com.idfcfirstbank.integration.capabilities.verification.application.Verif
 import com.idfcfirstbank.integration.capabilities.verification.application.VerificationService;
 import com.idfcfirstbank.integration.capabilities.verification.application.mapper.KarzaVahanRcRequestMapper;
 import com.idfcfirstbank.integration.capabilities.verification.application.mapper.KarzaVahanRcResponseMapper;
+import com.idfcfirstbank.integration.capabilities.verification.adapter.out.karza.KarzaClient;
 import com.idfcfirstbank.integration.capabilities.verification.adapter.out.karza.KarzaVehicleRcAdapter;
 import com.idfcfirstbank.integration.capabilities.verification.adapter.out.route.ConfigRouteResolver;
 import com.idfcfirstbank.integration.capabilities.verification.config.VerificationProperties;
@@ -108,7 +109,7 @@ class VerificationJourneyEndToEndTest {
         mappers.register("KARZA_VAHAN_RC", new MapperPair(new KarzaVahanRcRequestMapper(), new KarzaVahanRcResponseMapper()));
         VerificationService service = new VerificationService(
                 new ConfigRouteResolver(props),
-                new AdapterRegistry(List.of(new KarzaVehicleRcAdapter(svc -> "tok-" + svc))), mappers);
+                new AdapterRegistry(List.of(new KarzaVehicleRcAdapter(new KarzaClient(svc -> "tok-" + svc)))), mappers);
         VerificationDlqPort dlqPort = (req, reason) -> dlq.add(req.operation() + ":" + reason);
         SfdcNotifyPort notifyPort = (req, reason) -> notified.add(req.operation() + ":" + reason);
         VerificationDispatcher dispatcher = new VerificationDispatcher(

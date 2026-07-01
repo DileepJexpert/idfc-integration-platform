@@ -1,0 +1,20 @@
+{
+  "metadata": { "status": "SUCCESS" },
+  "resource_data": [
+    { "requestId": "req-dc-1", "statusCode": 200,
+      "result": {
+        "result": true,
+        "data": { "email": "john.doe@idfcfirstbank.com", "disposable": false, "webmail": false,
+                  "smtpCheck": true, "genericEmail": false, "result": "valid" },
+        "additional_info": {
+          "company_info": {
+            "org_domain_match": [ { "domain": "idfcfirstbank.com", "match": true, "org_name": "IDFC First Bank", "source": "domain" } ],
+            "org_email_match": [ { "company_email": "john@idfcfirstbank.com", "match": true } ],
+            "usr_director_match": []
+          },
+          "individual_match": [ { "match": true, "name": "John Doe", "score": 0.95 } ]
+        }
+      }
+    }
+  ]
+}

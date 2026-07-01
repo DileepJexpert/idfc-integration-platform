@@ -1,0 +1,38 @@
+{
+  "journeyKey": "negative-area-verification",
+  "version": 1,
+  "context": { "schemaRef": "verification-context@1" },
+  "startNodeId": "n_negativeArea",
+  "nodes": [
+    {
+      "id": "n_negativeArea",
+      "type": "task",
+      "capability": "verification",
+      "operation": "ENT_KARZA_NEGATIVE_AREA_TAGGING",
+      "input": "{ addressId: context.addressId, consent: 'Y' }",
+      "output": "context.negativeArea",
+      "idempotent": true,
+      "policies": { "retry": { "retryOn": ["TRANSIENT"], "maxAttempts": 3, "backoff": { "type": "exponential", "base": "200ms", "max": "5s", "jitter": true } } },
+      "onFailure": "n_negativeError",
+      "next": [ "n_negativeDecision" ]
+    },
+    {
+      "id": "n_negativeDecision",
+      "type": "branch",
+      "arms": [
+        { "when": "context.negativeArea.ISSUCCESS == 'True' && context.negativeArea.DATA.result[0].result.is_negative == false", "next": "n_proceed" }
+      ],
+      "default": "n_decline"
+    },
+    { "id": "n_proceed", "type": "terminal", "action": "push_decision_to_channel", "emit": [ "NegativeAreaClear" ], "status": "completed" },
+    { "id": "n_decline", "type": "terminal", "action": "push_decision_to_channel", "emit": [ "NegativeAreaFlagged" ], "status": "rejected" },
+    { "id": "n_negativeError", "type": "terminal", "action": "push_decision_to_channel", "emit": [ "NegativeAreaError" ], "status": "failed" }
+  ],
+  "layout": {
+    "n_negativeArea": { "x": 80.0, "y": 160.0 },
+    "n_negativeDecision": { "x": 320.0, "y": 160.0 },
+    "n_proceed": { "x": 560.0, "y": 80.0 },
+    "n_decline": { "x": 560.0, "y": 240.0 },
+    "n_negativeError": { "x": 320.0, "y": 320.0 }
+  }
+}

@@ -30,7 +30,7 @@ class KarzaVehicleRcAdapterTest {
     private volatile int status = 200;
     private volatile String body = "{\"metadata\":{\"status\":\"ACTIVE\"},\"resource_data\":[{\"rcStatus\":\"ACTIVE\"}]}";
 
-    private final KarzaVehicleRcAdapter adapter = new KarzaVehicleRcAdapter(svc -> "tok-" + svc);
+    private final KarzaVehicleRcAdapter adapter = new KarzaVehicleRcAdapter(new KarzaClient(svc -> "tok-" + svc));
 
     @BeforeEach
     void start() throws IOException {

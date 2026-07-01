@@ -1,0 +1,2 @@
+{ "metadata": { "status": "SUCCESS" },
+  "resource_data": [ { "request_id": "req-na-1", "statusCode": 200, "result": { "is_negative": false, "score": 0.10 } } ] }
