@@ -1,0 +1,6 @@
+{ "request": { "method": "POST", "urlPath": "/karza/domain-check",
+    "bodyPatterns": [ { "matchesJsonPath": "$[?(@.email != 'temp@disposable.com')]" } ] },
+  "response": { "status": 200, "headers": { "Content-Type": "application/json" },
+    "jsonBody": { "metadata": { "status": "SUCCESS" }, "resource_data": [ { "requestId": "req-dc-1", "statusCode": 200,
+      "result": { "result": true, "data": { "disposable": false, "result": "valid" },
+        "additional_info": { "company_info": { "org_domain_match": [ { "match": true } ] } } } } ] } } }

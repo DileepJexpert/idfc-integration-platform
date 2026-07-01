@@ -6,17 +6,17 @@ import org.springframework.stereotype.Component;
 
 import java.util.Map;
 
-/** KARZA_VAHAN_RC adapter (Karza, OAuth) — thin over the shared {@link KarzaClient}. */
+/** ENT_KARZA_NEGATIVE_AREA_TAGGING adapter (Karza, OAuth) — thin over the shared {@link KarzaClient}. */
 @Component
-public class KarzaVehicleRcAdapter implements VerificationAdapter {
+public class KarzaNegativeAreaAdapter implements VerificationAdapter {
 
     private final KarzaClient karza;
 
-    public KarzaVehicleRcAdapter(KarzaClient karza) {
+    public KarzaNegativeAreaAdapter(KarzaClient karza) {
         this.karza = karza;
     }
 
-    @Override public String svcName() { return "KARZA_VAHAN_RC"; }
+    @Override public String svcName() { return "ENT_KARZA_NEGATIVE_AREA_TAGGING"; }
 
     @Override public Map<String, Object> call(ResolvedRoute route, Map<String, Object> mappedRequest) {
         return karza.post(route, mappedRequest);

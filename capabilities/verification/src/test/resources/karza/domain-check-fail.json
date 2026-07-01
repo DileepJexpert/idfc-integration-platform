@@ -1,0 +1,12 @@
+{
+  "metadata": { "status": "SUCCESS" },
+  "resource_data": [
+    { "requestId": "req-dc-2", "statusCode": 200,
+      "result": {
+        "result": true,
+        "data": { "email": "temp@disposable.com", "disposable": true, "result": "valid" },
+        "additional_info": { "company_info": { "org_domain_match": [ { "domain": "disposable.com", "match": false } ] } }
+      }
+    }
+  ]
+}
