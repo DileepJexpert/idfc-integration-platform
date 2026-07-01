@@ -1,0 +1,18 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPath": "/karza/vahan-rc",
+    "bodyPatterns": [ { "matchesJsonPath": "$[?(@.reg_no == 'XX00YY0000')]" } ]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "metadata": { "status": "ACTIVE" },
+      "resource_data": [
+        { "rcStatus": "ACTIVE", "blackListStatus": "BLACKLISTED", "registrationNumber": "XX00YY0000",
+          "ownerName": "FLAGGED OWNER" }
+      ]
+    }
+  }
+}

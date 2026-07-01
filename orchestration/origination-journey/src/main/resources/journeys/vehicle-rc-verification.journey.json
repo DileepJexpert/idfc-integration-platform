@@ -1,0 +1,71 @@
+{
+  "journeyKey": "vehicle-rc-verification",
+  "version": 1,
+  "context": {
+    "schemaRef": "verification-context@1"
+  },
+  "startNodeId": "n_vehicleRc",
+  "nodes": [
+    {
+      "id": "n_vehicleRc",
+      "type": "task",
+      "capability": "verification",
+      "operation": "KARZA_VAHAN_RC",
+      "input": "{ registrationNumber: context.registrationNumber, consent: 'Y' }",
+      "output": "context.vehicleRc",
+      "policies": {
+        "retry": { "maxAttempts": 2, "backoff": { "type": "fixed", "base": "200ms" }, "retryOn": ["TRANSIENT"] },
+        "timeout": "20s"
+      },
+      "onFailure": "n_rcError",
+      "next": [
+        "n_rcDecision"
+      ]
+    },
+    {
+      "id": "n_rcDecision",
+      "type": "branch",
+      "arms": [
+        {
+          "when": "context.vehicleRc.ISSUCCESS == 'True' && context.vehicleRc.DATA.result[0].result.rcStatus == 'ACTIVE' && context.vehicleRc.DATA.result[0].result.blackListStatus == 'CLEAR'",
+          "next": "n_proceed"
+        }
+      ],
+      "default": "n_decline"
+    },
+    {
+      "id": "n_proceed",
+      "type": "terminal",
+      "action": "push_decision_to_channel",
+      "emit": [
+        "VehicleRcApproved"
+      ],
+      "status": "completed"
+    },
+    {
+      "id": "n_decline",
+      "type": "terminal",
+      "action": "push_decision_to_channel",
+      "emit": [
+        "VehicleRcDeclined"
+      ],
+      "status": "rejected"
+    },
+    {
+      "id": "n_rcError",
+      "type": "terminal",
+      "action": "push_decision_to_channel",
+      "emit": [
+        "VehicleRcError"
+      ],
+      "status": "failed"
+    }
+  ],
+  "layout": {
+    "n_vehicleRc": { "x": 80.0, "y": 160.0 },
+    "n_rcDecision": { "x": 320.0, "y": 160.0 },
+    "n_proceed": { "x": 560.0, "y": 80.0 },
+    "n_decline": { "x": 560.0, "y": 240.0 },
+    "n_rcError": { "x": 320.0, "y": 320.0 }
+  }
+}

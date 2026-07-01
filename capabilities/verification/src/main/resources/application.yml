@@ -34,10 +34,14 @@ idfc:
       - svc-name: ECHO
         base-url: http://echo.mock/echo   # step-1 shell proof (trivial echo svcName)
         auth-type: NONE
+      - svc-name: KARZA_VAHAN_RC          # step 2: Vehicle RC (Karza, OAuth Bearer)
+        base-url: ${KARZA_VAHAN_RC_URL:http://mock-karza:8080/karza/vahan-rc}  # compose WireMock; real Karza = URL+cred swap
+        auth-type: OAUTH_BEARER
     # ALLOW-LIST (correction #1): only endpoints we registered may be called (anti-SSRF).
     allowed-hosts:
       - echo.mock
-      - karza.mock       # step 2+ (Karza family)
+      - mock-karza       # step 2 (Karza family — compose WireMock service DNS)
+      - karza.mock       # (logical Karza host — real endpoint, D#4)
       - imps.mock        # step 3 (internal IMPS)
     # DLQ-on-failure (correction #2): retry then DLQ, never silent-ack.
     retry:

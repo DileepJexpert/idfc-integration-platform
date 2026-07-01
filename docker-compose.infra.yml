@@ -9,7 +9,7 @@
 #
 # Host ports: kafka 9092 + 29092 · kafka-ui 8085 · cloudbeaver 8978 ·
 # aerospike 3000-3002 · mock-posidex 9101 · mock-cibil 9102 · mock-fico 9103 ·
-# mock-nsdl 9104 · mock-finnone(Oracle) 1521.
+# mock-nsdl 9104 · mock-karza 9105 · mock-finnone(Oracle) 1521.
 #
 # Browser UIs: Kafka -> http://localhost:8085 ; SQL/Oracle -> http://localhost:8978.
 # Aerospike has no free CE web UI; inspect it with ./demo.sh aql (or asadm).
@@ -147,6 +147,18 @@ services:
     ports: ["9104:8080"]
     volumes:
       - ./infra/mock-vendors/nsdl/mappings:/home/wiremock/mappings:ro
+
+  mock-karza:
+    image: wiremock/wiremock:3.9.1
+    container_name: idfc-mock-karza
+    networks: [idfc]
+    # --disable-http2-plain: the verification adapter uses RestClient/JDK HttpClient,
+    # which upgrades to HTTP/2 cleartext (h2c); WireMock 3.9.1 mishandles that and the
+    # connection EOFs. Disabling h2c forces a clean HTTP/1.1 fallback.
+    command: ["--port", "8080", "--disable-banner", "--disable-http2-plain"]
+    ports: ["9105:8080"]
+    volumes:
+      - ./infra/mock-vendors/karza/mappings:/home/wiremock/mappings:ro
 
   mock-finnone:
     image: gvenzl/oracle-xe:21-slim

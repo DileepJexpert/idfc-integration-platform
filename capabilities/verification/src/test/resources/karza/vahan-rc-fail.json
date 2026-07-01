@@ -1,0 +1,12 @@
+{
+  "metadata": { "status": "ACTIVE" },
+  "resource_data": [
+    {
+      "rcStatus": "ACTIVE",
+      "blackListStatus": "BLACKLISTED",
+      "registrationNumber": "XX00YY0000",
+      "ownerName": "FLAGGED OWNER",
+      "insuranceUpto": "2020-01-01"
+    }
+  ]
+}

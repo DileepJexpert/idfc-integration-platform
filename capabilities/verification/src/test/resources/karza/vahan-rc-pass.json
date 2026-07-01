@@ -1,0 +1,17 @@
+{
+  "metadata": { "status": "ACTIVE" },
+  "resource_data": [
+    {
+      "rcStatus": "ACTIVE",
+      "blackListStatus": "NO",
+      "registrationNumber": "AB12CD1234",
+      "ownerName": "ASHA KUMAR",
+      "insuranceUpto": "2026-12-31",
+      "chassisNumber": "MA1234CH567890",
+      "engineNumber": "EN9876543210",
+      "color": "WHITE",
+      "bodyTypeDescription": "SALOON",
+      "insuranceCompany": "IDFC GENERAL"
+    }
+  ]
+}

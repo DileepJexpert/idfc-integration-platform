@@ -19,6 +19,7 @@ dependencies {
     testImplementation(project(":capabilities:lending-origination"))
     testImplementation(project(":capabilities:mandate"))
     testImplementation(project(":capabilities:communications"))
+    testImplementation(project(":capabilities:verification"))
     testImplementation(project(":edges:sfdc-ingress-edge"))
     testImplementation("com.fasterxml.jackson.core:jackson-databind")
 }
