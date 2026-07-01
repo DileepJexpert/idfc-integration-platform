@@ -37,6 +37,7 @@ include("capabilities:payments")
 include("capabilities:echo")           // trivial reference capability — proves the framework (BRD §9 step 1)
 include("capabilities:mandate")        // e-mandate lifecycle — reference capability (BRD §3, step 2)
 include("capabilities:communications") // SENDSMS/OTP notification action — consumes the SFDC edge's SENDSMS route
+include("capabilities:verification")   // per-svcName verification (Karza/IMPS) — control-plane routed, DLQ-on-failure
 
 // orchestration/ — long-running journeys (stubs in Slice 1)
 include("orchestration:origination-journey")

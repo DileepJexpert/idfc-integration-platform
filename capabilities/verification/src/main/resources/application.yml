@@ -1,0 +1,50 @@
+server:
+  port: ${SERVER_PORT:8102}   # verification capability (health/metrics only)
+
+spring:
+  application:
+    name: verification
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+      enable-auto-commit: true
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+idfc:
+  verification:
+    # CONTROL-PLANE routing (correction #1): svcName -> endpoint/auth is OUR config,
+    # NOT taken from the inbound message. The real source is the route-config registry
+    # (open input D#2); this config-as-data adapter is the seam until that lands.
+    routes:
+      - svc-name: ECHO
+        base-url: http://echo.mock/echo   # step-1 shell proof (trivial echo svcName)
+        auth-type: NONE
+    # ALLOW-LIST (correction #1): only endpoints we registered may be called (anti-SSRF).
+    allowed-hosts:
+      - echo.mock
+      - karza.mock       # step 2+ (Karza family)
+      - imps.mock        # step 3 (internal IMPS)
+    # DLQ-on-failure (correction #2): retry then DLQ, never silent-ack.
+    retry:
+      max-attempts: ${IDFC_VERIFY_MAX_ATTEMPTS:2}
+      backoff-millis: ${IDFC_VERIFY_BACKOFF_MILLIS:200}
+    dlq-topic: ${IDFC_VERIFY_DLQ_TOPIC:cap.verification.dlq.v1}
+
+logging:
+  level:
+    com.idfcfirstbank.integration.capabilities.verification: INFO
