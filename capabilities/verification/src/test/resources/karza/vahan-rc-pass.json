@@ -1,17 +1,25 @@
 {
-  "metadata": { "status": "ACTIVE" },
+  "metadata": { "status": "SUCCESS" },
   "resource_data": [
     {
-      "rcStatus": "ACTIVE",
-      "blackListStatus": "NO",
-      "registrationNumber": "AB12CD1234",
-      "ownerName": "ASHA KUMAR",
-      "insuranceUpto": "2026-12-31",
-      "chassisNumber": "MA1234CH567890",
-      "engineNumber": "EN9876543210",
-      "color": "WHITE",
-      "bodyTypeDescription": "SALOON",
-      "insuranceCompany": "IDFC GENERAL"
+      "requestId": "req-123",
+      "statusCode": 200,
+      "result": {
+        "registrationNumber": "AB12CD1234",
+        "chassisNumber": "CHASSIS123",
+        "engineNumber": "ENG123",
+        "ownerName": "JOHN DOE",
+        "registrationDate": "2020-01-15",
+        "color": "WHITE",
+        "fuelDescription": "PETROL",
+        "insuranceCompany": "ICICI",
+        "insuranceUpto": "2025-01-14",
+        "makerDescription": "MARUTI",
+        "makerModel": "SWIFT",
+        "bodyTypeDescription": "HATCHBACK",
+        "rcStatus": "ACTIVE",
+        "blackListStatus": "CLEAR"
+      }
     }
   ]
 }

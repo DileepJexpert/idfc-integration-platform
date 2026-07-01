@@ -20,6 +20,7 @@ include("platform:route-config-registry") // API-router endpoint/gateway config 
 
 // integration/ — thin routing adapters (not capabilities)
 include("integration:brand-router")       // SFDC brand routing Kafka|ActiveMQ (BRD §6)
+include("integration:sfdc-response")       // consolidated per-org SFDC egress (verification spec v2 §B)
 
 // edges/ — protocol edges (thin; no business logic)
 include("edges:sfdc-ingress-edge")     // *** Slice 1 — IMPLEMENTED FOR REAL ***

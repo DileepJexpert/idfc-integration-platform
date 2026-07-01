@@ -52,10 +52,16 @@ public class KarzaVehicleRcAdapter implements VerificationAdapter {
             }
             return body;
         } catch (RestClientResponseException e) {
+            // 4xx (malformed/auth) = PERMANENT, no point retrying; 5xx = TRANSIENT.
             ErrorClass ec = e.getStatusCode().is4xxClientError() ? ErrorClass.PERMANENT : ErrorClass.TRANSIENT;
             throw new VerificationException(ec, "HTTP_" + e.getStatusCode().value(), "karza http error");
         } catch (ResourceAccessException e) {
-            throw new VerificationException(ErrorClass.TRANSIENT, "IO", "karza unreachable");
+            // A READ timeout means the request may already have been processed downstream ->
+            // AMBIGUOUS (retry only if idempotent). A connect failure never reached them -> TRANSIENT.
+            boolean readTimeout = e.getCause() instanceof java.net.SocketTimeoutException;
+            throw new VerificationException(
+                    readTimeout ? ErrorClass.AMBIGUOUS : ErrorClass.TRANSIENT,
+                    readTimeout ? "READ_TIMEOUT" : "IO", "karza unreachable");
         }
     }
 }

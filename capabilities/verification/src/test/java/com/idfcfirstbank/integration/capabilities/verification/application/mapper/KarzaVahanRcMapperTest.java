@@ -9,7 +9,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** BRD B.1 mappers: alt-field request, and the raw Karza response flattened to the decision shape. */
+/** Spec v2 D.1 mappers: request adds version:1.0 (+ alt-field); response flattens the nested contract. */
 class KarzaVahanRcMapperTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -24,33 +24,29 @@ class KarzaVahanRcMapperTest {
         }
     }
 
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> innerResult(Map<String, Object> data) {
+        return (Map<String, Object>) ((Map<String, Object>) ((List<Object>) data.get("result")).get(0)).get("result");
+    }
+
     @Test
-    void requestMapperToleratesBothRegistrationFieldNames() {
+    void requestMapperAddsVersionAndToleratesBothRegistrationFields() {
         assertThat(requestMapper.map(Map.of("registrationNumber", "AB12CD1234", "consent", "Y")))
-                .containsEntry("reg_no", "AB12CD1234").containsEntry("consent", "Y");
+                .containsEntry("registrationNumber", "AB12CD1234").containsEntry("consent", "Y")
+                .containsEntry("version", 1.0);
         assertThat(requestMapper.map(Map.of("reg_no", "XY99ZZ0000")))
-                .containsEntry("reg_no", "XY99ZZ0000").containsEntry("consent", "Y");   // consent defaults
+                .containsEntry("registrationNumber", "XY99ZZ0000").containsEntry("version", 1.0);
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void passResponseFlattensToActiveAndClear() throws Exception {
-        Map<String, Object> data = responseMapper.map(fixture("vahan-rc-pass.json"));
-
-        Map<String, Object> inner = (Map<String, Object>)
-                ((Map<String, Object>) ((List<Object>) data.get("result")).get(0)).get("result");
-        assertThat(inner).containsEntry("rcStatus", "ACTIVE");
-        assertThat(inner).containsEntry("blackListStatus", "CLEAR");   // "NO" normalised to CLEAR
-        assertThat(inner).containsEntry("registrationNumber", "AB12CD1234");
+    void passResponseExposesActiveAndClear() throws Exception {
+        Map<String, Object> inner = innerResult(responseMapper.map(fixture("vahan-rc-pass.json")));
+        assertThat(inner).containsEntry("rcStatus", "ACTIVE").containsEntry("blackListStatus", "CLEAR");
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void failResponseFlattensToABlacklistedStatus() throws Exception {
-        Map<String, Object> data = responseMapper.map(fixture("vahan-rc-fail.json"));
-
-        Map<String, Object> inner = (Map<String, Object>)
-                ((Map<String, Object>) ((List<Object>) data.get("result")).get(0)).get("result");
-        assertThat(inner).containsEntry("blackListStatus", "BLACKLISTED");   // not CLEAR -> decline
+    void failResponseExposesABlacklistedStatus() throws Exception {
+        Map<String, Object> inner = innerResult(responseMapper.map(fixture("vahan-rc-fail.json")));
+        assertThat(inner).containsEntry("blackListStatus", "BLACKLIST");   // not CLEAR -> decline
     }
 }

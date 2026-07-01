@@ -1,7 +1,10 @@
 package com.idfcfirstbank.integration.capabilities.verification.application;
 
 import com.idfcfirstbank.integration.capabilities.verification.domain.error.VerificationException;
+import com.idfcfirstbank.integration.capabilities.verification.domain.port.out.SfdcNotifyPort;
 import com.idfcfirstbank.integration.capabilities.verification.domain.port.out.VerificationDlqPort;
+import com.idfcfirstbank.integration.shared.capability.RetryExecutor;
+import com.idfcfirstbank.integration.shared.capability.RetryPolicy;
 import com.idfcfirstbank.integration.shared.domain.capability.CapabilityRequest;
 import com.idfcfirstbank.integration.shared.domain.capability.CapabilityResponse;
 import com.idfcfirstbank.integration.shared.domain.capability.ErrorClass;
@@ -11,13 +14,14 @@ import org.slf4j.LoggerFactory;
 import java.util.Map;
 
 /**
- * The retry + DLQ core (correction #2 — the whole point vs the old wrapper). Runs the
- * verification; retries TRANSIENT failures up to {@code maxAttempts} (fixed backoff);
- * on a PERMANENT failure or exhausted retries it routes the message to the DLQ and
- * returns an error response — it NEVER silently acks/loses the message.
+ * The verification dispatch (spec v2 §C) — CLASSIFIED retry, not blind. Runs the operation
+ * through the shared {@link RetryExecutor} with a {@link RetryPolicy} (verifications are
+ * idempotent reads: retry TRANSIENT + idempotent-AMBIGUOUS, exp backoff + jitter). On a
+ * TERMINAL technical failure it routes to the DLQ AND notifies SFDC (§C.3) — the run fails,
+ * never a silent ack. BUSINESS declines never reach here: they are HTTP-200 envelopes the
+ * journey branch declines on.
  *
- * <p>PII: only the svcName + classification + error code are logged, never the payload
- * (reg numbers, emails, account numbers).
+ * <p>PII: only svcName + classification + error code are logged, never the payload.
  */
 public class VerificationDispatcher {
 
@@ -25,55 +29,39 @@ public class VerificationDispatcher {
 
     private final VerificationService service;
     private final VerificationDlqPort dlq;
-    private final int maxAttempts;
-    private final long backoffMillis;
+    private final SfdcNotifyPort sfdcNotify;
+    private final RetryExecutor retry;
+    private final RetryPolicy policy;
 
     public VerificationDispatcher(VerificationService service, VerificationDlqPort dlq,
-                                  int maxAttempts, long backoffMillis) {
+                                  SfdcNotifyPort sfdcNotify, RetryExecutor retry, RetryPolicy policy) {
         this.service = service;
         this.dlq = dlq;
-        this.maxAttempts = Math.max(1, maxAttempts);
-        this.backoffMillis = Math.max(0, backoffMillis);
+        this.sfdcNotify = sfdcNotify;
+        this.retry = retry;
+        this.policy = policy;
     }
 
     public CapabilityResponse handle(CapabilityRequest request) {
         String svcName = request.operation();
-        VerificationException last = null;
-
-        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            try {
-                Map<String, Object> envelope = service.verify(svcName, request.payload());
-                return CapabilityResponse.ok(request, envelope);
-            } catch (VerificationException e) {
-                last = e;
-                if (e.errorClass() != ErrorClass.TRANSIENT) {
-                    break;                       // permanent: no point retrying
-                }
-                log.warn("verify.transient svcName={} attempt={}/{} code={}",
-                        svcName, attempt, maxAttempts, e.errorCode());
-                if (attempt < maxAttempts) {
-                    sleep();
-                }
-            } catch (RuntimeException e) {
-                // Unknown failure: do NOT retry by default (avoid storms on bugs); DLQ it.
-                last = new VerificationException(ErrorClass.PERMANENT, "UNEXPECTED", e.getClass().getName());
-                break;
-            }
+        try {
+            Map<String, Object> envelope = retry.execute(policy, () -> service.verify(svcName, request.payload()));
+            return CapabilityResponse.ok(request, envelope);
+        } catch (VerificationException e) {
+            return terminalFailure(request, svcName, e.errorClass(), e.errorClass() + ":" + e.errorCode());
+        } catch (RuntimeException e) {
+            // Unknown failure: PERMANENT (never blind-retry a bug), DLQ + notify.
+            return terminalFailure(request, svcName, ErrorClass.PERMANENT, "UNEXPECTED:" + e.getClass().getName());
         }
-
-        // Retries exhausted / permanent -> DLQ (never silent-ack), and return an error.
-        String reason = (last == null ? "UNKNOWN" : last.errorClass() + ":" + last.errorCode());
-        dlq.deadLetter(request, reason);
-        log.error("verify.dlq svcName={} reason={} — parked in DLQ (not lost) ALERT", svcName, reason);
-        return CapabilityResponse.error(request, last == null ? ErrorClass.PERMANENT : last.errorClass());
     }
 
-    private void sleep() {
-        if (backoffMillis == 0) return;
-        try {
-            Thread.sleep(backoffMillis);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+    /** Terminal technical failure: DLQ (audit, replay by NEW correlationId) + notify SFDC (run FAILED). */
+    private CapabilityResponse terminalFailure(CapabilityRequest request, String svcName,
+                                               ErrorClass errorClass, String reason) {
+        dlq.deadLetter(request, reason);
+        sfdcNotify.notifyFailure(request, reason);
+        log.error("verify.terminal-failure svcName={} class={} reason={} -> DLQ + notifySfdc (run FAILED) ALERT",
+                svcName, errorClass, reason);
+        return CapabilityResponse.error(request, errorClass);
     }
 }

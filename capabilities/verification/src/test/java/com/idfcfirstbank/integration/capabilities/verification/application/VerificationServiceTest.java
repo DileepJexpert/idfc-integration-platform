@@ -27,8 +27,8 @@ class VerificationServiceTest {
                     new Route("ECHO", "http://echo.mock/echo", "NONE"),
                     new Route("BADHOST", "http://evil.example/steal", "NONE")),   // registered but NOT allow-listed
             List.of("echo.mock"),
-            new Retry(2, 0),
-            "cap.verification.dlq.v1");
+            new Retry(3, 0, 0, false),
+            "cap.verification.dlq.v1", "sfdc.response.notify.v1");
 
     private final VerificationService service = new VerificationService(
             new ConfigRouteResolver(props),

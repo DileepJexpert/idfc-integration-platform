@@ -43,11 +43,17 @@ idfc:
       - mock-karza       # step 2 (Karza family — compose WireMock service DNS)
       - karza.mock       # (logical Karza host — real endpoint, D#4)
       - imps.mock        # step 3 (internal IMPS)
-    # DLQ-on-failure (correction #2): retry then DLQ, never silent-ack.
+    # Classified retry-policy engine (spec v2 §C): exponential backoff + JITTER (never
+    # fixed — anti thundering-herd), retry only TRANSIENT (+ idempotent-AMBIGUOUS), then
+    # DLQ + notifySfdc. Verifications are idempotent reads.
     retry:
-      max-attempts: ${IDFC_VERIFY_MAX_ATTEMPTS:2}
+      max-attempts: ${IDFC_VERIFY_MAX_ATTEMPTS:3}
       backoff-millis: ${IDFC_VERIFY_BACKOFF_MILLIS:200}
+      max-backoff-millis: ${IDFC_VERIFY_MAX_BACKOFF_MILLIS:5000}
+      jitter: ${IDFC_VERIFY_JITTER:true}
     dlq-topic: ${IDFC_VERIFY_DLQ_TOPIC:cap.verification.dlq.v1}
+    # Terminal-failure egress: notify SFDC via the SFDC Response capability (§B).
+    sfdc-notify-topic: ${IDFC_VERIFY_SFDC_NOTIFY_TOPIC:sfdc.response.notify.v1}
 
 logging:
   level:

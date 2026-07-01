@@ -2,49 +2,42 @@ package com.idfcfirstbank.integration.capabilities.verification.application.mapp
 
 import com.idfcfirstbank.integration.capabilities.verification.application.Mapper;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * KARZA_VAHAN_RC response mapper (BRD B.1): flatten the raw Karza response
- * ({@code metadata} + {@code resource_data[]}) to the decision shape
- * {@code { Status, errorMessage, result:[ { result:{ rcStatus, blackListStatus, ... } } ] }}.
- * The branch reads {@code result[0].result.rcStatus/blackListStatus}. blackListStatus is
- * NORMALISED to CLEAR/<reason>; rcStatus falls back to metadata.status. Full field list
- * (20+) enriches with open input D#3 — the DECISION fields are mapped here.
+ * KARZA_VAHAN_RC response mapper (spec v2 D.1): shape the raw Karza response
+ * ({@code metadata} + {@code resource_data[]}, each element carrying {@code requestId},
+ * {@code statusCode} and a nested {@code result} object) to
+ * {@code { Status, errorMessage, result:[ { requestId, statusCode, timeStamp, result:{…} } ] }}.
+ * The branch reads {@code result[0].result.rcStatus / blackListStatus}. The inner result is
+ * passed through UNINSPECTED (the decision fields are read by the branch, not the mapper).
  */
 public class KarzaVahanRcResponseMapper implements Mapper {
 
     @Override
-    @SuppressWarnings("unchecked")
     public Map<String, Object> map(Map<String, Object> raw) {
         Map<String, Object> metadata = asMap(raw == null ? null : raw.get("metadata"));
         List<Object> resourceData = asList(raw == null ? null : raw.get("resource_data"));
-        Map<String, Object> first = resourceData.isEmpty() ? Map.of() : asMap(resourceData.get(0));
 
-        Map<String, Object> inner = new LinkedHashMap<>();
-        inner.put("rcStatus", str(firstNonNull(first.get("rcStatus"), metadata.get("status"))));
-        inner.put("blackListStatus", normaliseBlackList(first.get("blackListStatus")));
-        inner.put("registrationNumber", first.get("registrationNumber"));
-        inner.put("ownerName", first.get("ownerName"));
-        inner.put("insuranceUpto", first.get("insuranceUpto"));
+        List<Object> result = new ArrayList<>();
+        for (Object element : resourceData) {
+            Map<String, Object> el = asMap(element);
+            Map<String, Object> mapped = new LinkedHashMap<>();
+            mapped.put("requestId", firstNonNull(el.get("requestId"), el.get("request_id")));
+            mapped.put("statusCode", str(el.get("statusCode")));
+            mapped.put("timeStamp", el.get("timeStamp"));
+            mapped.put("result", el.get("result"));   // nested decision object, passed through
+            result.add(mapped);
+        }
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("Status", str(metadata.getOrDefault("status", "")));
         out.put("errorMessage", "");
-        out.put("result", List.of(Map.of("result", inner)));
+        out.put("result", result);
         return out;
-    }
-
-    /** Karza blackListStatus -> CLEAR when not blacklisted, else the raw reason (uppercased). */
-    private static String normaliseBlackList(Object raw) {
-        String v = raw == null ? "" : String.valueOf(raw).trim();
-        if (v.isEmpty() || v.equalsIgnoreCase("NO") || v.equalsIgnoreCase("N")
-                || v.equalsIgnoreCase("CLEAR") || v.equalsIgnoreCase("FALSE")) {
-            return "CLEAR";
-        }
-        return v.toUpperCase();
     }
 
     @SuppressWarnings("unchecked")
