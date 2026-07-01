@@ -11,6 +11,11 @@ import java.util.function.Supplier;
  * Pure mapping from a validated inbound event + resolved routing + claim-check
  * ref to the canonical envelope. No I/O, no business logic. The platform-added
  * fields (transactionId, originalCorrelationId) are on the parity allowlist (§F).
+ *
+ * <p>When the event carries an already-parsed {@code businessPayload} (the SOAP
+ * path), it rides INLINE in the envelope so the engine reads the business fields
+ * straight into the journey context; the claim-check {@code payloadRef} still
+ * travels alongside. When absent (the JSON path), only the claim-check is set.
  */
 public class Normalizer {
 
@@ -37,6 +42,7 @@ public class Normalizer {
                 originalCorrelationId,
                 payloadRef,
                 event.payloadContentType(),
-                event.receivedAt());
+                event.receivedAt(),
+                event.businessPayload());   // inline business body (null on the claim-check-only path)
     }
 }

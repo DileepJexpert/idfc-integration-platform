@@ -63,11 +63,13 @@ idfc:
         downstream-journey: origination-journey
       # SOAP Outbound Message routing key = SVCNAME__c (normalisation spec §4).
       # New SVCNAME = a config ROW, not code. Inbound_Wrapper (liabilities/CASA
-      # account creation) publishes to an engine-consumed topic; with the engine's
-      # type->journey map empty it starts the default journey (plumbing proof).
+      # account creation) publishes to an engine-consumed topic and — to PROVE the
+      # whole path end-to-end — runs the existing loan-origination journey (the
+      # engine's type->journey map is empty, so it resolves to the loaded journey).
+      # A real account-creation journey is a later, additive config change.
       - type: Inbound_Wrapper
         topic: orig.sfdc.pl.v1
-        downstream-journey: account-creation
+        downstream-journey: loan-origination
     # Known orgs (org-config-as-data). Unknown org -> refresh+recheck -> DLQ (C2).
     known-orgs:
       - ORG1

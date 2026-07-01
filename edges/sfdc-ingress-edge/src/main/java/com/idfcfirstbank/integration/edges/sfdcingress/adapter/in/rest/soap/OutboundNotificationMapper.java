@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.edges.sfdcingress.domain.model.SfdcInboundEvent;
 
 import java.time.Clock;
+import java.util.Map;
 import java.util.function.Supplier;
 
 /**
@@ -57,9 +58,19 @@ public class OutboundNotificationMapper {
                 businessRef,
                 message.organizationId(),
                 n.svcName(),
-                bytes(businessPayload),
+                bytes(businessPayload),         // claim-check body (bytes)
                 "application/json",
-                clock.instant());
+                clock.instant(),
+                asMap(businessPayload));         // SAME body inline → reaches the engine's journey context
+    }
+
+    /** The parsed business body as a map for inline carriage in the canonical envelope. */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> asMap(JsonNode businessPayload) {
+        if (businessPayload == null || !businessPayload.isObject()) {
+            return null;
+        }
+        return objectMapper.convertValue(businessPayload, Map.class);
     }
 
     private JsonNode parse(String cdataJson) {
