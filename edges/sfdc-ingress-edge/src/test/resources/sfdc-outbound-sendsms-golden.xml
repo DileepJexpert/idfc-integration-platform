@@ -1,0 +1,43 @@
+<!--
+  GOLDEN FIXTURE #2 — real SFDC Outbound Message (SOAP): an SMS/OTP SEND.
+  Same envelope shape as the account-creation message, but a STRUCTURALLY DIFFERENT
+  Request__c CDATA: a Salesforce Task sObject (Mobile__c/Description/Type=OTP), NOT
+  a createGenericAccountReq. Routing key SVCNAME__c = SENDSMS (a communication
+  action, not a business journey). This fixture exists to prove the edge is
+  SCHEMA-AGNOSTIC about the CDATA body — it parses the envelope + SVCNAME and
+  carries the CDATA forward as an OPAQUE payload; it never assumes the body shape.
+
+  >>> Sandbox values (IDFC CD / cdqa1). REPLACE the ids/CDATA with the EXACT bytes
+      of the real file for a true byte-level test. NOTE: the Description carries an
+      OTP + mobile + loan number — PII. Fixtures only; production MUST NOT log it.
+-->
+<soapenv:Envelope
+    xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+    xmlns="http://soap.sforce.com/2005/09/outbound"
+    xmlns:sf1="urn:sobject.enterprise.soap.sforce.com">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <notifications>
+      <OrganizationId>00DC40000014dS1MAI</OrganizationId>
+      <ActionId>04kC400000008XyZAAU</ActionId>
+      <SessionId>SID</SessionId>
+      <EnterpriseUrl>https://idfcfirstbank-cd--cdqa1.sandbox.my.salesforce.com/services/Soap/c/58.0/00DC40000014dS1</EnterpriseUrl>
+      <PartnerUrl>https://idfcfirstbank-cd--cdqa1.sandbox.my.salesforce.com/services/Soap/u/58.0/00DC40000014dS1</PartnerUrl>
+
+      <Notification>
+        <Id>04lC4000000AbCdEAO</Id>
+        <sObject xsi:type="sf1:Task" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+          <sf1:Id>00T7F00000ABcdEFGHI</sf1:Id>
+          <sf1:CLIENTID__c>SFDC</sf1:CLIENTID__c>
+          <sf1:CreatedDate>2026-06-30T09:12:04.000Z</sf1:CreatedDate>
+          <sf1:LastModifiedDate>2026-06-30T09:12:04.000Z</sf1:LastModifiedDate>
+          <sf1:EXECMODE__c>ASYNC</sf1:EXECMODE__c>
+          <sf1:Request__c><![CDATA[{"attributes":{"type":"Task","url":"/services/data/v58.0/sobjects/Task/00T7F00000ABcdEFGHI"},"Id":"00T7F00000ABcdEFGHI","Mobile__c":"9894873985","Description":"731517 is OTP for accessing bureau info for Consumer Durable loan no. 401000034240. Valid for 10 minutes. Do not share. -IDFC FIRST Bank","Type":"OTP","Subject":"SEND OTP","Status":"Open"}]]></sf1:Request__c>
+          <sf1:SVCNAME__c>SENDSMS</sf1:SVCNAME__c>
+          <sf1:VERSION__c>1.0</sf1:VERSION__c>
+        </sObject>
+      </Notification>
+
+    </notifications>
+  </soapenv:Body>
+</soapenv:Envelope>

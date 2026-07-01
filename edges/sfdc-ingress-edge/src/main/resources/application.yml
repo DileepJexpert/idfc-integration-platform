@@ -62,20 +62,30 @@ idfc:
         topic: orig.sfdc.commercial.v1
         downstream-journey: origination-journey
       # SOAP Outbound Message routing key = SVCNAME__c (normalisation spec §4).
-      # New SVCNAME = a config ROW, not code. Inbound_Wrapper (liabilities/CASA
-      # account creation) publishes to an engine-consumed topic and — to PROVE the
-      # whole path end-to-end — runs the existing loan-origination journey (the
-      # engine's type->journey map is empty, so it resolves to the loaded journey).
-      # A real account-creation journey is a later, additive config change.
+      # New SVCNAME = a config ROW, not code. Two KINDS of target exist:
+      #   * a JOURNEY  — Inbound_Wrapper (CASA account creation) → an origination
+      #     journey. Publishes to an engine-consumed topic; the engine's
+      #     type->journey map is empty so it resolves the loaded loan-origination
+      #     journey (end-to-end plumbing proof; a real account-creation journey is
+      #     a later, additive config change).
+      #   * a CAPABILITY ACTION — SENDSMS (OTP/notification) → a Communications
+      #     capability. Not every SVCNAME is a journey; some are fire-and-forget
+      #     comms. Publishes to the comms topic; a Communications capability (mock
+      #     today) consumes it. The edge stays schema-agnostic: it carries the Task
+      #     CDATA as an OPAQUE payload and the capability reads Mobile__c/Description.
       - type: Inbound_Wrapper
         topic: orig.sfdc.pl.v1
         downstream-journey: loan-origination
+      - type: SENDSMS
+        topic: comm.sms.send.v1
+        downstream-journey: communications
     # Known orgs (org-config-as-data). Unknown org -> refresh+recheck -> DLQ (C2).
     known-orgs:
       - ORG1
       - IDFC_RETAIL
       - IDFC_BUSINESS
-      - 00D6D00000020HoUAI   # golden-fixture SFDC OrganizationId
+      - 00D6D00000020HoUAI   # golden-fixture SFDC OrganizationId (account-creation)
+      - 00DC40000014dS1MAI   # golden-fixture SFDC OrganizationId (CD sandbox / SENDSMS)
 
 # --- Error/flow tracking (added platform-wide) ----------------------------------
 # Readable console pattern incl. the journey correlationId from MDC (when present),
