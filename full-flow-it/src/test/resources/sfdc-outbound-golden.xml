@@ -1,0 +1,53 @@
+<!--
+  GOLDEN FIXTURE — real SFDC Outbound Message (SOAP), reconstructed from the actual request.
+  Batched: 1..100 <Notification> per envelope. Here 2 notifications to prove un-batching.
+  Business payload is JSON-inside-CDATA in <Request__c>. Routing key = <SVCNAME__c>.
+
+  >>> REPLACE the CDATA/ids with the EXACT bytes of your real file for a true byte-level test.
+      This reconstruction is faithful to the fields visible in the screenshots.
+-->
+<soapenv:Envelope
+    xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+    xmlns="http://soap.sforce.com/2005/09/outbound"
+    xmlns:sf1="urn:sobject.enterprise.soap.sforce.com">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <notifications>
+      <OrganizationId>00D6D00000020HoUAI</OrganizationId>
+      <ActionId>OUTID1240000000000</ActionId>
+      <SessionId>SID</SessionId>
+      <EnterpriseUrl>EnterpriseUrl</EnterpriseUrl>
+      <PartnerUrl>PartnerUrl</PartnerUrl>
+
+      <!-- 1 to 100 repetitions -->
+      <Notification>
+        <Id>04l6D00000AbCdE0001</Id>
+        <sObject>
+          <sf1:Id>a0X6D00000Rec0001</sf1:Id>
+          <sf1:CLIENTID__c>SFDC</sf1:CLIENTID__c>
+          <sf1:CreatedDate>2009-10-14T12:46:36.000Z</sf1:CreatedDate>
+          <sf1:LastModifiedDate>2014-10-27T15:14:59.000Z</sf1:LastModifiedDate>
+          <sf1:EXECMODE__c>ASYNC</sf1:EXECMODE__c>
+          <sf1:Request__c><![CDATA[{"createGenericAccountReq":{"msgHdr":{"hdrFlds":{"timestamp":"2023-10-16T07:25:46.302+05:30","msgId":"00171000002cecnAAA","hdrProp":[{"vl":"10201","nm":"BRANCHID"},{"vl":"777325","nm":"TELLERID"}]},"cnvId":"00171000002cecnAAA","frm":{"id":"BBG"}},"msgBdy":{"subProductType":"1041","relationship":"","rbiClssCtgryDr":350,"rbiClssCtgryCr":180,"rbiClssCdDr":351,"rbiAcctSgmntCd":186,"productType":"2000","nomIntnlty":"IN","nomRequred":"false","nomPinCd":"","nomineeType":"","nomineeState":"","nomineeName":"","nomineeDOB":"","nomineeCity":"","nomineeAddressLine2":"","nomineeAddressLine1":"","nomCntryCd":"","mulOptDepTyp":false,"mopFlds":[{"nm":"SINGLY","flg":"1","dsc":"SINGLY OWNED"},{"nm":"ALL","flg":"","dsc":"NOT REQUIRED"}],"loanNb":"0008405","lgCode":"101010","lcCode":"101010","isMinor":"","intrnNomNum1":"","hmBrnch":"40101","guardianState":"","guardianName":"","guardianCity":"","guardianAddress2":"","guardianAddress1":"","form60Flag":"S","embNm":"","customerId":"9900766374","custLoanNb":"","atmRq":"","atmCrd":"","adtnlId2":"","adtnlId1":"","actn1":"C"}}}]]></sf1:Request__c>
+          <sf1:SVCNAME__c>Inbound_Wrapper</sf1:SVCNAME__c>
+          <sf1:VERSION__c>1.0</sf1:VERSION__c>
+        </sObject>
+      </Notification>
+
+      <Notification>
+        <Id>04l6D00000AbCdE0002</Id>
+        <sObject>
+          <sf1:Id>a0X6D00000Rec0002</sf1:Id>
+          <sf1:CLIENTID__c>SFDC</sf1:CLIENTID__c>
+          <sf1:CreatedDate>2009-10-14T12:46:36.000Z</sf1:CreatedDate>
+          <sf1:LastModifiedDate>2014-10-27T15:14:59.000Z</sf1:LastModifiedDate>
+          <sf1:EXECMODE__c>ASYNC</sf1:EXECMODE__c>
+          <sf1:Request__c><![CDATA[{"createGenericAccountReq":{"msgHdr":{"hdrFlds":{"timestamp":"2023-10-16T07:26:11.114+05:30","msgId":"00171000002cecoBBB","hdrProp":[{"vl":"10201","nm":"BRANCHID"},{"vl":"777325","nm":"TELLERID"}]},"cnvId":"00171000002cecoBBB","frm":{"id":"BBG"}},"msgBdy":{"subProductType":"1041","productType":"2000","nomIntnlty":"IN","nomRequred":"false","mopFlds":[{"nm":"SINGLY","flg":"1","dsc":"SINGLY OWNED"}],"loanNb":"0008406","lgCode":"101010","lcCode":"101010","hmBrnch":"40101","form60Flag":"S","customerId":"9900766375","actn1":"C"}}}]]></sf1:Request__c>
+          <sf1:SVCNAME__c>Inbound_Wrapper</sf1:SVCNAME__c>
+          <sf1:VERSION__c>1.0</sf1:VERSION__c>
+        </sObject>
+      </Notification>
+
+    </notifications>
+  </soapenv:Body>
+</soapenv:Envelope>
