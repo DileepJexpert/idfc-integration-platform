@@ -31,6 +31,17 @@ otherwise.
 - **SFDC/FinnOne/Karza/S3** — mocked behind OUT ports (see the integration
   registry for per-system contracts).
 
+## Tracked follow-ups (deliberate stopgaps — labelled, not forgotten)
+
+- **`Inbound_Wrapper` → `loan-origination`** (engine `type-to-journey`): SFDC's
+  CASA account-creation SVCNAME deliberately routes to the loan-origination DAG
+  as the end-to-end plumbing demo. Pre-A2 this happened invisibly via the
+  empty-map fallback; now it is this explicit row. **Swap to a real
+  account-creation journey when one is authored** — a one-row config change.
+- **S3 claim-check resolution**: capabilities receive the envelope's identity
+  fields; resolving the real applicant payload from the `payloadRef` S3 pointer
+  is still mocked (see `docs/DEMO.md`).
+
 ## Build conventions (house style)
 
 - **Kotlin DSL** Gradle scripts (`*.gradle.kts`) throughout; shared logic lives in
