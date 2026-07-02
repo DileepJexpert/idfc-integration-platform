@@ -107,4 +107,61 @@ class AerospikeJourneyInstanceStoreIT {
         assertThat(winners.get()).as("exactly one CREATE_ONLY winner").isEqualTo(1);
         assertThat(store.find(id)).isPresent();
     }
+
+    /**
+     * The replicas:2 race at the STORE level: two replicas load the same
+     * generation and both save. EXPECT_GEN_EQUAL must reject the second write
+     * (ConcurrentModificationException → the loser's Kafka trigger redelivers and
+     * reprocesses from fresh state) — never a silent last-writer-wins overwrite.
+     */
+    @Test
+    void concurrentSaveFromSameGenerationLosesTheCas() {
+        JourneyInstance original = new JourneyInstance(
+                "ji-cas-1", "corr-cas", "loan-origination", "APP-C", Map.of("pan", "X"));
+        assertThat(store.insertIfAbsent(original)).isTrue();
+
+        // Two replicas load the SAME generation.
+        JourneyInstance replicaA = store.find("ji-cas-1").orElseThrow();
+        JourneyInstance replicaB = store.find("ji-cas-1").orElseThrow();
+
+        replicaA.recordResult("t_a", "capA", "context.a", Map.of("done", "a"));
+        store.save(replicaA); // first writer wins
+
+        replicaB.recordResult("t_b", "capB", "context.b", Map.of("done", "b"));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> store.save(replicaB))
+                .as("the slower replica must lose the generation CAS, not overwrite")
+                .isInstanceOf(java.util.ConcurrentModificationException.class);
+
+        // Nothing of A's write was lost.
+        JourneyInstance current = store.find("ji-cas-1").orElseThrow();
+        assertThat(current.isCompleted("t_a")).isTrue();
+        assertThat(current.isCompleted("t_b")).isFalse();
+
+        // The loser's redelivery re-reads fresh state and applies cleanly.
+        JourneyInstance retryB = store.find("ji-cas-1").orElseThrow();
+        retryB.recordResult("t_b", "capB", "context.b", Map.of("done", "b"));
+        store.save(retryB);
+        JourneyInstance merged = store.find("ji-cas-1").orElseThrow();
+        assertThat(merged.isCompleted("t_a")).isTrue();
+        assertThat(merged.isCompleted("t_b")).isTrue();
+    }
+
+    /** Pending publish intent (the hop outbox) round-trips through the bins. */
+    @Test
+    void pendingPublishIntentRoundTrips() {
+        JourneyInstance original = new JourneyInstance(
+                "ji-pend-1", "corr-pend", "loan-origination", "APP-P", Map.of("source", "SFDC"));
+        assertThat(store.insertIfAbsent(original)).isTrue();
+        original.setPendingPublishes(java.util.List.of("n_kyc", "n_bureau"),
+                new com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.JourneyDecision(
+                        "ji-pend-1", "corr-pend", "APP-P", "ERROR", null, "__timeout__",
+                        java.util.List.of(), "SFDC", "N-1", "R-1"));
+        store.save(original);
+
+        JourneyInstance restored = store.find("ji-pend-1").orElseThrow();
+        assertThat(restored.hasPendingPublishes()).isTrue();
+        assertThat(restored.pendingRequestNodeIds()).containsExactly("n_kyc", "n_bureau");
+        assertThat(restored.pendingDecision().outcome()).isEqualTo("ERROR");
+        assertThat(restored.pendingDecision().notificationId()).isEqualTo("N-1");
+    }
 }

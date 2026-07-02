@@ -11,10 +11,13 @@ description = "communications capability — SENDSMS/OTP notification action (mo
 
 dependencies {
     implementation(project(":shared:shared-domain"))
+    implementation(project(":platform:platform-messaging"))
     implementation("org.springframework.kafka:spring-kafka:${property("springKafkaVersion")}")
     implementation("com.fasterxml.jackson.core:jackson-databind")
 
     testImplementation("org.springframework.kafka:spring-kafka-test")
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testImplementation("org.assertj:assertj-core")
 }
 
 tasks.named<Test>("test") { useJUnitPlatform { excludeTags("integration") } }

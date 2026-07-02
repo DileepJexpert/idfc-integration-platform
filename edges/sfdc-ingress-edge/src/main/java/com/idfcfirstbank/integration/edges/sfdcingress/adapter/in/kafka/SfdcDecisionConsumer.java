@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.edges.sfdcingress.application.DecisionService;
 import com.idfcfirstbank.integration.edges.sfdcingress.domain.model.Decision;
+import com.idfcfirstbank.integration.platform.messaging.PoisonMessageException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -44,27 +45,29 @@ public class SfdcDecisionConsumer {
             topics = "${idfc.edge.decision-topic:orig.decision.v1}",
             groupId = "${idfc.edge.decision-group:sfdc-ingress-edge-decisions}")
     public void onMessage(String decisionJson) {
+        Map<String, Object> decision;
         try {
-            Map<String, Object> decision = objectMapper.readValue(decisionJson, MAP);
-            String source = str(decision.get("source"));
-            String notificationId = str(decision.get("notificationId"));
-
-            // Only act on SFDC-originated decisions; the digital edge owns its own.
-            if (!SFDC.equalsIgnoreCase(source) || notificationId == null) {
-                return;
-            }
-
-            String outcome = str(decision.get("outcome"));
-            String loanId = str(decision.get("loanId"));
-            String correlationId = str(decision.get("correlationId"));
-
-            boolean pushed = decisionService.applyDecision(
-                    notificationId, new Decision(outcome, loanId, null), correlationId);
-            log.info("sfdc.decision notificationId={} outcome={} loanId={} pushed={}",
-                    notificationId, outcome, loanId, pushed);
+            decision = objectMapper.readValue(decisionJson, MAP);
         } catch (Exception e) {
-            log.error("sfdc.decision could not process: {}", decisionJson, e);
+            throw new PoisonMessageException("sfdc.decision could not deserialize", e);
         }
+
+        String source = str(decision.get("source"));
+        String notificationId = str(decision.get("notificationId"));
+
+        // Only act on SFDC-originated decisions; the digital edge owns its own.
+        if (!SFDC.equalsIgnoreCase(source) || notificationId == null) {
+            return;
+        }
+
+        String outcome = str(decision.get("outcome"));
+        String loanId = str(decision.get("loanId"));
+        String correlationId = str(decision.get("correlationId"));
+
+        boolean pushed = decisionService.applyDecision(
+                notificationId, new Decision(outcome, loanId, null), correlationId);
+        log.info("sfdc.decision notificationId={} outcome={} loanId={} pushed={}",
+                notificationId, outcome, loanId, pushed);
     }
 
     private static String str(Object v) {

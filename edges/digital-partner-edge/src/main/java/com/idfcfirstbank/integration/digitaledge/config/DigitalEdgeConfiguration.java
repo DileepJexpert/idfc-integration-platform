@@ -84,10 +84,12 @@ public class DigitalEdgeConfiguration {
     }
 
     @Bean
-    IdempotencyGatePort idempotencyGatePort(IAerospikeClient client, DigitalEdgeProperties properties) {
+    IdempotencyGatePort idempotencyGatePort(IAerospikeClient client, DigitalEdgeProperties properties,
+                                            Clock clock) {
         var aero = properties.aerospike();
         return new AerospikeIdempotencyGate(client, aero.namespace(), aero.notificationSet(),
-                aero.applicationSet(), aero.ttlSeconds());
+                aero.applicationSet(), aero.ttlSeconds(), clock,
+                java.time.Duration.ofSeconds(properties.publishLeaseSeconds()));
     }
 
     // --- Kafka producer ----------------------------------------------------------

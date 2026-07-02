@@ -11,6 +11,7 @@ description = "digital-partner-edge — partner REST onto the SAME engine (one p
 dependencies {
     // The canonical envelope is the SHARED contract — same type the SFDC edge uses.
     implementation(project(":shared:shared-domain"))
+    implementation(project(":platform:platform-messaging"))
 
     implementation("org.springframework.kafka:spring-kafka:${property("springKafkaVersion")}")
     // SAME idempotency store as the platform (Aerospike) — partner resends dedupe too.

@@ -1,11 +1,11 @@
 package com.idfcfirstbank.integration.shared.capability;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.idfcfirstbank.integration.platform.messaging.KafkaDelivery;
+import com.idfcfirstbank.integration.platform.messaging.PoisonMessageException;
 import com.idfcfirstbank.integration.shared.domain.capability.CapabilityRequest;
 import com.idfcfirstbank.integration.shared.domain.capability.CapabilityResponse;
 import com.idfcfirstbank.integration.shared.domain.capability.CapabilityTopics;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -25,8 +25,6 @@ import org.springframework.kafka.listener.MessageListener;
 @AutoConfiguration
 @ConditionalOnBean(Capability.class)
 public class CapabilityFrameworkConfiguration {
-
-    private static final Logger log = LoggerFactory.getLogger(CapabilityFrameworkConfiguration.class);
 
     @Bean
     @ConditionalOnMissingBean
@@ -55,13 +53,30 @@ public class CapabilityFrameworkConfiguration {
                 factory.createContainer(requestTopic);
         container.getContainerProperties().setGroupId("cap-" + capability.key());
         container.setupMessageListener((MessageListener<String, String>) record -> {
+            CapabilityRequest req;
             try {
-                CapabilityRequest req = objectMapper.readValue(record.value(), CapabilityRequest.class);
-                CapabilityResponse resp = dispatcher.handle(req);
-                kafkaTemplate.send(responseTopic, resp.nodeId(), objectMapper.writeValueAsString(resp));
+                req = objectMapper.readValue(record.value(), CapabilityRequest.class);
             } catch (Exception e) {
-                log.error("capability {} could not process request: {}", capability.key(), record.value(), e);
+                // Undeserializable input can never succeed: straight to <topic>.dlq, no retry.
+                throw new PoisonMessageException(
+                        "capability " + capability.key() + " could not deserialize request", e);
             }
+            // Dispatch (idempotent) then CONFIRM the response send. A processing or
+            // delivery failure propagates to the container error handler (retry then
+            // DLQ) instead of being swallowed-and-committed — the offset is only
+            // committed once the response is durably published.
+            CapabilityResponse resp = dispatcher.handle(req);
+            String payload;
+            try {
+                payload = objectMapper.writeValueAsString(resp);
+            } catch (Exception e) {
+                throw new PoisonMessageException(
+                        "capability " + capability.key() + " could not serialize response", e);
+            }
+            // Keyed by journeyInstanceId — one run's responses stay ordered on one
+            // partition (nodeId would be a per-definition constant: a hot partition
+            // per node AND one journey's responses scattered across partitions).
+            KafkaDelivery.confirm(kafkaTemplate.send(responseTopic, resp.journeyInstanceId(), payload));
         });
         container.start();
         return container;

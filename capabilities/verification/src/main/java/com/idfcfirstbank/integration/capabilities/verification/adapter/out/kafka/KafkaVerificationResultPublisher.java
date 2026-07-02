@@ -2,6 +2,7 @@ package com.idfcfirstbank.integration.capabilities.verification.adapter.out.kafk
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.idfcfirstbank.integration.platform.messaging.KafkaDelivery;
 import com.idfcfirstbank.integration.shared.domain.capability.CapabilityResponse;
 import com.idfcfirstbank.integration.shared.domain.capability.CapabilityTopics;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -22,10 +23,12 @@ public class KafkaVerificationResultPublisher {
     }
 
     public void publish(CapabilityResponse response) {
+        String payload;
         try {
-            kafka.send(RESPONSE_TOPIC, response.journeyInstanceId(), objectMapper.writeValueAsString(response));
+            payload = objectMapper.writeValueAsString(response);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("could not serialise capability response", e);
         }
+        KafkaDelivery.confirm(kafka.send(RESPONSE_TOPIC, response.journeyInstanceId(), payload));
     }
 }

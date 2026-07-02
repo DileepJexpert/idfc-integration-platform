@@ -3,6 +3,7 @@ package com.idfcfirstbank.integration.orchestration.originationjourney.adapter.o
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.port.CapabilityRequestPort;
+import com.idfcfirstbank.integration.platform.messaging.KafkaDelivery;
 import com.idfcfirstbank.integration.shared.domain.capability.CapabilityRequest;
 import com.idfcfirstbank.integration.shared.domain.capability.CapabilityTopics;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -25,10 +26,13 @@ public class KafkaCapabilityRequestPublisher implements CapabilityRequestPort {
     @Override
     public void publish(CapabilityRequest request) {
         String topic = CapabilityTopics.request(request.capabilityKey());
+        String payload;
         try {
-            kafkaTemplate.send(topic, request.journeyInstanceId(), objectMapper.writeValueAsString(request));
+            payload = objectMapper.writeValueAsString(request);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("unserializable capability request for node " + request.nodeId(), e);
         }
+        // Confirm delivery: a broker failure must surface to the caller, not be lost.
+        KafkaDelivery.confirm(kafkaTemplate.send(topic, request.journeyInstanceId(), payload));
     }
 }

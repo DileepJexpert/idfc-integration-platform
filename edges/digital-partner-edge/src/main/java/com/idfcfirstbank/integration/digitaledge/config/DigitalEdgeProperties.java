@@ -15,13 +15,15 @@ public record DigitalEdgeProperties(
         List<Partner> partners,
         List<RouteRule> routing,
         Aerospike aerospike,
-        String decisionTopic) {
+        String decisionTopic,
+        int publishLeaseSeconds) {   // unpublished claim older than this = crashed attempt (default 60)
 
     public DigitalEdgeProperties {
         partners = partners == null ? List.of() : partners;
         routing = routing == null ? List.of() : routing;
         aerospike = aerospike == null ? new Aerospike(null, 0, null, null, null, 0) : aerospike;
         decisionTopic = decisionTopic == null || decisionTopic.isBlank() ? "orig.decision.v1" : decisionTopic;
+        publishLeaseSeconds = publishLeaseSeconds <= 0 ? 60 : publishLeaseSeconds;
     }
 
     /** A registered partner: auth token + decision callback URL (secrets via config/Vault). */

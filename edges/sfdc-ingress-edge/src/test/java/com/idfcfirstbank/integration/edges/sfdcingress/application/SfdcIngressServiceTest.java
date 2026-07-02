@@ -28,9 +28,14 @@ class SfdcIngressServiceTest {
     private final AtomicInteger txn = new AtomicInteger();
 
     private SfdcIngressService service(EdgePolicies policies) {
-        DedupeService dedupe = new DedupeService(store, clock);
+        return service(policies, clock);
+    }
+
+    /** Service bound to a specific clock — lets a test "resend later", past the publish lease. */
+    private SfdcIngressService service(EdgePolicies policies, Clock at) {
+        DedupeService dedupe = new DedupeService(store, at);
         Normalizer normalizer = new Normalizer(() -> "txn-" + txn.incrementAndGet());
-        return new SfdcIngressService(dedupe, store, orgConfig, blob, publisher, normalizer, policies, clock);
+        return new SfdcIngressService(dedupe, store, orgConfig, blob, publisher, normalizer, policies, at);
     }
 
     @BeforeEach
@@ -55,13 +60,44 @@ class SfdcIngressServiceTest {
     }
 
     @Test
-    void resendWhileInFlight_doesNotPublishAgain() {
+    void resendAfterConfirmedPublish_isIdempotentNoOp() {
         SfdcIngressService service = service(EdgePolicies.defaults());
         service.ingest(event("n1", "c1", "PERSONAL_LOAN", "ORG1"));
         EdgeResult resend = service.ingest(event("n1", "c2", "PERSONAL_LOAN", "ORG1"));
 
-        assertThat(resend.disposition()).isEqualTo(EdgeDisposition.ACK_DUPLICATE_INFLIGHT);
+        // The first ingest confirmed the publish and recorded PUBLISHED.
+        assertThat(resend.disposition()).isEqualTo(EdgeDisposition.ACK_DUPLICATE_PUBLISHED);
         assertThat(publisher.published).as("idempotent: still exactly one publish").hasSize(1);
+    }
+
+    @Test
+    void resendOfCrashedClaim_pastTheLease_reDrivesThePublish() {
+        // A pod died between claiming the record and publishing: the record is
+        // stuck RECEIVED and NOTHING is on Kafka. The old behavior ACKed the
+        // resend as "duplicate in-flight" — losing the message forever.
+        store.insertIfAbsent(com.idfcfirstbank.integration.edges.sfdcingress.domain.model.IdempotencyRecord
+                .newReceived("n1", "rec-n1", "app-n1", "ORG1", "c1", clock.instant()));
+
+        Clock later = Clock.fixed(clock.instant().plusSeconds(120), ZoneOffset.UTC); // past the 60s lease
+        SfdcIngressService service = service(EdgePolicies.defaults(), later);
+        EdgeResult resend = service.ingest(event("n1", "c2", "PERSONAL_LOAN", "ORG1"));
+
+        assertThat(resend.disposition()).isEqualTo(EdgeDisposition.ACK_PROCESSED);
+        assertThat(publisher.published).as("the crashed attempt's message is re-driven, not lost").hasSize(1);
+    }
+
+    @Test
+    void resendWhileWinnerIsLive_withinTheLease_doesNotRepublish() {
+        // Same stuck-RECEIVED shape, but WITHIN the lease: the winner may still be
+        // working — the resend must re-attach, not double-publish.
+        store.insertIfAbsent(com.idfcfirstbank.integration.edges.sfdcingress.domain.model.IdempotencyRecord
+                .newReceived("n1", "rec-n1", "app-n1", "ORG1", "c1", clock.instant()));
+
+        SfdcIngressService service = service(EdgePolicies.defaults()); // same instant = fresh claim
+        EdgeResult resend = service.ingest(event("n1", "c2", "PERSONAL_LOAN", "ORG1"));
+
+        assertThat(resend.disposition()).isEqualTo(EdgeDisposition.ACK_DUPLICATE_INFLIGHT);
+        assertThat(publisher.published).isEmpty();
     }
 
     @Test

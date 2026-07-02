@@ -73,7 +73,13 @@ public class SfdcIngressService {
         return switch (verdict.path()) {
             case NEW -> processForPublish(event, verdict.record());
             case IN_FLIGHT -> new EdgeResult(EdgeDisposition.ACK_DUPLICATE_INFLIGHT,
-                    event.notificationId(), "resend re-attached to in-flight record; no publish");
+                    event.notificationId(), "resend re-attached to live in-flight record; no publish");
+            // A crashed attempt (stuck RECEIVED, or IN_FLIGHT past the publish
+            // lease) means the envelope was never confirmed on Kafka. ACKing the
+            // resend as a duplicate would lose the message forever — re-drive it.
+            case STALLED -> handleStalledRedelivery(event, verdict.record());
+            case PUBLISHED -> new EdgeResult(EdgeDisposition.ACK_DUPLICATE_PUBLISHED,
+                    event.notificationId(), "resend after confirmed publish; idempotent, no re-publish");
             case DECIDED -> new EdgeResult(EdgeDisposition.ACK_DUPLICATE_DECIDED,
                     event.notificationId(), "resend after decision; idempotent, no push (C1)");
             case FAILED -> handleFailedRedelivery(event, verdict.record());
@@ -97,6 +103,10 @@ public class SfdcIngressService {
                     normalizer.toEnvelope(event, routing, payloadRef, inFlight.originalCorrelationId());
             publishOrThrow(envelope, routing, headersFor(event, inFlight));
 
+            // The envelope is CONFIRMED on Kafka — record it, so a later resend is
+            // a true idempotent no-op instead of a stalled-attempt re-drive.
+            markPublished(event.notificationId());
+
             log.info("edge.published notificationId={} type={} topic={} txId={}",
                     event.notificationId(), routing.typeCode(), routing.topic(), envelope.transactionId());
             return new EdgeResult(EdgeDisposition.ACK_PROCESSED, event.notificationId(),
@@ -115,6 +125,40 @@ public class SfdcIngressService {
         log.warn("edge.failed-resend notificationId={} redeliveryCount={} retryCount={}",
                 event.notificationId(), record.redeliveryCount(), record.retryCount());
         return processForPublish(event, record);
+    }
+
+    /**
+     * A resend of a CRASHED attempt (stuck RECEIVED / lease-expired IN_FLIGHT):
+     * the envelope was never confirmed, so drive the record to a clean publish
+     * exactly like a failed redelivery. Downstream is idempotent (the engine's
+     * exactly-once-start gate absorbs the rare double publish if the original
+     * attempt actually got the envelope out but died before recording it).
+     */
+    private EdgeResult handleStalledRedelivery(SfdcInboundEvent event, IdempotencyRecord record) {
+        log.warn("edge.stalled-resend notificationId={} status={} updatedAt={} — re-driving publish",
+                event.notificationId(), record.status(), record.updatedAt());
+        return processForPublish(event, record);
+    }
+
+    /** Record the confirmed publish (CAS-retry; a concurrent DECIDED wins and is fine). */
+    private void markPublished(String notificationId) {
+        for (int attempt = 0; attempt < 5; attempt++) {
+            IdempotencyRecord current = store.findByNotificationId(notificationId).orElse(null);
+            if (current == null) {
+                return; // vanished (TTL race) — nothing to mark
+            }
+            if (current.status() == RecordStatus.PUBLISHED || current.status() == RecordStatus.DECIDED
+                    || current.status() == RecordStatus.FAILED) {
+                return; // already recorded, or a later state won
+            }
+            CasResult cas = store.compareAndSetStatus(current, RecordStatus.PUBLISHED, null);
+            if (cas.applied()) {
+                return;
+            }
+            // generation moved under us — re-read and retry
+        }
+        log.warn("edge.mark-published could not record confirmed publish for notificationId={} "
+                + "(lease re-drive may duplicate; downstream dedups)", notificationId);
     }
 
     private EdgeResult onTransientFailure(SfdcInboundEvent event, IdempotencyRecord record, EdgeException cause) {

@@ -1,14 +1,9 @@
 package com.idfcfirstbank.integration.capabilities.lending.origination.config;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.capabilities.lending.origination.adapter.out.finnone.FinnOneStoredProcAdapter;
 import com.idfcfirstbank.integration.capabilities.lending.origination.adapter.out.finnone.MockFinnOneAdapter;
-import com.idfcfirstbank.integration.capabilities.lending.origination.adapter.out.kafka.KafkaCapabilityResponsePublisher;
 import com.idfcfirstbank.integration.capabilities.lending.origination.application.LendingOriginationService;
-import com.idfcfirstbank.integration.capabilities.lending.origination.domain.port.CapabilityResponsePort;
 import com.idfcfirstbank.integration.capabilities.lending.origination.domain.port.FinnOneBookingPort;
-import org.apache.kafka.clients.producer.ProducerConfig;
-import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -16,18 +11,20 @@ import org.springframework.boot.jdbc.DataSourceBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
-import org.springframework.kafka.core.DefaultKafkaProducerFactory;
-import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.kafka.core.ProducerFactory;
 
 import javax.sql.DataSource;
-import java.util.HashMap;
-import java.util.Map;
 
 /**
  * Wires the framework-free service to its ports. The FinnOne adapter is chosen by
  * config ({@code idfc.lending-origination.finnone.mode}); the concrete adapter is
  * exposed only as {@link FinnOneBookingPort}.
+ *
+ * <p>The Kafka shell is NOT wired here: the shared capability framework
+ * (shared-capability auto-configuration, triggered by the
+ * {@code LendingOriginationCapability} bean) consumes
+ * {@code cap.lending-origination.request.v1}, dispatches idempotently — a
+ * redelivered booking request never re-executes the FinnOne stored proc — and
+ * publishes the confirmed response.
  *
  * <p>The real FinnOne adapter is JDBC against an Oracle stored proc and needs a
  * {@link DataSource}. We inject it via {@link ObjectProvider} and resolve it ONLY
@@ -78,25 +75,5 @@ public class LendingOriginationConfiguration {
     LendingOriginationService lendingOriginationService(FinnOneBookingPort finnOneBookingPort,
             com.idfcfirstbank.integration.capabilities.lending.origination.domain.port.BrandValidationPort brandValidationPort) {
         return new LendingOriginationService(finnOneBookingPort, brandValidationPort);
-    }
-
-    @Bean
-    ProducerFactory<String, String> producerFactory(
-            @Value("${spring.kafka.bootstrap-servers:localhost:9092}") String bootstrapServers) {
-        Map<String, Object> config = new HashMap<>();
-        config.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        return new DefaultKafkaProducerFactory<>(config);
-    }
-
-    @Bean
-    KafkaTemplate<String, String> kafkaTemplate(ProducerFactory<String, String> producerFactory) {
-        return new KafkaTemplate<>(producerFactory);
-    }
-
-    @Bean
-    CapabilityResponsePort capabilityResponsePort(KafkaTemplate<String, String> kafkaTemplate, ObjectMapper objectMapper) {
-        return new KafkaCapabilityResponsePublisher(kafkaTemplate, objectMapper);
     }
 }

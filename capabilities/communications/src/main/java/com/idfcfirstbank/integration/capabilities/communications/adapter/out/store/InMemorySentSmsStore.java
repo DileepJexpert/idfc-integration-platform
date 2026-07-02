@@ -16,4 +16,9 @@ public class InMemorySentSmsStore implements SentSmsStorePort {
     public boolean markSentIfAbsent(String reference) {
         return sent.add(reference);   // false if already present (already sent)
     }
+
+    @Override
+    public void unmark(String reference) {
+        sent.remove(reference);       // release the claim so a failed send can be retried
+    }
 }

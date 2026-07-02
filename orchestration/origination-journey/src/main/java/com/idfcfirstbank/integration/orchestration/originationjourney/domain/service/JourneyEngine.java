@@ -133,6 +133,15 @@ public final class JourneyEngine {
                 "no branch arm matched and no default at node '" + branch.id() + "' (context=" + ctx + ")");
     }
 
+    /**
+     * Re-derive the capability request for a node from persisted state — used to
+     * re-drive a pending publish after a crash/redelivery. Deterministic given the
+     * definition and instance (same idempotencyKey), so the capability dedups it.
+     */
+    public CapabilityRequest requestFor(JourneyDefinition def, JourneyInstance instance, String nodeId) {
+        return buildRequest(instance, def.node(nodeId));
+    }
+
     private CapabilityRequest buildRequest(JourneyInstance instance, JourneyNode node) {
         // The §7 node's `operation` is now transmitted so a multi-operation
         // capability can dispatch on it; idempotencyKey = runId:nodeId makes a

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.JourneyDecision;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.port.DecisionOutboundPort;
+import com.idfcfirstbank.integration.platform.messaging.KafkaDelivery;
 import org.springframework.kafka.core.KafkaTemplate;
 
 /**
@@ -25,10 +26,13 @@ public class KafkaDecisionPublisher implements DecisionOutboundPort {
 
     @Override
     public void publish(JourneyDecision decision) {
+        String payload;
         try {
-            kafkaTemplate.send(decisionTopic, decision.applicationRef(), objectMapper.writeValueAsString(decision));
+            payload = objectMapper.writeValueAsString(decision);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("unserializable decision for instance " + decision.journeyInstanceId(), e);
         }
+        // Confirm delivery: the decision that closes the loop to SFDC must not be lost silently.
+        KafkaDelivery.confirm(kafkaTemplate.send(decisionTopic, decision.applicationRef(), payload));
     }
 }

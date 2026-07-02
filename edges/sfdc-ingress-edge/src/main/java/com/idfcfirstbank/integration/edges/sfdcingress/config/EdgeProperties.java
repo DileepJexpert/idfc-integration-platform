@@ -14,6 +14,7 @@ public record EdgeProperties(
         Auth auth,
         int poisonRedeliveryThreshold,   // C5 ceiling (default 5)
         int maxJourneyRetry,             // C3 ceiling (default 1)
+        int publishLeaseSeconds,         // IN_FLIGHT older than this = crashed attempt, re-drive (default 60)
         String dlqTopic,
         Finnone finnone,                 // backpressure harness config (§G)
         List<RouteRule> routing,
@@ -22,6 +23,7 @@ public record EdgeProperties(
     public EdgeProperties {
         poisonRedeliveryThreshold = poisonRedeliveryThreshold <= 0 ? 5 : poisonRedeliveryThreshold;
         maxJourneyRetry = maxJourneyRetry <= 0 ? 1 : maxJourneyRetry;
+        publishLeaseSeconds = publishLeaseSeconds <= 0 ? 60 : publishLeaseSeconds;
         dlqTopic = dlqTopic == null ? "orig.sfdc.dlq.v1" : dlqTopic;
         finnone = finnone == null ? new Finnone(4, "orig.sfdc.pl.v1") : finnone;
         routing = routing == null ? List.of() : routing;

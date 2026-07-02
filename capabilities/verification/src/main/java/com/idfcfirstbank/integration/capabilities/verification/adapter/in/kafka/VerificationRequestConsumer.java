@@ -3,22 +3,22 @@ package com.idfcfirstbank.integration.capabilities.verification.adapter.in.kafka
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.capabilities.verification.adapter.out.kafka.KafkaVerificationResultPublisher;
 import com.idfcfirstbank.integration.capabilities.verification.application.VerificationDispatcher;
+import com.idfcfirstbank.integration.platform.messaging.PoisonMessageException;
 import com.idfcfirstbank.integration.shared.domain.capability.CapabilityRequest;
 import com.idfcfirstbank.integration.shared.domain.capability.CapabilityResponse;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
 /**
  * IN adapter: consume verification requests, run the retry/DLQ dispatcher, publish the
- * result. On a deserialisation failure it logs ONLY the exception class — never the body
- * (reg no / email / account no are PII).
+ * result. Classified failures are handled ENTIRELY in-app by the dispatcher (retry →
+ * in-app DLQ + notify); only what the in-app path cannot cover reaches the shared
+ * container error handler: an undeserializable record (poison → raw-record DLQ; the
+ * in-app DLQ needs a PARSED request) and a publish failure of the result itself.
+ * PII: the poison cause is NOT chained — its message can echo the body.
  */
 @Component
 public class VerificationRequestConsumer {
-
-    private static final Logger log = LoggerFactory.getLogger(VerificationRequestConsumer.class);
 
     private final VerificationDispatcher dispatcher;
     private final KafkaVerificationResultPublisher resultPublisher;
@@ -39,8 +39,8 @@ public class VerificationRequestConsumer {
         try {
             request = objectMapper.readValue(requestJson, CapabilityRequest.class);
         } catch (Exception e) {
-            log.error("verify.request.unparseable (cause={})", e.getClass().getName());
-            return;
+            throw new PoisonMessageException(
+                    "verification could not deserialize request (cause=" + e.getClass().getName() + ")");
         }
         CapabilityResponse response = dispatcher.handle(request);   // retry + DLQ inside
         resultPublisher.publish(response);

@@ -4,8 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.digitaledge.application.ApplicationStatusStore;
 import com.idfcfirstbank.integration.digitaledge.domain.port.PartnerCallbackPort;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.idfcfirstbank.integration.platform.messaging.PoisonMessageException;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
@@ -20,7 +19,6 @@ import java.util.Map;
 @Component
 public class DecisionConsumer {
 
-    private static final Logger log = LoggerFactory.getLogger(DecisionConsumer.class);
     private static final TypeReference<Map<String, Object>> MAP = new TypeReference<>() {};
 
     private final ApplicationStatusStore statusStore;
@@ -38,24 +36,26 @@ public class DecisionConsumer {
             topics = "${idfc.digital-edge.decision-topic:orig.decision.v1}",
             groupId = "${idfc.digital-edge.decision-group:digital-partner-edge-decisions}")
     public void onMessage(String decisionJson) {
+        Map<String, Object> decision;
         try {
-            Map<String, Object> decision = objectMapper.readValue(decisionJson, MAP);
-            // Only act on DIGITAL-originated decisions; the SFDC edge owns its own.
-            // (The status store already scopes us to apps we published; this is the
-            // explicit, cheap guard now that the decision carries its source.)
-            String source = str(decision.get("source"));
-            if (source != null && !"DIGITAL".equalsIgnoreCase(source)) {
-                return;
-            }
-            String applicationRef = str(decision.get("applicationRef"));
-            String outcome = str(decision.get("outcome"));
-            String loanId = str(decision.get("loanId"));
-            statusStore.recordDecision(applicationRef, outcome, loanId).ifPresent(status ->
-                    partnerCallback.pushDecision(status.partner(), applicationRef, outcome, loanId,
-                            str(decision.get("correlationId"))));
+            decision = objectMapper.readValue(decisionJson, MAP);
         } catch (Exception e) {
-            log.error("digital.decision could not process: {}", decisionJson, e);
+            throw new PoisonMessageException("digital.decision could not deserialize", e);
         }
+
+        // Only act on DIGITAL-originated decisions; the SFDC edge owns its own.
+        // (The status store already scopes us to apps we published; this is the
+        // explicit, cheap guard now that the decision carries its source.)
+        String source = str(decision.get("source"));
+        if (source != null && !"DIGITAL".equalsIgnoreCase(source)) {
+            return;
+        }
+        String applicationRef = str(decision.get("applicationRef"));
+        String outcome = str(decision.get("outcome"));
+        String loanId = str(decision.get("loanId"));
+        statusStore.recordDecision(applicationRef, outcome, loanId).ifPresent(status ->
+                partnerCallback.pushDecision(status.partner(), applicationRef, outcome, loanId,
+                        str(decision.get("correlationId"))));
     }
 
     private static String str(Object v) {

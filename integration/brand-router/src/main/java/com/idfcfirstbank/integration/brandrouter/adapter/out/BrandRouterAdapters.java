@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.brandrouter.config.BrandRouterProperties;
 import com.idfcfirstbank.integration.brandrouter.domain.ActiveMqPort;
 import com.idfcfirstbank.integration.brandrouter.domain.KafkaResponsePort;
+import com.idfcfirstbank.integration.platform.messaging.KafkaDelivery;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
@@ -19,7 +20,7 @@ public class BrandRouterAdapters {
 
     @Bean
     KafkaResponsePort kafkaResponsePort(KafkaTemplate<String, String> template, BrandRouterProperties props) {
-        return (key, payload) -> template.send(props.getResponseTopic(), key, payload);
+        return (key, payload) -> KafkaDelivery.confirm(template.send(props.getResponseTopic(), key, payload));
     }
 
     @Bean

@@ -1,0 +1,234 @@
+{
+  "info": {
+    "name": "IDFC Integration Platform \u2014 edges",
+    "description": "REST entry points for the platform. SFDC assisted channel is SOAP (/outbound-messages); digital partner channel is JSON (/origination); /decisions is the manual C1 push-back. Kafka hops are watched in Kafka UI (http://localhost:8085), not here.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseSfdc",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "baseDigital",
+      "value": "http://localhost:8081"
+    },
+    {
+      "key": "sfdcToken",
+      "value": "dev-token"
+    },
+    {
+      "key": "partnerToken",
+      "value": "cred-dev-token"
+    }
+  ],
+  "item": [
+    {
+      "name": "0. health \u2014 SFDC edge",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseSfdc}}/actuator/health",
+        "description": ""
+      }
+    },
+    {
+      "name": "0. health \u2014 digital edge",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseDigital}}/actuator/health",
+        "description": ""
+      }
+    },
+    {
+      "name": "1. SFDC push \u2014 loan (SOAP golden, Inbound_Wrapper -> loan-origination, APPROVED)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-Auth-Token",
+            "value": "{{sfdcToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "text/xml"
+          }
+        ],
+        "url": "{{baseSfdc}}/api/v1/sfdc/outbound-messages",
+        "description": "The assisted channel. 2 notifications -> 2 canonical envelopes on orig.sfdc.pl.v1 -> engine runs loan-origination twice. applicationRef is null on the SOAP path, so both score 780 -> APPROVED. Returns SOAP <Ack>true</Ack>.",
+        "body": {
+          "mode": "raw",
+          "raw": "<!--\n  GOLDEN FIXTURE \u2014 real SFDC Outbound Message (SOAP), reconstructed from the actual request.\n  Batched: 1..100 <Notification> per envelope. Here 2 notifications to prove un-batching.\n  Business payload is JSON-inside-CDATA in <Request__c>. Routing key = <SVCNAME__c>.\n\n  >>> REPLACE the CDATA/ids with the EXACT bytes of your real file for a true byte-level test.\n      This reconstruction is faithful to the fields visible in the screenshots.\n-->\n<soapenv:Envelope\n    xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\"\n    xmlns=\"http://soap.sforce.com/2005/09/outbound\"\n    xmlns:sf1=\"urn:sobject.enterprise.soap.sforce.com\">\n  <soapenv:Header/>\n  <soapenv:Body>\n    <notifications>\n      <OrganizationId>00D6D00000020HoUAI</OrganizationId>\n      <ActionId>OUTID1240000000000</ActionId>\n      <SessionId>SID</SessionId>\n      <EnterpriseUrl>EnterpriseUrl</EnterpriseUrl>\n      <PartnerUrl>PartnerUrl</PartnerUrl>\n\n      <!-- 1 to 100 repetitions -->\n      <Notification>\n        <Id>04l6D00000AbCdE0001</Id>\n        <sObject>\n          <sf1:Id>a0X6D00000Rec0001</sf1:Id>\n          <sf1:CLIENTID__c>SFDC</sf1:CLIENTID__c>\n          <sf1:CreatedDate>2009-10-14T12:46:36.000Z</sf1:CreatedDate>\n          <sf1:LastModifiedDate>2014-10-27T15:14:59.000Z</sf1:LastModifiedDate>\n          <sf1:EXECMODE__c>ASYNC</sf1:EXECMODE__c>\n          <sf1:Request__c><![CDATA[{\"createGenericAccountReq\":{\"msgHdr\":{\"hdrFlds\":{\"timestamp\":\"2023-10-16T07:25:46.302+05:30\",\"msgId\":\"00171000002cecnAAA\",\"hdrProp\":[{\"vl\":\"10201\",\"nm\":\"BRANCHID\"},{\"vl\":\"777325\",\"nm\":\"TELLERID\"}]},\"cnvId\":\"00171000002cecnAAA\",\"frm\":{\"id\":\"BBG\"}},\"msgBdy\":{\"subProductType\":\"1041\",\"relationship\":\"\",\"rbiClssCtgryDr\":350,\"rbiClssCtgryCr\":180,\"rbiClssCdDr\":351,\"rbiAcctSgmntCd\":186,\"productType\":\"2000\",\"nomIntnlty\":\"IN\",\"nomRequred\":\"false\",\"nomPinCd\":\"\",\"nomineeType\":\"\",\"nomineeState\":\"\",\"nomineeName\":\"\",\"nomineeDOB\":\"\",\"nomineeCity\":\"\",\"nomineeAddressLine2\":\"\",\"nomineeAddressLine1\":\"\",\"nomCntryCd\":\"\",\"mulOptDepTyp\":false,\"mopFlds\":[{\"nm\":\"SINGLY\",\"flg\":\"1\",\"dsc\":\"SINGLY OWNED\"},{\"nm\":\"ALL\",\"flg\":\"\",\"dsc\":\"NOT REQUIRED\"}],\"loanNb\":\"0008405\",\"lgCode\":\"101010\",\"lcCode\":\"101010\",\"isMinor\":\"\",\"intrnNomNum1\":\"\",\"hmBrnch\":\"40101\",\"guardianState\":\"\",\"guardianName\":\"\",\"guardianCity\":\"\",\"guardianAddress2\":\"\",\"guardianAddress1\":\"\",\"form60Flag\":\"S\",\"embNm\":\"\",\"customerId\":\"9900766374\",\"custLoanNb\":\"\",\"atmRq\":\"\",\"atmCrd\":\"\",\"adtnlId2\":\"\",\"adtnlId1\":\"\",\"actn1\":\"C\"}}}]]></sf1:Request__c>\n          <sf1:SVCNAME__c>Inbound_Wrapper</sf1:SVCNAME__c>\n          <sf1:VERSION__c>1.0</sf1:VERSION__c>\n        </sObject>\n      </Notification>\n\n      <Notification>\n        <Id>04l6D00000AbCdE0002</Id>\n        <sObject>\n          <sf1:Id>a0X6D00000Rec0002</sf1:Id>\n          <sf1:CLIENTID__c>SFDC</sf1:CLIENTID__c>\n          <sf1:CreatedDate>2009-10-14T12:46:36.000Z</sf1:CreatedDate>\n          <sf1:LastModifiedDate>2014-10-27T15:14:59.000Z</sf1:LastModifiedDate>\n          <sf1:EXECMODE__c>ASYNC</sf1:EXECMODE__c>\n          <sf1:Request__c><![CDATA[{\"createGenericAccountReq\":{\"msgHdr\":{\"hdrFlds\":{\"timestamp\":\"2023-10-16T07:26:11.114+05:30\",\"msgId\":\"00171000002cecoBBB\",\"hdrProp\":[{\"vl\":\"10201\",\"nm\":\"BRANCHID\"},{\"vl\":\"777325\",\"nm\":\"TELLERID\"}]},\"cnvId\":\"00171000002cecoBBB\",\"frm\":{\"id\":\"BBG\"}},\"msgBdy\":{\"subProductType\":\"1041\",\"productType\":\"2000\",\"nomIntnlty\":\"IN\",\"nomRequred\":\"false\",\"mopFlds\":[{\"nm\":\"SINGLY\",\"flg\":\"1\",\"dsc\":\"SINGLY OWNED\"}],\"loanNb\":\"0008406\",\"lgCode\":\"101010\",\"lcCode\":\"101010\",\"hmBrnch\":\"40101\",\"form60Flag\":\"S\",\"customerId\":\"9900766375\",\"actn1\":\"C\"}}}]]></sf1:Request__c>\n          <sf1:SVCNAME__c>Inbound_Wrapper</sf1:SVCNAME__c>\n          <sf1:VERSION__c>1.0</sf1:VERSION__c>\n        </sObject>\n      </Notification>\n\n    </notifications>\n  </soapenv:Body>\n</soapenv:Envelope>\n",
+          "options": {
+            "raw": {
+              "language": "xml"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "2. SFDC push \u2014 SENDSMS (SOAP golden -> comm.sms.send.v1, fire-and-forget)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-Auth-Token",
+            "value": "{{sfdcToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "text/xml"
+          }
+        ],
+        "url": "{{baseSfdc}}/api/v1/sfdc/outbound-messages",
+        "description": "SVCNAME SENDSMS routes to comm.sms.send.v1 (communications capability, mock sender). No decision; watch the communications logs.",
+        "body": {
+          "mode": "raw",
+          "raw": "<!--\n  GOLDEN FIXTURE #2 \u2014 real SFDC Outbound Message (SOAP): an SMS/OTP SEND.\n  Same envelope shape as the account-creation message, but a STRUCTURALLY DIFFERENT\n  Request__c CDATA: a Salesforce Task sObject (Mobile__c/Description/Type=OTP), NOT\n  a createGenericAccountReq. Routing key SVCNAME__c = SENDSMS (a communication\n  action, not a business journey). This fixture exists to prove the edge is\n  SCHEMA-AGNOSTIC about the CDATA body \u2014 it parses the envelope + SVCNAME and\n  carries the CDATA forward as an OPAQUE payload; it never assumes the body shape.\n\n  >>> Sandbox values (IDFC CD / cdqa1). REPLACE the ids/CDATA with the EXACT bytes\n      of the real file for a true byte-level test. NOTE: the Description carries an\n      OTP + mobile + loan number \u2014 PII. Fixtures only; production MUST NOT log it.\n-->\n<soapenv:Envelope\n    xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\"\n    xmlns=\"http://soap.sforce.com/2005/09/outbound\"\n    xmlns:sf1=\"urn:sobject.enterprise.soap.sforce.com\">\n  <soapenv:Header/>\n  <soapenv:Body>\n    <notifications>\n      <OrganizationId>00DC40000014dS1MAI</OrganizationId>\n      <ActionId>04kC400000008XyZAAU</ActionId>\n      <SessionId>SID</SessionId>\n      <EnterpriseUrl>https://idfcfirstbank-cd--cdqa1.sandbox.my.salesforce.com/services/Soap/c/58.0/00DC40000014dS1</EnterpriseUrl>\n      <PartnerUrl>https://idfcfirstbank-cd--cdqa1.sandbox.my.salesforce.com/services/Soap/u/58.0/00DC40000014dS1</PartnerUrl>\n\n      <Notification>\n        <Id>04lC4000000AbCdEAO</Id>\n        <sObject xsi:type=\"sf1:Task\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">\n          <sf1:Id>00T7F00000ABcdEFGHI</sf1:Id>\n          <sf1:CLIENTID__c>SFDC</sf1:CLIENTID__c>\n          <sf1:CreatedDate>2026-06-30T09:12:04.000Z</sf1:CreatedDate>\n          <sf1:LastModifiedDate>2026-06-30T09:12:04.000Z</sf1:LastModifiedDate>\n          <sf1:EXECMODE__c>ASYNC</sf1:EXECMODE__c>\n          <sf1:Request__c><![CDATA[{\"attributes\":{\"type\":\"Task\",\"url\":\"/services/data/v58.0/sobjects/Task/00T7F00000ABcdEFGHI\"},\"Id\":\"00T7F00000ABcdEFGHI\",\"Mobile__c\":\"9894873985\",\"Description\":\"731517 is OTP for accessing bureau info for Consumer Durable loan no. 401000034240. Valid for 10 minutes. Do not share. -IDFC FIRST Bank\",\"Type\":\"OTP\",\"Subject\":\"SEND OTP\",\"Status\":\"Open\"}]]></sf1:Request__c>\n          <sf1:SVCNAME__c>SENDSMS</sf1:SVCNAME__c>\n          <sf1:VERSION__c>1.0</sf1:VERSION__c>\n        </sObject>\n      </Notification>\n\n    </notifications>\n  </soapenv:Body>\n</soapenv:Envelope>\n",
+          "options": {
+            "raw": {
+              "language": "xml"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "3. SFDC decision callback (manual C1 push-back)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-Correlation-Id",
+            "value": "corr-manual-1"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseSfdc}}/api/v1/sfdc/decisions",
+        "description": "Manual injection of a decision. Fires the SFDC push EXACTLY on the CAS into DECIDED; a second call with the same notificationId returns pushed=false (C1 guard).",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"notificationId\": \"REPLACE-with-a-notificationId\",\n  \"outcome\": \"APPROVED\",\n  \"applicationId\": \"LN-1\",\n  \"terms\": \"12m@10.5%\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "4. Digital origination \u2014 APPROVED (APP-HIGH-1)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-Partner-Token",
+            "value": "{{partnerToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseDigital}}/api/v1/digital/origination",
+        "description": "JSON channel. type PERSONAL_LOAN -> orig.sfdc.pl.v1 -> loan-origination. APP-HIGH-1 -> CIBIL 780 -> APPROVED + booked (loanId LN-APP-HIGH-1).",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"requestId\": \"req-1001\",\n  \"applicationRef\": \"APP-HIGH-1\",\n  \"type\": \"PERSONAL_LOAN\",\n  \"orgId\": \"ORG1\",\n  \"payload\": {\n    \"amount\": 500000,\n    \"pan\": \"ABCDE1234F\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "5. Digital origination \u2014 REJECTED (APP-LOW-1)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-Partner-Token",
+            "value": "{{partnerToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseDigital}}/api/v1/digital/origination",
+        "description": "'LOW' in applicationRef -> CIBIL 540 -> REJECTED, no booking.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"requestId\": \"req-1002\",\n  \"applicationRef\": \"APP-LOW-1\",\n  \"type\": \"PERSONAL_LOAN\",\n  \"orgId\": \"ORG1\",\n  \"payload\": {\n    \"amount\": 500000,\n    \"pan\": \"ABCDE1234F\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "6. Digital origination \u2014 DUPLICATE resend (same requestId as #4)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-Partner-Token",
+            "value": "{{partnerToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseDigital}}/api/v1/digital/origination",
+        "description": "Same requestId as #4 -> ACK_DUPLICATE_REQUEST, nothing re-published (idempotency gate).",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"requestId\": \"req-1001\",\n  \"applicationRef\": \"APP-HIGH-1\",\n  \"type\": \"PERSONAL_LOAN\",\n  \"orgId\": \"ORG1\",\n  \"payload\": {\n    \"amount\": 500000,\n    \"pan\": \"ABCDE1234F\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "7. Digital origination \u2014 bad token (401)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-Partner-Token",
+            "value": "nope"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseDigital}}/api/v1/digital/origination",
+        "description": "Unknown partner token -> 401 UNAUTHENTICATED.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"requestId\": \"req-9001\",\n  \"applicationRef\": \"APP-HIGH-9\",\n  \"type\": \"PERSONAL_LOAN\",\n  \"orgId\": \"ORG1\",\n  \"payload\": {\n    \"amount\": 500000,\n    \"pan\": \"ABCDE1234F\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    }
+  ]
+}
