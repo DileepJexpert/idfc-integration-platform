@@ -17,6 +17,7 @@ include("platform:platform-auth")         // Hydra + Kong two-token auth
 include("platform:platform-config")       // org-config-as-data store
 include("platform:platform-messaging")    // shared Kafka helpers
 include("platform:route-config-registry") // API-router endpoint/gateway config registry (BRD §7)
+include("platform:journey-registry")      // journey/version store + maker-checker (the designer↔engine seam)
 
 // integration/ — thin routing adapters (not capabilities)
 include("integration:brand-router")       // SFDC brand routing Kafka|ActiveMQ (BRD §6)

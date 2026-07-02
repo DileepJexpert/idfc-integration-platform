@@ -218,7 +218,7 @@ sequenceDiagram
 ### Inbound
 
 - **REST (SOAP):** `POST /api/v1/sfdc/outbound-messages` (`SfdcIngressController`) — the primary SFDC door; consumes a SOAP Outbound Message (`text/xml`), header `X-Auth-Token`; returns the SOAP `<Ack>true|false</Ack>` at HTTP 200 (all-or-nothing per batch — `false` makes SFDC resend the whole batch), a 500 SOAP fault if the envelope is unparseable, 401 on auth failure. Routing key per notification is `SVCNAME__c` (e.g. `Inbound_Wrapper`).
-- **REST (manual):** `POST /api/v1/sfdc/decisions` (`SfdcDecisionController`) — manual decision callback for the same `DecisionService`.
+- **REST (manual):** `POST /api/v1/sfdc/decisions` (`SfdcDecisionController`) — manual decision callback for the same `DecisionService`; header `X-Auth-Token` (same edge token as the SOAP inbound), 401 without it.
 - **Kafka (consumed):** `orig.decision.v1` (group `sfdc-ingress-edge-decisions`) via `SfdcDecisionConsumer` — the engine's decision topic; only `source == SFDC` messages are acted on.
 
 ### Outbound

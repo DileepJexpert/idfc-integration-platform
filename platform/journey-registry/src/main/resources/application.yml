@@ -1,0 +1,43 @@
+server:
+  port: ${SERVER_PORT:8104}   # journey-registry (control plane: designer writes, engine reads)
+
+spring:
+  application:
+    name: journey-registry
+
+idfc:
+  registry:
+    # Journey/version storage: "in-memory" (default, Docker-free) or "aerospike"
+    # (durable — published versions are the audit trail of what the engine ran).
+    store: ${IDFC_REGISTRY_STORE:in-memory}
+    # FAIL CLOSED: no compiled-in default. Set REGISTRY_AUTH_TOKEN (dev values come
+    # from the local profile / compose env) or the service refuses to start.
+    auth-token: ${REGISTRY_AUTH_TOKEN:}
+    # The DAG Designer is a browser app (Flutter web) — its dev-server origin must
+    # pass CORS preflight. Any localhost port by default.
+    cors-allowed-origin-patterns:
+      - ${REGISTRY_CORS_ORIGIN:http://localhost:[*]}
+    aerospike:
+      host: ${AEROSPIKE_HOST:localhost}
+      port: ${AEROSPIKE_PORT:3000}
+      namespace: ${AEROSPIKE_NAMESPACE:idfc}
+      meta-set: journey_meta
+      version-set: journey_version
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus   # locked down: no env/heapdump/etc.
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+# --- Error/flow tracking (platform-wide pattern) ---------------------------------
+logging:
+  level:
+    root: ${LOG_LEVEL_ROOT:INFO}
+    com.idfcfirstbank: ${LOG_LEVEL_APP:INFO}
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [${spring.application.name:-app}] [%X{correlationId:-}] %logger{36} - %msg%n"
