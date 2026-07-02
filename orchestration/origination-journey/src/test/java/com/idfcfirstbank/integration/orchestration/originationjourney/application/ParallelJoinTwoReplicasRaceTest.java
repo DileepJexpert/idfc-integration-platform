@@ -1,5 +1,6 @@
 package com.idfcfirstbank.integration.orchestration.originationjourney.application;
 
+import com.idfcfirstbank.integration.orchestration.originationjourney.support.FixedJourneySource;
 import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.store.InMemoryJourneyInstanceStore;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.InstanceStatus;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.JourneyDecision;
@@ -59,7 +60,7 @@ class ParallelJoinTwoReplicasRaceTest {
                 null, null, null, false, List.of("j"));
         JourneyNode j = JourneyNode.join("j", null, List.of("t_a", "t_b"), "allOf", List.of("end"));
         JourneyNode end = JourneyNode.terminal("end", "push_decision_to_channel", List.of(), "completed");
-        return new JourneyDefinition("race-journey", "p", List.of(p, ta, tb, j, end));
+        return new JourneyDefinition("race-journey", 1, "p", List.of(p, ta, tb, j, end));
     }
 
     /**
@@ -114,7 +115,7 @@ class ParallelJoinTwoReplicasRaceTest {
         List<JourneyDecision> decisions = new CopyOnWriteArrayList<>();
         JourneyOrchestrator orchestrator = new JourneyOrchestrator(
                 new JourneyEngine(new ExpressionEvaluator()),
-                new JourneyRegistry(List.of(raceJourney()), Map.of()),
+                FixedJourneySource.registry(Map.of("PL", "race-journey"), raceJourney()),
                 store, requests::add, decisions::add, () -> JI);
 
         // Start: parallel fan-out dispatches both arms.

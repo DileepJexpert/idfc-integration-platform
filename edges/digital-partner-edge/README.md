@@ -40,7 +40,8 @@ the engine genuinely cannot tell which channel sent the request.
   `{requestId, applicationRef, type, orgId, payload}`. Fast-ACK
   `{applicationId, status, detail}`. `200` ack · `422` unroutable · `401` unknown
   partner · `503` transient (retry).
-- `GET /api/v1/digital/applications/{applicationId}` — partner status/poll.
+- `GET /api/v1/digital/applications/{applicationId}` — partner status/poll (header
+  `X-Partner-Token`; tenant-scoped: another partner's application reads as `404`).
 - Decision returns to the partner via the logged callback (mock) when
   `orig.decision.v1` arrives.
 

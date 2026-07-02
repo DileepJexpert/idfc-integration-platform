@@ -1,5 +1,6 @@
 package com.idfcfirstbank.integration.orchestration.originationjourney.application;
 
+import com.idfcfirstbank.integration.orchestration.originationjourney.support.FixedJourneySource;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.loader.JourneyDefinitionLoader;
 import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.store.InMemoryJourneyInstanceStore;
@@ -61,7 +62,7 @@ class JourneyOrchestratorFlowTest {
     /** Run the whole journey, driving a simulated capability fleet, return the final decision. */
     private JourneyDecision runFlow(int bureauScore) {
         JourneyEngine engine = new JourneyEngine(new ExpressionEvaluator());
-        JourneyRegistry registry = new JourneyRegistry(List.of(def), Map.of());
+        JourneyRegistry registry = FixedJourneySource.registry(Map.of("PERSONAL_LOAN", def.key()), def);
         InMemoryJourneyInstanceStore store = new InMemoryJourneyInstanceStore();
         QueuePort requests = new QueuePort();
         CapturingDecisionPort decisions = new CapturingDecisionPort();

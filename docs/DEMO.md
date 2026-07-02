@@ -4,6 +4,12 @@ End-to-end origination across the platform: a REST call to the edge fans out
 through Kafka to the engine and the capability fleet, branches on the credit
 decision, books the loan on approval, and emits a decision.
 
+> The engine now loads its journeys from the **journey-registry** (what a
+> checker publishes in the DAG Designer is what runs, version-pinned for
+> in-flight runs). Operating and verifying that seam — publish flow, live
+> pinning demo, bootstrap-down check — is
+> [`docs/testing/REGISTRY_RUNBOOK.md`](testing/REGISTRY_RUNBOOK.md).
+
 ```
 curl ─▶ sfdc-ingress-edge ──orig.sfdc.pl.v1──▶ origination-journey (ENGINE)
                                                    │  walks the locked DAG

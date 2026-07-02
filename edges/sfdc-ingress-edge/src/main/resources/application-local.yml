@@ -6,3 +6,11 @@
 spring:
   kafka:
     bootstrap-servers: localhost:29092
+
+# Explicit LOCAL-DEV auth token. The base config has NO default (the app fails
+# closed when SFDC_EDGE_TOKEN is unset); activating the local profile is the
+# opt-in that supplies a dev value.
+idfc:
+  edge:
+    auth:
+      expected-token: ${SFDC_EDGE_TOKEN:dev-token}

@@ -12,6 +12,11 @@ import java.util.function.Supplier;
  * The envelope has no partner field by design: the engine must not be able to
  * tell which channel sent it. The partner is an edge-side concern (status store +
  * a Kafka header), never the shared body.
+ *
+ * <p>The applicant payload rides INLINE (locked decision — inline, NOT
+ * claim-check): the digital edge has no blob store, and a fabricated
+ * {@code payloadRef} pointing nowhere would silently discard the business data
+ * the engine and capabilities need. {@code payloadRef} is null on this channel.
  */
 public class DigitalNormalizer {
 
@@ -26,7 +31,7 @@ public class DigitalNormalizer {
         this.clock = clock;
     }
 
-    public CanonicalEnvelope toEnvelope(DigitalOriginationCommand command, String payloadRef) {
+    public CanonicalEnvelope toEnvelope(DigitalOriginationCommand command) {
         return new CanonicalEnvelope(
                 transactionIdSupplier.get(),
                 SCHEMA_VERSION,
@@ -38,8 +43,9 @@ public class DigitalNormalizer {
                 command.applicationRef(),
                 command.correlationId(),
                 command.correlationId(),       // originalCorrelationId == first correlationId
-                payloadRef,
+                null,                          // no claim-check on this channel — payload is inline
                 "application/json",
-                clock.instant());
+                clock.instant(),
+                command.payload());            // the applicant data, INLINE
     }
 }

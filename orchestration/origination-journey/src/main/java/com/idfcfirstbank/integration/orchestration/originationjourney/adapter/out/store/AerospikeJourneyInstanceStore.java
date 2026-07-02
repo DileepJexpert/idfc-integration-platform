@@ -48,6 +48,7 @@ public class AerospikeJourneyInstanceStore implements JourneyInstanceStore {
     private static final String B_PENDING_DEC = "pendDec";
     private static final String B_CORR = "corr";
     private static final String B_KEY = "jkey";
+    private static final String B_JVER = "jver";
     private static final String B_APPREF = "appRef";
     private static final String B_STATUS = "status";
     private static final String B_PAYLOAD = "payload";
@@ -158,6 +159,7 @@ public class AerospikeJourneyInstanceStore implements JourneyInstanceStore {
                 new Bin(B_STARTED, instance.startedAt() == null ? null : instance.startedAt().toString()),
                 new Bin(B_CORR, instance.correlationId()),
                 new Bin(B_KEY, instance.journeyKey()),
+                new Bin(B_JVER, instance.journeyVersion()),
                 new Bin(B_APPREF, instance.applicationRef()),
                 new Bin(B_STATUS, instance.status().name()),
                 new Bin(B_PAYLOAD, json(instance.payload())),
@@ -209,7 +211,11 @@ public class AerospikeJourneyInstanceStore implements JourneyInstanceStore {
         Instant startedAt = startedStr == null ? null : Instant.parse(startedStr);
         return JourneyInstance.restore(
                 journeyInstanceId,
-                r.getString(B_CORR), r.getString(B_KEY), r.getString(B_APPREF),
+                r.getString(B_CORR), r.getString(B_KEY),
+                // Legacy pre-pinning records have no jver bin — getInt maps the
+                // missing bin to 0, which the registry resolves as "current + warn".
+                r.getInt(B_JVER),
+                r.getString(B_APPREF),
                 readMap(r.getString(B_PAYLOAD)), startedAt,
                 r.generation, // the version this state was loaded at, for the CAS save
                 readMap(r.getString(B_COLLECTED)),

@@ -1,0 +1,12 @@
+# LOCAL profile — run against the docker-compose infra:
+#   docker compose -f docker-compose.infra.yml up -d
+# Explicit DEV-ONLY token (the base profile fails closed without one) and the
+# durable store, so drafts/publishes survive restarts like they will in prod.
+
+idfc:
+  registry:
+    store: aerospike
+    auth-token: dev-registry-token
+    aerospike:
+      host: localhost
+      port: 3000

@@ -6,3 +6,20 @@
 spring:
   kafka:
     bootstrap-servers: localhost:29092
+
+# Explicit LOCAL-DEV partner tokens. The base config has NO defaults (the app
+# fails closed when any configured partner's <CODE>_TOKEN is unset); activating
+# the local profile is the opt-in that supplies dev values. Spring replaces the
+# whole list, so the rows are re-declared here in full.
+idfc:
+  digital-edge:
+    partners:
+      - code: CRED
+        token: ${CRED_TOKEN:cred-dev-token}
+        callback-url: ${CRED_CALLBACK:http://localhost:9201/cred/callback}
+      - code: FLIPKART
+        token: ${FLIPKART_TOKEN:flipkart-dev-token}
+        callback-url: ${FLIPKART_CALLBACK:http://localhost:9202/flipkart/callback}
+      - code: GROWW
+        token: ${GROWW_TOKEN:groww-dev-token}
+        callback-url: ${GROWW_CALLBACK:http://localhost:9203/groww/callback}

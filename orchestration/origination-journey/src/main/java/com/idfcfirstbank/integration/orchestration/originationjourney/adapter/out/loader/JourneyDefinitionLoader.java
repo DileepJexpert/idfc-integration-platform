@@ -13,6 +13,7 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Parses the LOCKED §7 journey config JSON (the exact artifact the DAG Designer's
@@ -46,6 +47,9 @@ public class JourneyDefinitionLoader {
             key = text(root, "key"); // tolerate the bare key field
         }
         String startNodeId = text(root, "startNodeId");
+        // The published version this artifact IS — the pin unit. Registry-stamped
+        // configs always carry it; a bare classpath fixture defaults to 1.
+        int version = root.path("version").asInt(1);
         List<JourneyNode> nodes = new ArrayList<>();
         for (JsonNode n : root.path("nodes")) {
             nodes.add(parseNode(n));
@@ -53,7 +57,7 @@ public class JourneyDefinitionLoader {
         if (key == null || startNodeId == null || nodes.isEmpty()) {
             throw new IllegalStateException("journey contract missing journeyKey/startNodeId/nodes");
         }
-        return new JourneyDefinition(key, startNodeId, nodes);
+        return new JourneyDefinition(key, version, startNodeId, nodes);
     }
 
     private JourneyNode parseNode(JsonNode n) {
@@ -66,8 +70,8 @@ public class JourneyDefinitionLoader {
                     compensation(n), n.path("optional").asBoolean(false), stringList(n, "next"));
             case BRANCH -> JourneyNode.branch(id, condition, arms(n), text(n, "default"));
             case PARALLEL -> JourneyNode.parallel(id, condition, stringList(n, "branches"));
-            case JOIN -> JourneyNode.join(id, condition, stringList(n, "joinOn"), text(n, "policy"),
-                    stringList(n, "next"));
+            case JOIN -> JourneyNode.join(id, condition, stringList(n, "joinOn"),
+                    validJoinPolicy(id, text(n, "policy")), stringList(n, "next"));
             case WAIT -> JourneyNode.waitNode(id, condition, text(n, "waitFor"), text(n, "correlation"),
                     text(n, "timeout"), text(n, "onTimeout"), text(n, "output"), stringList(n, "next"));
             case TIMER -> JourneyNode.timer(id, condition, text(n, "delay"), text(n, "at"),
@@ -75,8 +79,36 @@ public class JourneyDefinitionLoader {
             case HUMAN, FOREACH, SUBJOURNEY ->
                     JourneyNode.passthrough(id, type, condition, stringList(n, "next"));
             case TERMINAL -> JourneyNode.terminal(id, text(n, "action"), stringList(n, "emit"),
-                    text(n, "status"));
+                    validTerminalStatus(id, text(n, "status")));
         };
+    }
+
+    // ---- fail-closed enum gates (Phase 3, §C) ---------------------------------
+    // The single most consequential output of the platform is the terminal
+    // decision. A typo'd status must NEVER load and silently approve; a join
+    // policy this engine tier cannot execute must NEVER load and silently run
+    // as allOf. Reject at load — publish-time, not mid-run with an applicant
+    // in flight.
+
+    private static final Set<String> TERMINAL_STATUSES = Set.of("completed", "rejected", "failed");
+    private static final String JOIN_POLICY_ALL_OF = "allOf";
+
+    private static String validTerminalStatus(String nodeId, String status) {
+        if (status != null && !TERMINAL_STATUSES.contains(status)) {
+            throw new IllegalStateException("terminal '" + nodeId + "' declares unknown status '" + status
+                    + "' (allowed: " + TERMINAL_STATUSES + ") — refusing to load: an unknown status must fail"
+                    + " closed, never default to an APPROVED decision");
+        }
+        return status;
+    }
+
+    private static String validJoinPolicy(String nodeId, String policy) {
+        if (policy != null && !JOIN_POLICY_ALL_OF.equals(policy)) {
+            throw new IllegalStateException("join '" + nodeId + "' declares policy '" + policy
+                    + "' which engine tier T1 cannot execute (only '" + JOIN_POLICY_ALL_OF + "') — refusing"
+                    + " to load: running it silently as allOf would change the journey's semantics");
+        }
+        return policy;
     }
 
     private List<BranchArm> arms(JsonNode n) {

@@ -76,8 +76,11 @@ public class JourneyOrchestrator {
         // exactly-once start without a second random run.
         String dedupKey = firstNonNull(correlationId, str(envelope.get("notificationId")), applicationRef);
         String instanceId = dedupKey != null ? "ji-" + dedupKey : instanceIdSupplier.get();
+        // The run PINS the definition version it starts on: every later hop
+        // resolves this exact key@version, so a publish mid-run changes nothing
+        // for this instance (A2 version pinning).
         JourneyInstance instance = new JourneyInstance(
-                instanceId, correlationId, def.key(), applicationRef, payloadOf(envelope));
+                instanceId, correlationId, def.key(), def.version(), applicationRef, payloadOf(envelope));
 
         if (!store.insertIfAbsent(instance)) {
             // Exactly-once start is absolute: a lost insert gate ALWAYS drops, even
@@ -91,8 +94,8 @@ public class JourneyOrchestrator {
             return instanceId;
         }
 
-        log.info("journey.start instanceId={} key={} correlationId={} applicationRef={}",
-                instanceId, def.key(), correlationId, applicationRef);
+        log.info("journey.start instanceId={} key={} version={} correlationId={} applicationRef={}",
+                instanceId, def.key(), def.version(), correlationId, applicationRef);
         dispatch(engine.start(def, instance), instance, def);
         return instanceId;
     }
@@ -106,7 +109,9 @@ public class JourneyOrchestrator {
             return;
         }
         JourneyInstance instance = found.get();
-        JourneyDefinition def = registry.byKey(instance.journeyKey());
+        // Resolve the PINNED version this run started on — never the (possibly
+        // newer) currently-published one.
+        JourneyDefinition def = registry.definitionFor(instance.journeyKey(), instance.journeyVersion());
 
         // Duplicate / late-response guard: the hop was already applied (node done)
         // or the run is terminal. Never re-run the engine for it — that would

@@ -1,5 +1,6 @@
 package com.idfcfirstbank.integration.fullflow;
 
+import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.loader.ClasspathJourneySource;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.capabilities.mandate.adapter.out.mock.MockAutopayLinkAdapter;
 import com.idfcfirstbank.integration.capabilities.mandate.adapter.out.mock.MockCbsNachAdapter;
@@ -92,9 +93,14 @@ class MandateJourneyChoreographyTest {
 
         JourneyDefinition def = new JourneyDefinitionLoader(new ObjectMapper())
                 .loadFromClasspath("journeys/" + contractFile);
+        JourneyRegistry registry = new JourneyRegistry(
+                new ClasspathJourneySource(new JourneyDefinitionLoader(new ObjectMapper()),
+                        List.of("journeys/" + contractFile)),
+                Map.of(def.key(), def.key()));
+        registry.bootstrap();
         JourneyOrchestrator orchestrator = new JourneyOrchestrator(
                 new JourneyEngine(new ExpressionEvaluator()),
-                new JourneyRegistry(List.of(def), Map.of()),
+                registry,
                 new InMemoryJourneyInstanceStore(),
                 bus, decisionPort, () -> "ji-" + correlationId);
         bus.bind(orchestrator);

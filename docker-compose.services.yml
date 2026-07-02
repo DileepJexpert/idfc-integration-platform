@@ -25,6 +25,8 @@ services:
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       IDFC_AEROSPIKE_HOST: aerospike
+      # Explicit LOCAL-DEV token (the app fails closed when unset — no compiled-in default).
+      SFDC_EDGE_TOKEN: ${SFDC_EDGE_TOKEN:-dev-token}
 
   digital-partner-edge:
     image: idfc/digital-partner-edge:0.1.0-SNAPSHOT
@@ -36,15 +38,50 @@ services:
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       AEROSPIKE_HOST: aerospike
+      # Explicit LOCAL-DEV partner tokens (the app fails closed when any is unset).
+      CRED_TOKEN: ${CRED_TOKEN:-cred-dev-token}
+      FLIPKART_TOKEN: ${FLIPKART_TOKEN:-flipkart-dev-token}
+      GROWW_TOKEN: ${GROWW_TOKEN:-groww-dev-token}
+
+  # The control plane (A1): the DAG Designer writes here, the engine reads
+  # published journeys from here. Reachable from the HOST on 8104 (the designer
+  # is a browser app; CORS allows localhost origins).
+  journey-registry:
+    image: idfc/journey-registry:0.1.0-SNAPSHOT
+    container_name: idfc-journey-registry
+    networks: [idfc]
+    ports:
+      - "8104:8104"
+    environment:
+      # Durable journey/version store — published versions are the audit trail.
+      IDFC_REGISTRY_STORE: aerospike
+      AEROSPIKE_HOST: aerospike
+      # Explicit LOCAL-DEV token (the app fails closed when unset — no compiled-in default).
+      REGISTRY_AUTH_TOKEN: ${REGISTRY_AUTH_TOKEN:-dev-registry-token}
 
   origination-journey:
     image: idfc/origination-journey:0.1.0-SNAPSHOT
     container_name: idfc-origination-journey
     networks: [idfc]
+    # The engine FAILS CLOSED at bootstrap when the registry is unreachable
+    # (deliberate A2 behavior: an engine with no journeys must not consume).
+    # depends_on orders startup; on-failure restarts absorb the remaining
+    # startup race. A genuinely-down registry leaves this container EXITED
+    # after 5 attempts with "refusing to start" in its logs — visible, not
+    # silently running the wrong config.
+    depends_on:
+      - journey-registry
+    restart: on-failure:5
     environment:
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       IDFC_ENGINE_ORIGINATION_TOPICS: orig.sfdc.pl.v1,orig.sfdc.lap.v1,orig.sfdc.bl.v1,orig.sfdc.commercial.v1
+      # Journeys from the REGISTRY (A2): what a checker publishes in the DAG
+      # Designer is what this engine runs. Flip to `classpath` only for the
+      # Docker-free bootstrap fallback (see docs/testing/REGISTRY_RUNBOOK.md).
+      IDFC_ENGINE_JOURNEY_SOURCE: registry
+      JOURNEY_REGISTRY_URL: http://journey-registry:8104
+      REGISTRY_AUTH_TOKEN: ${REGISTRY_AUTH_TOKEN:-dev-registry-token}
       # Durable journey state (the engine is the audit source-of-truth).
       IDFC_ENGINE_STATE_STORE: aerospike
       AEROSPIKE_HOST: aerospike

@@ -150,7 +150,7 @@ sequenceDiagram
 
 - **Inbound:**
   - `POST /api/v1/digital/origination` (header `X-Partner-Token`, optional `X-Correlation-Id`).
-  - `GET /api/v1/digital/applications/{applicationId}` (status poll).
+  - `GET /api/v1/digital/applications/{applicationId}` (status poll; header `X-Partner-Token`, tenant-scoped — another partner's application is a `404`).
   - Kafka consumer on `orig.decision.v1` (group `digital-partner-edge-decisions`).
 - **Outbound:**
   - Produces the `CanonicalEnvelope` (JSON, keyed by `notificationId`) to the origination topics resolved by `type`: `orig.sfdc.pl.v1`, `orig.sfdc.lap.v1`, `orig.sfdc.bl.v1`, `orig.sfdc.commercial.v1` — the **same topics as the SFDC edge**.

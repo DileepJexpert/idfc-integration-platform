@@ -9,6 +9,12 @@ spring:
 
 idfc:
   engine:
+    # Journeys from the LOCAL journey-registry (run :platform:journey-registry
+    # with the local profile first) — flip to "classpath" to run without it.
+    journey-source: ${IDFC_ENGINE_JOURNEY_SOURCE:registry}
+    registry:
+      base-url: http://localhost:8104
+      auth-token: dev-registry-token   # DEV ONLY — matches the registry's local profile
     # Durable run state against the docker Aerospike (audit source-of-truth).
     state-store: aerospike
     aerospike:

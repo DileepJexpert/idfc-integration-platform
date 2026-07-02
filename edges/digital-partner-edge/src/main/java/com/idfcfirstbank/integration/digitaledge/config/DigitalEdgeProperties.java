@@ -20,6 +20,17 @@ public record DigitalEdgeProperties(
 
     public DigitalEdgeProperties {
         partners = partners == null ? List.of() : partners;
+        // FAIL CLOSED (Phase 5): a configured partner row with no token means the
+        // env secret is missing — refuse to start rather than silently carrying a
+        // partner nobody can authenticate as (or, worse, a compiled-in default
+        // token anyone can read from the repo).
+        for (Partner p : partners) {
+            if (p.token() == null || p.token().isBlank()) {
+                throw new IllegalStateException(
+                        "partner '" + p.code() + "' has no auth token (env " + p.code() + "_TOKEN) — the"
+                                + " digital edge refuses to start; there is no fail-open default");
+            }
+        }
         routing = routing == null ? List.of() : routing;
         aerospike = aerospike == null ? new Aerospike(null, 0, null, null, null, 0) : aerospike;
         decisionTopic = decisionTopic == null || decisionTopic.isBlank() ? "orig.decision.v1" : decisionTopic;

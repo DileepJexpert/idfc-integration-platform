@@ -19,15 +19,18 @@ idfc:
   digital-edge:
     decision-topic: orig.decision.v1
     # Partner registry as config-as-data — onboarding a partner is a row, not a service.
+    # FAIL CLOSED: no compiled-in token defaults. A configured partner with a missing
+    # <CODE>_TOKEN refuses to start (see DigitalEdgeProperties). Local dev/compose set
+    # explicit dev values; EKS injects them from the idfc-platform-secrets Secret.
     partners:
       - code: CRED
-        token: ${CRED_TOKEN:cred-dev-token}
+        token: ${CRED_TOKEN:}
         callback-url: ${CRED_CALLBACK:http://localhost:9201/cred/callback}
       - code: FLIPKART
-        token: ${FLIPKART_TOKEN:flipkart-dev-token}
+        token: ${FLIPKART_TOKEN:}
         callback-url: ${FLIPKART_CALLBACK:http://localhost:9202/flipkart/callback}
       - code: GROWW
-        token: ${GROWW_TOKEN:groww-dev-token}
+        token: ${GROWW_TOKEN:}
         callback-url: ${GROWW_CALLBACK:http://localhost:9203/groww/callback}
     # SAME routing as the SFDC edge: a businessLine type -> the SAME origination topic.
     routing:

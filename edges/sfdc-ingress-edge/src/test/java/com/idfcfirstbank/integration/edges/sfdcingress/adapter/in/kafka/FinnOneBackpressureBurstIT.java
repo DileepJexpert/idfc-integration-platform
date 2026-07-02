@@ -48,6 +48,8 @@ class FinnOneBackpressureBurstIT {
         // Keep the edge's Aerospike bean from hard-failing context startup; this
         // test exercises only the Kafka consumer path.
         registry.add("idfc.aerospike.host", () -> "localhost");
+        // The edge fails closed without an auth token (no compiled-in default).
+        registry.add("idfc.edge.auth.expected-token", () -> "it-test-token");
     }
 
     @Autowired

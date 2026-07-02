@@ -21,5 +21,15 @@ dependencies {
     testImplementation(project(":capabilities:communications"))
     testImplementation(project(":capabilities:verification"))
     testImplementation(project(":edges:sfdc-ingress-edge"))
+    testImplementation(project(":edges:digital-partner-edge"))
     testImplementation("com.fasterxml.jackson.core:jackson-databind")
+    testImplementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310") // Instant on the envelope
+
+    // RegistryEngineSeamIT: the REAL engine app booted against the REAL
+    // journey-registry over HTTP, with an embedded Kafka carrying the traffic.
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("org.springframework.boot:spring-boot-starter-web")
+    testImplementation("org.springframework.kafka:spring-kafka")
+    testImplementation("org.springframework.kafka:spring-kafka-test")
+    testImplementation("org.awaitility:awaitility:${property("awaitilityVersion")}")
 }

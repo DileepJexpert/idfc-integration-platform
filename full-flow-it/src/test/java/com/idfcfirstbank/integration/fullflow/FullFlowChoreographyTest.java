@@ -1,5 +1,6 @@
 package com.idfcfirstbank.integration.fullflow;
 
+import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.loader.ClasspathJourneySource;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.capabilities.bureau.adapter.out.cibil.MockCibilAdapter;
 import com.idfcfirstbank.integration.capabilities.bureau.application.BureauFetchService;
@@ -89,9 +90,14 @@ class FullFlowChoreographyTest {
 
         JourneyDefinition def = new JourneyDefinitionLoader(new ObjectMapper())
                 .loadFromClasspath("journeys/loan-origination.journey.json");
+        JourneyRegistry registry = new JourneyRegistry(
+                new ClasspathJourneySource(new JourneyDefinitionLoader(new ObjectMapper()),
+                        List.of("journeys/loan-origination.journey.json")),
+                Map.of("PERSONAL_LOAN", "loan-origination"));
+        registry.bootstrap();
         JourneyOrchestrator orchestrator = new JourneyOrchestrator(
                 new JourneyEngine(new ExpressionEvaluator()),
-                new JourneyRegistry(List.of(def), Map.of()),
+                registry,
                 new InMemoryJourneyInstanceStore(),
                 bus, decisionPort, () -> "ji-fullflow");
         bus.bind(orchestrator);
