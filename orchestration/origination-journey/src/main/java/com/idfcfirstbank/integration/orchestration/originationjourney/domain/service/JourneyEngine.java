@@ -111,8 +111,19 @@ public final class JourneyEngine {
             }
             case TERMINAL -> {
                 instance.markCompleted(node.id());
-                instance.complete();
-                outcome.decide(buildDecision(instance, node));
+                String resolved = terminalOutcome(node);
+                if (resolved == null) {
+                    // Fail CLOSED (Phase 3): an unknown terminal status must never
+                    // default to an APPROVED lending decision. The loader rejects
+                    // these at load; this guards definitions built any other way.
+                    instance.fail();
+                    outcome.decide(decisionOf(instance, JourneyDecision.ERROR,
+                            loanIdFrom(instance), node.id(), node.emit()));
+                } else {
+                    instance.complete();
+                    outcome.decide(decisionOf(instance, resolved,
+                            loanIdFrom(instance), node.id(), node.emit()));
+                }
             }
             default -> throw new UnsupportedOperationException(
                     "node type " + node.type() + " ('" + node.id() + "') is not supported in engine tier T1");
@@ -129,8 +140,12 @@ public final class JourneyEngine {
         if (branch.defaultNext() != null) {
             return branch.defaultNext();
         }
+        // PII: ids only — the evaluation context carries the applicant payload
+        // (PAN/mobile/…) and this message ends up in logs and DLQ headers.
         throw new IllegalStateException(
-                "no branch arm matched and no default at node '" + branch.id() + "' (context=" + ctx + ")");
+                "no branch arm matched and no default at node '" + branch.id()
+                        + "' (journeyInstanceId=" + instance.journeyInstanceId()
+                        + ", contextKeys=" + ctx.keySet() + ")");
     }
 
     /**
@@ -157,13 +172,19 @@ public final class JourneyEngine {
                 instance.journeyInstanceId() + ":" + node.id());
     }
 
-    private JourneyDecision buildDecision(JourneyInstance instance, JourneyNode terminal) {
-        String outcome = switch (terminal.status() == null ? "completed" : terminal.status()) {
+    /**
+     * Map a terminal node's declared status to the decision outcome. Returns
+     * {@code null} for an UNKNOWN status — the caller fails the run (fail closed);
+     * only the three contract statuses may produce a decision, and only
+     * {@code completed} may produce APPROVED.
+     */
+    private static String terminalOutcome(JourneyNode terminal) {
+        return switch (terminal.status() == null ? "completed" : terminal.status()) {
+            case "completed" -> JourneyDecision.APPROVED;
             case "rejected" -> JourneyDecision.REJECTED;
             case "failed" -> JourneyDecision.ERROR;
-            default -> JourneyDecision.APPROVED;
+            default -> null;
         };
-        return decisionOf(instance, outcome, loanIdFrom(instance), terminal.id(), terminal.emit());
     }
 
     private JourneyDecision errorDecision(JourneyInstance instance, String terminalNodeId) {

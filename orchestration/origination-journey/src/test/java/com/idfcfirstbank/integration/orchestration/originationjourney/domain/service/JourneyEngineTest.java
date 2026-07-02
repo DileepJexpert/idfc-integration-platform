@@ -140,6 +140,71 @@ class JourneyEngineTest {
         });
     }
 
+    @Test
+    void unknownTerminalStatusFailsClosedNeverApproves() {
+        // Phase 3 defense-in-depth: the loader rejects unknown statuses, but a
+        // definition built any other way (registry, tests, future loaders) must
+        // ALSO fail closed at runtime — a typo can never approve a loan.
+        com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.JourneyNode task =
+                com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.JourneyNode.task(
+                        "t", null, "kyc", null, null, "context.kyc", null, null, null, false,
+                        java.util.List.of("end"));
+        com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.JourneyNode typoTerminal =
+                com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.JourneyNode.terminal(
+                        "end", "push_decision_to_channel", java.util.List.of(), "aproved"); // typo
+        JourneyDefinition typoDef = new JourneyDefinition("typo-journey", "t", java.util.List.of(task, typoTerminal));
+
+        JourneyInstance instance = new JourneyInstance("ji-typo", "corr-t", "typo-journey", "APP-T", Map.of());
+        engine.start(typoDef, instance);
+        EngineOutcome outcome = engine.onCapabilityResponse(typoDef, instance,
+                new CapabilityResponse("ji-typo", "corr-t", "t", "kyc", CapabilityStatus.OK, Map.of()));
+
+        assertThat(outcome.decision()).hasValueSatisfying(d ->
+                assertThat(d.outcome())
+                        .as("an unknown terminal status must produce ERROR — NEVER an APPROVED decision")
+                        .isEqualTo(JourneyDecision.ERROR));
+        assertThat(instance.status()).isEqualTo(InstanceStatus.FAILED);
+    }
+
+    @Test
+    void unmatchedBranchExceptionCarriesIdsOnlyNeverTheApplicantPayload() {
+        // Phase 3 PII: this exception propagates into logs/DLQ — it must not
+        // embed the evaluation context (PAN, mobile, ...), only ids.
+        JourneyInstance instance = new JourneyInstance("ji-pii", "corr-p", def.key(), "APP-P",
+                Map.of("pan", "SECRETPAN99"));
+        engine.start(def, instance);
+        advance(instance, "n_customer", "customer-party", Map.of("crn", "CRN-1"));
+        advance(instance, "n_kyc", "kyc", Map.of("kycStatus", "VERIFIED"));
+        advance(instance, "n_bureau", "bureau", Map.of("bureauScore", 700));
+
+        // A branch with no matching arm AND no default cannot happen with the
+        // locked journey (it has a default) — drive a defaultless branch directly.
+        com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.JourneyNode task =
+                com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.JourneyNode.task(
+                        "t", null, "kyc", null, null, null, null, null, null, false, java.util.List.of("b"));
+        com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.JourneyNode branch =
+                com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.JourneyNode.branch(
+                        "b", null, java.util.List.of(
+                                new com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.BranchArm(
+                                        "context.never == 'x'", "end")), null);
+        com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.JourneyNode end =
+                com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.JourneyNode.terminal(
+                        "end", "push", java.util.List.of(), "completed");
+        JourneyDefinition noDefault = new JourneyDefinition("nd", "t", java.util.List.of(task, branch, end));
+        JourneyInstance piiInstance = new JourneyInstance("ji-nd", "corr-nd", "nd", "APP-ND",
+                Map.of("pan", "SECRETPAN99"));
+        engine.start(noDefault, piiInstance);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                        engine.onCapabilityResponse(noDefault, piiInstance, new CapabilityResponse(
+                                "ji-nd", "corr-nd", "t", "kyc", CapabilityStatus.OK, Map.of())))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("ji-nd")
+                .satisfies(e -> assertThat(e.getMessage())
+                        .as("no applicant data in the exception message")
+                        .doesNotContain("SECRETPAN99"));
+    }
+
     private void assertEmits(EngineOutcome outcome, String expectCap, String expectNode) {
         assertThat(outcome.requests()).singleElement().satisfies(r -> {
             assertThat(r.capabilityKey()).isEqualTo(expectCap);

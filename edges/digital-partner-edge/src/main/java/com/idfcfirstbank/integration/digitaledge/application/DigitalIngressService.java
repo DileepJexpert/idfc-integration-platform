@@ -73,7 +73,7 @@ public class DigitalIngressService {
                     command.requestId(), command.applicationRef());
         }
 
-        CanonicalEnvelope envelope = normalizer.toEnvelope(command, payloadRef(command));
+        CanonicalEnvelope envelope = normalizer.toEnvelope(command);
         try {
             publisher.publish(envelope, topic.get());
         } catch (RuntimeException e) {
@@ -95,10 +95,5 @@ public class DigitalIngressService {
     private static String applicationId(DigitalOriginationCommand command) {
         // Deterministic so a resend returns the SAME applicationId to the partner.
         return "DIG-" + command.partner() + "-" + command.applicationRef();
-    }
-
-    private static String payloadRef(DigitalOriginationCommand command) {
-        // Claim-check placeholder (same pattern as the SFDC edge's S3 ref).
-        return "digital-claimcheck://" + command.requestId();
     }
 }

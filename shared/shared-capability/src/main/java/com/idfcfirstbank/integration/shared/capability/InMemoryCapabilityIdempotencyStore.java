@@ -75,6 +75,17 @@ public class InMemoryCapabilityIdempotencyStore implements CapabilityIdempotency
         }
 
         try {
+            // Double-check AFTER winning the claim: a racer may have computed,
+            // cached and released between our cache miss and our putIfAbsent.
+            // The cache is always written BEFORE the in-flight release, so a
+            // winner-after-release is guaranteed to see the result here — this
+            // closes the check-then-act window that could execute twice.
+            CapabilityResponse racedResult = cachedIfFresh(key);
+            if (racedResult != null) {
+                mine.complete(racedResult);
+                return racedResult;
+            }
+
             CapabilityResponse result = compute.get();
             // Cache ONLY successful results; failures are re-attemptable on redelivery.
             if (result != null && result.status() == CapabilityStatus.OK) {

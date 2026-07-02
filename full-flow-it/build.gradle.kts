@@ -21,5 +21,7 @@ dependencies {
     testImplementation(project(":capabilities:communications"))
     testImplementation(project(":capabilities:verification"))
     testImplementation(project(":edges:sfdc-ingress-edge"))
+    testImplementation(project(":edges:digital-partner-edge"))
     testImplementation("com.fasterxml.jackson.core:jackson-databind")
+    testImplementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310") // Instant on the envelope
 }

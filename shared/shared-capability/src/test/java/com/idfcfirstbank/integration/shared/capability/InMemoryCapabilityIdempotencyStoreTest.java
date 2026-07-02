@@ -84,6 +84,43 @@ class InMemoryCapabilityIdempotencyStoreTest {
     }
 
     @Test
+    void fastConcurrentComputesNeverDoubleExecute() throws Exception {
+        // Regression for the check-then-act window: with a FAST compute, a racer
+        // could miss the cache, lose the claim window entirely (winner already
+        // computed+cached+released), then win putIfAbsent and execute a second
+        // time. Hammer many rounds of fresh keys with no sleep in the compute.
+        var store = new InMemoryCapabilityIdempotencyStore(Duration.ofHours(1), new MutableClock(0));
+        int rounds = 200;
+        int threads = 8;
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        try {
+            for (int round = 0; round < rounds; round++) {
+                String key = "k-" + round;
+                AtomicInteger runs = new AtomicInteger();
+                CountDownLatch start = new CountDownLatch(1);
+                CountDownLatch done = new CountDownLatch(threads);
+                for (int t = 0; t < threads; t++) {
+                    pool.submit(() -> {
+                        try {
+                            start.await();
+                            store.executeOnce(key, () -> { runs.incrementAndGet(); return ok(); });
+                        } catch (InterruptedException ignored) {
+                            Thread.currentThread().interrupt();
+                        } finally {
+                            done.countDown();
+                        }
+                    });
+                }
+                start.countDown();
+                done.await();
+                assertThat(runs.get()).as("round %d executed exactly once", round).isEqualTo(1);
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
     void concurrentIdenticalRequestsExecuteOnce() throws Exception {
         var store = new InMemoryCapabilityIdempotencyStore(Duration.ofHours(1), new MutableClock(0));
         AtomicInteger runs = new AtomicInteger();
