@@ -2,8 +2,10 @@ package com.idfcfirstbank.integration.orchestration.originationjourney.adapter.i
 
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.JourneyDecision;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.JourneyInstance;
+import com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.OpsEvent;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.port.DecisionOutboundPort;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.port.JourneyInstanceStore;
+import com.idfcfirstbank.integration.orchestration.originationjourney.domain.port.OpsEventPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -45,13 +47,16 @@ public class JourneyLivenessSweeper {
 
     private final JourneyInstanceStore store;
     private final DecisionOutboundPort decisions;
+    private final OpsEventPort opsEvents;
     private final Clock clock;
     private final Duration runBudget;
 
-    public JourneyLivenessSweeper(JourneyInstanceStore store, DecisionOutboundPort decisions, Clock clock,
+    public JourneyLivenessSweeper(JourneyInstanceStore store, DecisionOutboundPort decisions,
+                                  OpsEventPort opsEvents, Clock clock,
                                   @Value("${idfc.engine.liveness.run-budget-seconds:900}") long runBudgetSeconds) {
         this.store = store;
         this.decisions = decisions;
+        this.opsEvents = opsEvents;
         this.clock = clock;
         this.runBudget = Duration.ofSeconds(runBudgetSeconds);
     }
@@ -77,9 +82,11 @@ public class JourneyLivenessSweeper {
             try {
                 // Notify first (idempotent downstream); only then mark terminal + persist.
                 decisions.publish(timeoutDecision(instance));
-                instance.fail();
+                instance.markSfdcNotified(); // the notify publish was confirmed
+                instance.fail(TIMEOUT_NODE_ID, JourneyDecision.ERROR);
                 store.save(instance);
                 failed++;
+                opsEvents.emit(OpsEvent.run(OpsEvent.RUN_SWEPT_TIMEOUT, instance, JourneyDecision.ERROR));
                 log.warn("journey.liveness.timeout instanceId={} startedAt={} — RUNNING past budget {}",
                         instance.journeyInstanceId(), instance.startedAt(), runBudget);
             } catch (RuntimeException e) {

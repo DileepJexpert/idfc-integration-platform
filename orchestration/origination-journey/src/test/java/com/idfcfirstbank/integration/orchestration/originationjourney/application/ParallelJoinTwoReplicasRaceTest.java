@@ -84,6 +84,11 @@ class ParallelJoinTwoReplicasRaceTest {
         }
 
         @Override
+        public java.util.List<JourneyInstance> scanAll() {
+            return delegate.scanAll();
+        }
+
+        @Override
         public void save(JourneyInstance instance) {
             delegate.save(instance);
         }

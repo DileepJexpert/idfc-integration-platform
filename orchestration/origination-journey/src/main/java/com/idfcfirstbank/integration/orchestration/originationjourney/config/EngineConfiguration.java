@@ -3,7 +3,9 @@ package com.idfcfirstbank.integration.orchestration.originationjourney.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.kafka.KafkaCapabilityRequestPublisher;
 import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.kafka.KafkaDecisionPublisher;
+import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.kafka.KafkaOpsEventPublisher;
 import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.loader.ClasspathJourneySource;
+import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.ops.OpsRunStoreAdapter;
 import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.loader.JourneyDefinitionLoader;
 import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.registry.RegistryJourneySource;
 import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.store.AerospikeJourneyInstanceStore;
@@ -14,6 +16,7 @@ import com.idfcfirstbank.integration.orchestration.originationjourney.domain.por
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.port.DecisionOutboundPort;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.port.JourneyInstanceStore;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.port.JourneySource;
+import com.idfcfirstbank.integration.orchestration.originationjourney.domain.port.OpsEventPort;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.service.ExpressionEvaluator;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.service.JourneyEngine;
 import org.apache.kafka.clients.producer.ProducerConfig;
@@ -30,6 +33,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.web.client.RestClient;
+import com.idfcfirstbank.integration.platform.opsquery.domain.OpsRunStore;
 
 import java.time.Clock;
 import java.util.HashMap;
@@ -126,6 +130,16 @@ public class EngineConfiguration {
         return new InMemoryJourneyInstanceStore();
     }
 
+    /**
+     * The ops read window's view of the run store (Journey Ops View B.3): the
+     * presence of this bean activates the ops-query auto-configuration — the
+     * audited GET-only /ops API served from THIS app, reading THIS store.
+     */
+    @Bean
+    OpsRunStore opsRunStore(JourneyInstanceStore store) {
+        return new OpsRunStoreAdapter(store);
+    }
+
     @Bean
     Supplier<String> instanceIdSupplier() {
         return () -> "ji-" + UUID.randomUUID();
@@ -161,12 +175,22 @@ public class EngineConfiguration {
         return new KafkaDecisionPublisher(kafkaTemplate, objectMapper, props.decisionTopic());
     }
 
+    /**
+     * Run-lifecycle events for the observability stack (ids only, confirmed
+     * sends, never on the critical path — see KafkaOpsEventPublisher).
+     */
+    @Bean
+    OpsEventPort opsEventPort(KafkaTemplate<String, String> kafkaTemplate, ObjectMapper objectMapper,
+                              @Value("${idfc.engine.ops-events-topic:ops.journey.events.v1}") String topic) {
+        return new KafkaOpsEventPublisher(kafkaTemplate, objectMapper, topic);
+    }
+
     @Bean
     JourneyOrchestrator journeyOrchestrator(JourneyEngine engine, JourneyRegistry registry,
                                             JourneyInstanceStore store, CapabilityRequestPort capabilityRequestPort,
                                             DecisionOutboundPort decisionOutboundPort,
-                                            Supplier<String> instanceIdSupplier) {
+                                            Supplier<String> instanceIdSupplier, OpsEventPort opsEventPort) {
         return new JourneyOrchestrator(engine, registry, store, capabilityRequestPort, decisionOutboundPort,
-                instanceIdSupplier);
+                instanceIdSupplier, opsEventPort);
     }
 }

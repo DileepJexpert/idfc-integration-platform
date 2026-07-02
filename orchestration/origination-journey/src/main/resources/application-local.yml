@@ -20,3 +20,7 @@ idfc:
     aerospike:
       host: localhost
       port: 3000
+
+  # DEV ONLY ops-window token (the base profile fails closed without one).
+  ops:
+    auth-token: dev-ops-token

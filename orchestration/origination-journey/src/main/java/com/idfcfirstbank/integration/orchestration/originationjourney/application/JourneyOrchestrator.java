@@ -8,9 +8,12 @@ import com.idfcfirstbank.integration.orchestration.originationjourney.domain.ser
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.service.JourneyEngine;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.port.CapabilityRequestPort;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.port.DecisionOutboundPort;
+import com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.OpsEvent;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.port.JourneyInstanceStore;
+import com.idfcfirstbank.integration.orchestration.originationjourney.domain.port.OpsEventPort;
 import com.idfcfirstbank.integration.shared.domain.capability.CapabilityRequest;
 import com.idfcfirstbank.integration.shared.domain.capability.CapabilityResponse;
+import com.idfcfirstbank.integration.shared.domain.capability.CapabilityStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,17 +50,28 @@ public class JourneyOrchestrator {
     private final CapabilityRequestPort capabilityRequestPort;
     private final DecisionOutboundPort decisionOutboundPort;
     private final Supplier<String> instanceIdSupplier;
+    private final OpsEventPort opsEvents;
 
     public JourneyOrchestrator(JourneyEngine engine, JourneyRegistry registry, JourneyInstanceStore store,
                                CapabilityRequestPort capabilityRequestPort,
                                DecisionOutboundPort decisionOutboundPort,
                                Supplier<String> instanceIdSupplier) {
+        this(engine, registry, store, capabilityRequestPort, decisionOutboundPort, instanceIdSupplier,
+                OpsEventPort.NOOP);
+    }
+
+    public JourneyOrchestrator(JourneyEngine engine, JourneyRegistry registry, JourneyInstanceStore store,
+                               CapabilityRequestPort capabilityRequestPort,
+                               DecisionOutboundPort decisionOutboundPort,
+                               Supplier<String> instanceIdSupplier,
+                               OpsEventPort opsEvents) {
         this.engine = engine;
         this.registry = registry;
         this.store = store;
         this.capabilityRequestPort = capabilityRequestPort;
         this.decisionOutboundPort = decisionOutboundPort;
         this.instanceIdSupplier = instanceIdSupplier;
+        this.opsEvents = opsEvents;
     }
 
     /** Start a journey from a parsed inbound origination envelope. Returns the new instance id. */
@@ -96,6 +110,7 @@ public class JourneyOrchestrator {
 
         log.info("journey.start instanceId={} key={} version={} correlationId={} applicationRef={}",
                 instanceId, def.key(), def.version(), correlationId, applicationRef);
+        opsEvents.emit(OpsEvent.run(OpsEvent.RUN_STARTED, instance, null));
         dispatch(engine.start(def, instance), instance, def);
         return instanceId;
     }
@@ -129,6 +144,12 @@ public class JourneyOrchestrator {
 
         log.info("journey.response instanceId={} node={} capability={} status={}",
                 response.journeyInstanceId(), response.nodeId(), response.capabilityKey(), response.status());
+        // The node event narrates the response that CAUSES this hop, so it
+        // precedes the run-terminal event dispatch() may emit (at-least-once:
+        // a CAS-failed hop redelivers and may emit again; consumers tolerate).
+        opsEvents.emit(OpsEvent.node(
+                response.status() == CapabilityStatus.ERROR ? OpsEvent.NODE_FAILED : OpsEvent.NODE_COMPLETED,
+                instance, response.nodeId()));
         dispatch(engine.onCapabilityResponse(def, instance, response), instance, def);
     }
 
@@ -144,6 +165,7 @@ public class JourneyOrchestrator {
 
         if (requests.isEmpty() && decision == null) {
             store.save(instance); // pure state advance (e.g. one join arm done)
+            emitRunEndedIfTerminal(instance);
             return;
         }
 
@@ -155,6 +177,7 @@ public class JourneyOrchestrator {
             log.info("journey.dispatch instanceId={} node={} capability={}",
                     instance.journeyInstanceId(), request.nodeId(), request.capabilityKey());
             capabilityRequestPort.publish(request);
+            opsEvents.emit(OpsEvent.node(OpsEvent.NODE_DISPATCHED, instance, request.nodeId()));
         }
         if (decision != null) {
             publishDecision(instance, decision);
@@ -162,6 +185,7 @@ public class JourneyOrchestrator {
 
         instance.clearPendingPublishes();
         saveClearedIntent(instance); // save #2: benign if a newer state won
+        emitRunEndedIfTerminal(instance);
     }
 
     /** Re-drive the publishes a crashed/failed attempt persisted but never confirmed. */
@@ -177,6 +201,15 @@ public class JourneyOrchestrator {
         }
         instance.clearPendingPublishes();
         saveClearedIntent(instance);
+    }
+
+    /** run.completed / run.failed once the terminal hop is durable + published. */
+    private void emitRunEndedIfTerminal(JourneyInstance instance) {
+        if (instance.status() == InstanceStatus.COMPLETED) {
+            opsEvents.emit(OpsEvent.run(OpsEvent.RUN_COMPLETED, instance, instance.terminalOutcome()));
+        } else if (instance.status() == InstanceStatus.FAILED) {
+            opsEvents.emit(OpsEvent.run(OpsEvent.RUN_FAILED, instance, instance.terminalOutcome()));
+        }
     }
 
     private void publishDecision(JourneyInstance instance, JourneyDecision decision) {

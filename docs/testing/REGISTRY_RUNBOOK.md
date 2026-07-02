@@ -119,7 +119,29 @@ the last-known snapshot` — a registry blip never takes the engine down.
 (Automated twin: `engineRefusesToStartWhenTheRegistryIsUnreachable` in the
 same IT, plus `RegistryDownBehaviorTest` for all four phase policies.)
 
-## 6. Error semantics quick reference (registry API)
+## 6. The ops read window (Journey Ops View, Phase 0)
+
+The engine serves an AUDITED, READ-ONLY ops API on its own port (8082) — the
+only sanctioned window into run state in prod (no DB access). Its token is a
+DIFFERENT secret from the registry's (`OPS_API_TOKEN`, fail-closed at boot):
+
+```bash
+E=http://localhost:8082; H1="X-Ops-Token: dev-ops-token"; H2="X-User-Id: ops-meera"
+curl -s "$E/ops/runs?stuckOnly=true"            -H "$H1" -H "$H2"   # triage: approaching budget
+curl -s "$E/ops/runs?status=FAILED_NOTIFY_PENDING" -H "$H1" -H "$H2" # agent will NEVER re-send these
+curl -s "$E/ops/runs/ji-corr-123"               -H "$H1" -H "$H2"   # timeline + pinned version + notify state
+curl -s "$E/ops/runs/search?key=REC-001"        -H "$H1" -H "$H2"   # every run of one business record
+docker logs idfc-origination-journey | grep ops.audit               # who read what, when
+```
+
+Statuses are the bank-correct vocabulary: `RUNNING`, `COMPLETED_APPROVED`,
+`COMPLETED_DECLINED` (a business "no" is a completion, never a failure),
+`FAILED_SFDC_NOTIFIED` (closed — the external agent owns the re-send),
+`FAILED_NOTIFY_PENDING` (top of triage). Lifecycle events (ids only, never
+payload) stream to `ops.journey.events.v1` for SENTINEL; the API reads the
+store directly, so a Kafka blip never blanks it.
+
+## 7. Error semantics quick reference (registry API)
 
 | Status | Meaning | Typical trigger |
 |--------|---------|-----------------|

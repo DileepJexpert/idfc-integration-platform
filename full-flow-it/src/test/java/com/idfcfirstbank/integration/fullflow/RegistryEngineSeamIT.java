@@ -115,7 +115,8 @@ class RegistryEngineSeamIT {
                         "idfc.engine.origination-group=seam-engine",
                         "idfc.engine.response-group=seam-engine-responses",
                         "idfc.engine.type-to-journey.SEAM=" + key,
-                        "idfc.engine.state-store=in-memory")
+                        "idfc.engine.state-store=in-memory",
+                        "idfc.ops.auth-token=seam-ops-token")
                 .run();
 
         List<JsonNode> capRequests = new CopyOnWriteArrayList<>();
@@ -184,7 +185,8 @@ class RegistryEngineSeamIT {
                         "idfc.engine.registry.read-timeout-ms=500",
                         // never reached — bootstrap fails first
                         "spring.kafka.bootstrap-servers=localhost:59998",
-                        "idfc.engine.state-store=in-memory")
+                        "idfc.engine.state-store=in-memory",
+                        "idfc.ops.auth-token=seam-ops-token")
                 .run()
                 .close())
                 .hasStackTraceContaining("refusing to start");

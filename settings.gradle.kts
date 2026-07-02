@@ -18,6 +18,7 @@ include("platform:platform-config")       // org-config-as-data store
 include("platform:platform-messaging")    // shared Kafka helpers
 include("platform:route-config-registry") // API-router endpoint/gateway config registry (BRD §7)
 include("platform:journey-registry")      // journey/version store + maker-checker (the designer↔engine seam)
+include("platform:ops-query")             // read-only ops window over run state (Temporal-style ops view, B.3)
 
 // integration/ — thin routing adapters (not capabilities)
 include("integration:brand-router")       // SFDC brand routing Kafka|ActiveMQ (BRD §6)

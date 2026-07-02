@@ -43,6 +43,34 @@ public final class JourneyInstance {
     private InstanceStatus status = InstanceStatus.RUNNING;
 
     /**
+     * Per-node transition history (ops timeline, B.1). Append-only and BOUNDED;
+     * list order IS the event sequence (D11). Appends are idempotent by
+     * {@code (nodeId, status)} — at-least-once redelivery never duplicates a
+     * timeline row (D10); a transition after the run ended is kept but flagged
+     * {@code late}, never visually reopening the run.
+     */
+    private final List<NodeTransition> transitions = new ArrayList<>();
+    private static final int MAX_TRANSITIONS = 200;
+
+    /** When the run reached a terminal state (null while RUNNING). */
+    private Instant endedAt;
+    /** The terminal node that ended the run ({@code __timeout__} for swept runs). */
+    private String terminalNodeId;
+    /** The decision outcome the run ended with (APPROVED/REJECTED/ERROR). */
+    private String terminalOutcome;
+
+    /**
+     * Whether the channel (SFDC/partner) has been told this run's outcome —
+     * the single most triage-relevant bit in the assisted model: a FAILED run
+     * the agent was never told about will NEVER be re-sent externally.
+     * NONE while running, PENDING once a decision awaits its confirmed
+     * publish, SENT once the publish was confirmed.
+     */
+    public enum NotifyState { NONE, PENDING, SENT }
+
+    private NotifyState sfdcNotified = NotifyState.NONE;
+
+    /**
      * Optimistic-lock version for the store's compare-and-set save: the version
      * this state was LOADED at (0 = not yet persisted). A save must only apply if
      * the store still holds this version — a concurrent writer (second engine
@@ -91,8 +119,45 @@ public final class JourneyInstance {
     public InstanceStatus status() { return status; }
 
     public boolean isDispatched(String nodeId) { return dispatchedNodeIds.contains(nodeId); }
-    public void markDispatched(String nodeId) { dispatchedNodeIds.add(nodeId); }
+
+    public void markDispatched(String nodeId) {
+        dispatchedNodeIds.add(nodeId);
+        recordTransition(nodeId, NodeTransition.Status.DISPATCHED);
+    }
+
     public boolean isCompleted(String nodeId) { return completedNodeIds.contains(nodeId); }
+
+    /** A node-level failure (ERROR capability response) — timeline only; the run-level outcome follows. */
+    public void recordNodeFailure(String nodeId) {
+        recordTransition(nodeId, NodeTransition.Status.FAILED);
+    }
+
+    /**
+     * Idempotent, bounded timeline append (D10): one row per {@code (nodeId,
+     * status)} ever; rows after the run ended are flagged {@code late}.
+     */
+    private void recordTransition(String nodeId, NodeTransition.Status transitionStatus) {
+        if (transitions.size() >= MAX_TRANSITIONS) {
+            return; // bounded: a runaway loop must not grow the record forever
+        }
+        for (NodeTransition t : transitions) {
+            if (t.nodeId().equals(nodeId) && t.status() == transitionStatus) {
+                return; // redelivered hop — the timeline row already exists
+            }
+        }
+        transitions.add(new NodeTransition(nodeId, transitionStatus, Instant.now(), endedAt != null));
+    }
+
+    /** The run's per-node timeline, in EVENT-SEQUENCE order (read-only view). */
+    public List<NodeTransition> transitions() { return List.copyOf(transitions); }
+
+    public Instant endedAt() { return endedAt; }
+    public String terminalNodeId() { return terminalNodeId; }
+    public String terminalOutcome() { return terminalOutcome; }
+    public NotifyState sfdcNotified() { return sfdcNotified; }
+
+    /** The channel notify was CONFIRMED (decision publish acked / sweeper notify sent). */
+    public void markSfdcNotified() { this.sfdcNotified = NotifyState.SENT; }
 
     public long version() { return version; }
     public void version(long version) { this.version = version; }
@@ -108,10 +173,18 @@ public final class JourneyInstance {
             pendingRequestNodeIds.addAll(requestNodeIds);
         }
         this.pendingDecision = decision;
+        if (decision != null) {
+            // The channel notify now EXISTS but is not yet confirmed-published.
+            this.sfdcNotified = NotifyState.PENDING;
+        }
     }
 
     /** All publishes confirmed — clear the intent (persisted by the follow-up save). */
     public void clearPendingPublishes() {
+        if (pendingDecision != null) {
+            // The decision publish was CONFIRMED — the channel has been told.
+            this.sfdcNotified = NotifyState.SENT;
+        }
         pendingRequestNodeIds.clear();
         pendingDecision = null;
     }
@@ -133,7 +206,10 @@ public final class JourneyInstance {
                                           Map<String, Object> collectedResults, Map<String, Object> context,
                                           Set<String> completedNodeIds,
                                           Set<String> dispatchedNodeIds, InstanceStatus status,
-                                          List<String> pendingRequestNodeIds, JourneyDecision pendingDecision) {
+                                          List<String> pendingRequestNodeIds, JourneyDecision pendingDecision,
+                                          List<NodeTransition> transitions, Instant endedAt,
+                                          String terminalNodeId, String terminalOutcome,
+                                          NotifyState sfdcNotified) {
         JourneyInstance instance = new JourneyInstance(journeyInstanceId, correlationId, journeyKey,
                 journeyVersion, applicationRef, payload, startedAt);
         instance.version = version;
@@ -156,6 +232,14 @@ public final class JourneyInstance {
             instance.pendingRequestNodeIds.addAll(pendingRequestNodeIds);
         }
         instance.pendingDecision = pendingDecision;
+        if (transitions != null) {
+            instance.transitions.addAll(transitions);
+        }
+        instance.endedAt = endedAt;
+        instance.terminalNodeId = terminalNodeId;
+        instance.terminalOutcome = terminalOutcome;
+        // Legacy pre-ops records have no notify state: NONE, never a guess.
+        instance.sfdcNotified = sfdcNotified == null ? NotifyState.NONE : sfdcNotified;
         return instance;
     }
 
@@ -167,6 +251,7 @@ public final class JourneyInstance {
      */
     public void recordResult(String nodeId, String capabilityKey, String output, Map<String, Object> result) {
         completedNodeIds.add(nodeId);
+        recordTransition(nodeId, NodeTransition.Status.COMPLETED);
         if (capabilityKey != null && result != null) {
             collectedResults.put(capabilityKey, result);
         }
@@ -179,10 +264,31 @@ public final class JourneyInstance {
     }
 
     /** Mark a non-task node (branch/terminal) as processed. */
-    public void markCompleted(String nodeId) { completedNodeIds.add(nodeId); }
+    public void markCompleted(String nodeId) {
+        completedNodeIds.add(nodeId);
+        recordTransition(nodeId, NodeTransition.Status.COMPLETED);
+    }
 
-    public void complete() { this.status = InstanceStatus.COMPLETED; }
-    public void fail() { this.status = InstanceStatus.FAILED; }
+    public void complete() { end(InstanceStatus.COMPLETED, terminalNodeId, terminalOutcome); }
+    public void fail() { end(InstanceStatus.FAILED, terminalNodeId, terminalOutcome); }
+
+    /** Terminal with detail (B.1): WHICH terminal ended the run, with WHICH outcome. */
+    public void complete(String atTerminalNodeId, String outcome) {
+        end(InstanceStatus.COMPLETED, atTerminalNodeId, outcome);
+    }
+
+    public void fail(String atTerminalNodeId, String outcome) {
+        end(InstanceStatus.FAILED, atTerminalNodeId, outcome);
+    }
+
+    private void end(InstanceStatus terminalStatus, String atTerminalNodeId, String outcome) {
+        this.status = terminalStatus;
+        this.terminalNodeId = atTerminalNodeId;
+        this.terminalOutcome = outcome;
+        if (this.endedAt == null) {
+            this.endedAt = Instant.now(); // first terminal event wins the end time
+        }
+    }
 
     /**
      * The §7 evaluation root for expressions: a map whose {@code context} entry is

@@ -63,6 +63,8 @@ services:
     image: idfc/origination-journey:0.1.0-SNAPSHOT
     container_name: idfc-origination-journey
     networks: [idfc]
+    ports:
+      - "8082:8082"     # the audited read-only ops API (/ops/runs...) + actuator
     # The engine FAILS CLOSED at bootstrap when the registry is unreachable
     # (deliberate A2 behavior: an engine with no journeys must not consume).
     # depends_on orders startup; on-failure restarts absorb the remaining
@@ -82,6 +84,8 @@ services:
       IDFC_ENGINE_JOURNEY_SOURCE: registry
       JOURNEY_REGISTRY_URL: http://journey-registry:8104
       REGISTRY_AUTH_TOKEN: ${REGISTRY_AUTH_TOKEN:-dev-registry-token}
+      # The ops read window's own token (fail-closed; NOT the registry token, D14).
+      OPS_API_TOKEN: ${OPS_API_TOKEN:-dev-ops-token}
       # Durable journey state (the engine is the audit source-of-truth).
       IDFC_ENGINE_STATE_STORE: aerospike
       AEROSPIKE_HOST: aerospike

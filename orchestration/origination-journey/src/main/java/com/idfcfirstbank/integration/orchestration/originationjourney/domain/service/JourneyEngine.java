@@ -44,7 +44,8 @@ public final class JourneyEngine {
         JourneyNode node = def.node(response.nodeId());
 
         if (response.status() == CapabilityStatus.ERROR) {
-            instance.fail();
+            instance.recordNodeFailure(response.nodeId());
+            instance.fail(response.nodeId(), JourneyDecision.ERROR);
             String onFailure = node.onFailure();
             if (onFailure != null && isNodeId(def, onFailure)) {
                 // T1 failure routing: jump to the recovery node (often a terminal).
@@ -116,11 +117,11 @@ public final class JourneyEngine {
                     // Fail CLOSED (Phase 3): an unknown terminal status must never
                     // default to an APPROVED lending decision. The loader rejects
                     // these at load; this guards definitions built any other way.
-                    instance.fail();
+                    instance.fail(node.id(), JourneyDecision.ERROR);
                     outcome.decide(decisionOf(instance, JourneyDecision.ERROR,
                             loanIdFrom(instance), node.id(), node.emit()));
                 } else {
-                    instance.complete();
+                    instance.complete(node.id(), resolved);
                     outcome.decide(decisionOf(instance, resolved,
                             loanIdFrom(instance), node.id(), node.emit()));
                 }

@@ -1,5 +1,6 @@
 package com.idfcfirstbank.integration.orchestration.originationjourney.adapter.in.scheduler;
 
+import com.idfcfirstbank.integration.orchestration.originationjourney.domain.port.OpsEventPort;
 import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.store.InMemoryJourneyInstanceStore;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.InstanceStatus;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.JourneyDecision;
@@ -45,7 +46,7 @@ class JourneyLivenessSweeperTest {
         store.insertIfAbsent(done);
 
         List<JourneyDecision> published = new ArrayList<>();
-        var sweeper = new JourneyLivenessSweeper(store, published::add, clock, BUDGET_SECONDS);
+        var sweeper = new JourneyLivenessSweeper(store, published::add, OpsEventPort.NOOP, clock, BUDGET_SECONDS);
 
         int failed = sweeper.sweepStuckRuns();
 
@@ -72,7 +73,7 @@ class JourneyLivenessSweeperTest {
         DecisionOutboundPort throwingPort = d -> {
             throw new RuntimeException("broker down");
         };
-        var sweeper = new JourneyLivenessSweeper(store, throwingPort, clock, BUDGET_SECONDS);
+        var sweeper = new JourneyLivenessSweeper(store, throwingPort, OpsEventPort.NOOP, clock, BUDGET_SECONDS);
 
         int failed = sweeper.sweepStuckRuns();
 
