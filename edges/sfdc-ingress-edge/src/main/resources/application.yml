@@ -40,8 +40,10 @@ idfc:
     ttl-seconds: ${IDEMPOTENCY_TTL_SECONDS:2592000}
   edge:
     auth:
-      # Mock two-token auth (real Hydra+Kong is a later slice; secrets via Vault).
-      expected-token: ${SFDC_EDGE_TOKEN:dev-token}
+      # FAIL CLOSED: no compiled-in default. A missing SFDC_EDGE_TOKEN refuses to
+      # start (see EdgeProperties). Local dev/compose set an explicit dev value;
+      # EKS injects it from the idfc-platform-secrets Secret.
+      expected-token: ${SFDC_EDGE_TOKEN:}
     poison-redelivery-threshold: 5    # C5 edge poison breaker N
     max-journey-retry: 1              # C3 transient journey re-enqueue ceiling
     dlq-topic: orig.sfdc.dlq.v1

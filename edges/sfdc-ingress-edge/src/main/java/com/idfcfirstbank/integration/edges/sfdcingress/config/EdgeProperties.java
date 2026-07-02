@@ -21,6 +21,14 @@ public record EdgeProperties(
         List<String> knownOrgs) {
 
     public EdgeProperties {
+        // FAIL CLOSED (Phase 5): this edge is internet-facing — starting with no
+        // auth token (or a silently-applied compiled-in default) would let any
+        // caller push notifications. A missing secret refuses to start, loudly.
+        if (auth == null || auth.expectedToken() == null || auth.expectedToken().isBlank()) {
+            throw new IllegalStateException(
+                    "idfc.edge.auth.expected-token is not set (env SFDC_EDGE_TOKEN) — the SFDC edge"
+                            + " refuses to start without an auth token; there is no fail-open default");
+        }
         poisonRedeliveryThreshold = poisonRedeliveryThreshold <= 0 ? 5 : poisonRedeliveryThreshold;
         maxJourneyRetry = maxJourneyRetry <= 0 ? 1 : maxJourneyRetry;
         publishLeaseSeconds = publishLeaseSeconds <= 0 ? 60 : publishLeaseSeconds;

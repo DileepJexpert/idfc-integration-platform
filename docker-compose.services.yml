@@ -25,6 +25,8 @@ services:
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       IDFC_AEROSPIKE_HOST: aerospike
+      # Explicit LOCAL-DEV token (the app fails closed when unset — no compiled-in default).
+      SFDC_EDGE_TOKEN: ${SFDC_EDGE_TOKEN:-dev-token}
 
   digital-partner-edge:
     image: idfc/digital-partner-edge:0.1.0-SNAPSHOT
@@ -36,6 +38,10 @@ services:
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       AEROSPIKE_HOST: aerospike
+      # Explicit LOCAL-DEV partner tokens (the app fails closed when any is unset).
+      CRED_TOKEN: ${CRED_TOKEN:-cred-dev-token}
+      FLIPKART_TOKEN: ${FLIPKART_TOKEN:-flipkart-dev-token}
+      GROWW_TOKEN: ${GROWW_TOKEN:-groww-dev-token}
 
   origination-journey:
     image: idfc/origination-journey:0.1.0-SNAPSHOT
