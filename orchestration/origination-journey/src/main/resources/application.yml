@@ -17,18 +17,45 @@ spring:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
 
-# Engine config-as-data: the loaded journeys, the decision topic, and the
-# businessLine(type) -> journey routing (empty => use the single loaded journey).
+# Engine config-as-data: the journey SOURCE, the loaded journeys, the decision
+# topic, and the businessLine(type) -> journey routing.
 idfc:
   engine:
+    # WHERE journeys come from — exactly one source of truth (A2):
+    #   "registry"  = the journey-registry service: what a checker publishes in
+    #                 the DAG Designer is what this engine runs (+ scheduled
+    #                 refresh; in-flight runs stay pinned to their version).
+    #   "classpath" = the JAR's journeys/ files — explicit Docker-free bootstrap
+    #                 fallback (flagged at startup; cannot serve historical
+    #                 versions to pinned runs).
+    journey-source: ${IDFC_ENGINE_JOURNEY_SOURCE:classpath}
     journey-resources:
       - journeys/loan-origination.journey.json
+    registry:
+      base-url: ${JOURNEY_REGISTRY_URL:}
+      # FAIL CLOSED in registry mode: no token, no boot (dev value via local profile).
+      auth-token: ${REGISTRY_AUTH_TOKEN:}
+      refresh-seconds: ${JOURNEY_REGISTRY_REFRESH_SECONDS:30}
+      connect-timeout-ms: 3000
+      read-timeout-ms: 10000
     decision-topic: orig.decision.v1
     # Consume EVERY origination topic the edges route to (PL/LAP/BL/Commercial),
     # not just PL — otherwise a non-PL request is ACKed by the edge and then sits
     # unprocessed. Override with IDFC_ENGINE_ORIGINATION_TOPICS (CSV).
     origination-topics: ${IDFC_ENGINE_ORIGINATION_TOPICS:orig.sfdc.pl.v1,orig.sfdc.lap.v1,orig.sfdc.bl.v1,orig.sfdc.commercial.v1}
-    type-to-journey: {}
+    # Routing is EXPLICIT and fail-closed (A2): an inbound type with no row here
+    # goes to the DLQ as poison — it never silently runs some default journey.
+    # Adding a business line is a config row, not a code change.
+    type-to-journey:
+      PERSONAL_LOAN: loan-origination
+      LAP: loan-origination
+      BUSINESS_LOAN: loan-origination
+      COMMERCIAL: loan-origination
+      # Inbound_Wrapper is SFDC's CASA account-creation SVCNAME. Pre-A2 it ran
+      # loan-origination via the SILENT empty-map fallback; now that routing is
+      # an EXPLICIT, reviewable row (kept for the end-to-end plumbing demo).
+      # Pointing it at a real account-creation journey is this one-row swap.
+      Inbound_Wrapper: loan-origination
     # Journey-instance state: "in-memory" (default, Docker-free) or "aerospike"
     # (durable — the engine is the audit source-of-truth for what ran).
     state-store: ${IDFC_ENGINE_STATE_STORE:in-memory}

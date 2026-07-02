@@ -3,6 +3,7 @@ package com.idfcfirstbank.integration.orchestration.originationjourney.adapter.i
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.orchestration.originationjourney.application.JourneyOrchestrator;
+import com.idfcfirstbank.integration.orchestration.originationjourney.domain.error.UnroutableTypeException;
 import com.idfcfirstbank.integration.platform.messaging.PoisonMessageException;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
@@ -40,6 +41,13 @@ public class OriginationConsumer {
         }
         // A start failure (store/publish) now PROPAGATES to the container error handler
         // (retry then DLQ) instead of being swallowed-and-committed.
-        orchestrator.onOrigination(envelope);
+        try {
+            orchestrator.onOrigination(envelope);
+        } catch (UnroutableTypeException e) {
+            // No route for this type (A2 fail-closed routing — no default-journey
+            // fallback). Retrying cannot conjure a mapping: poison, straight to
+            // the DLQ where it is auditable.
+            throw new PoisonMessageException(e.getMessage(), e);
+        }
     }
 }

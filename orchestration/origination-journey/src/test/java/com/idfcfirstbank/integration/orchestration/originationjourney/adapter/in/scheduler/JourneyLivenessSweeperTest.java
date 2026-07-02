@@ -31,7 +31,7 @@ class JourneyLivenessSweeperTest {
     private final Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
 
     private JourneyInstance running(String id, String appRef, Duration age, Map<String, Object> payload) {
-        return new JourneyInstance(id, "corr-" + id, "loan-origination", appRef, payload, NOW.minus(age));
+        return new JourneyInstance(id, "corr-" + id, "loan-origination", 1, appRef, payload, NOW.minus(age));
     }
 
     @Test

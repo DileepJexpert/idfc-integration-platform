@@ -3,31 +3,36 @@ package com.idfcfirstbank.integration.orchestration.originationjourney.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.kafka.KafkaCapabilityRequestPublisher;
 import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.kafka.KafkaDecisionPublisher;
+import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.loader.ClasspathJourneySource;
 import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.loader.JourneyDefinitionLoader;
+import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.registry.RegistryJourneySource;
 import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.store.AerospikeJourneyInstanceStore;
 import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.store.InMemoryJourneyInstanceStore;
 import com.idfcfirstbank.integration.orchestration.originationjourney.application.JourneyOrchestrator;
 import com.idfcfirstbank.integration.orchestration.originationjourney.application.JourneyRegistry;
-import com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.JourneyDefinition;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.port.CapabilityRequestPort;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.port.DecisionOutboundPort;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.port.JourneyInstanceStore;
+import com.idfcfirstbank.integration.orchestration.originationjourney.domain.port.JourneySource;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.service.ExpressionEvaluator;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.service.JourneyEngine;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringSerializer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
 import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.web.client.RestClient;
 
 import java.time.Clock;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -41,6 +46,8 @@ import java.util.function.Supplier;
 @EnableConfigurationProperties(EngineProperties.class)
 @EnableScheduling
 public class EngineConfiguration {
+
+    private static final Logger log = LoggerFactory.getLogger(EngineConfiguration.class);
 
     @Bean
     ExpressionEvaluator expressionEvaluator() {
@@ -63,12 +70,41 @@ public class EngineConfiguration {
         return new JourneyDefinitionLoader(objectMapper);
     }
 
+    /**
+     * WHERE journeys come from — exactly one source of truth. Registry mode is
+     * the designer->engine seam (publish in the Designer, the engine runs it);
+     * classpath is the explicit Docker-free bootstrap fallback and is flagged
+     * loudly because a JAR cannot serve historical versions to pinned runs.
+     */
     @Bean
-    JourneyRegistry journeyRegistry(JourneyDefinitionLoader loader, EngineProperties props) {
-        List<JourneyDefinition> definitions = props.journeyResources().stream()
-                .map(loader::loadFromClasspath)
-                .toList();
-        return new JourneyRegistry(definitions, props.typeToJourney());
+    JourneySource journeySource(EngineProperties props, JourneyDefinitionLoader loader) {
+        if (props.usesRegistrySource()) {
+            var reg = props.registry();
+            SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+            requestFactory.setConnectTimeout(reg.connectTimeoutMs());
+            requestFactory.setReadTimeout(reg.readTimeoutMs());
+            RestClient restClient = RestClient.builder()
+                    .baseUrl(reg.baseUrl())
+                    .requestFactory(requestFactory)
+                    .defaultHeader("X-Registry-Token", reg.authToken())
+                    .build();
+            log.info("engine.journey-source=registry url={} refreshSeconds={}",
+                    reg.baseUrl(), reg.refreshSeconds());
+            return new RegistryJourneySource(restClient, loader, reg.baseUrl());
+        }
+        log.warn("engine.journey-source=classpath resources={} — explicit bootstrap fallback:"
+                + " NOT version-safe across deploys (a JAR cannot serve historical versions to"
+                + " pinned in-flight runs); set idfc.engine.journey-source=registry for the"
+                + " designer->engine seam", props.journeyResources());
+        return new ClasspathJourneySource(loader, props.journeyResources());
+    }
+
+    @Bean
+    JourneyRegistry journeyRegistry(JourneySource journeySource, EngineProperties props) {
+        JourneyRegistry registry = new JourneyRegistry(journeySource, props.typeToJourney());
+        // FAIL CLOSED at startup: an engine with no journeys must not consume.
+        registry.bootstrap();
+        return registry;
     }
 
     /**

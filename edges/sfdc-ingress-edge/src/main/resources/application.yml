@@ -68,9 +68,9 @@ idfc:
       # New SVCNAME = a config ROW, not code. Two KINDS of target exist:
       #   * a JOURNEY  — Inbound_Wrapper (CASA account creation) → an origination
       #     journey. Publishes to an engine-consumed topic; the engine's
-      #     type->journey map is empty so it resolves the loaded loan-origination
-      #     journey (end-to-end plumbing proof; a real account-creation journey is
-      #     a later, additive config change).
+      #     type-to-journey map routes Inbound_Wrapper EXPLICITLY (A2: unmapped
+      #     types fail closed to the DLQ, no silent default journey), so a real
+      #     account-creation journey is a one-row swap in the ENGINE's map.
       #   * a CAPABILITY ACTION — SENDSMS (OTP/notification) → a Communications
       #     capability. Not every SVCNAME is a journey; some are fire-and-forget
       #     comms. Publishes to the comms topic; a Communications capability (mock

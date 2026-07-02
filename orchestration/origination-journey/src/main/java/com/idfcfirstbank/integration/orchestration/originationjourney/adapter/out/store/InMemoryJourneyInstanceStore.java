@@ -77,7 +77,8 @@ public class InMemoryJourneyInstanceStore implements JourneyInstanceStore {
     /** Deep-enough copy: restore() rebuilds fresh collections from the source's views. */
     private static JourneyInstance snapshot(JourneyInstance i, long version) {
         return JourneyInstance.restore(
-                i.journeyInstanceId(), i.correlationId(), i.journeyKey(), i.applicationRef(),
+                i.journeyInstanceId(), i.correlationId(), i.journeyKey(), i.journeyVersion(),
+                i.applicationRef(),
                 i.payload(), i.startedAt(), version, i.collectedResults(), i.context(),
                 i.completedNodeIds(), i.dispatchedNodeIds(), i.status(),
                 i.pendingRequestNodeIds(), i.pendingDecision());

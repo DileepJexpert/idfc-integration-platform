@@ -1,5 +1,6 @@
 package com.idfcfirstbank.integration.orchestration.originationjourney.application;
 
+import com.idfcfirstbank.integration.orchestration.originationjourney.support.FixedJourneySource;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.loader.JourneyDefinitionLoader;
 import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.store.InMemoryJourneyInstanceStore;
@@ -43,7 +44,7 @@ class JourneyStartIdempotencyTest {
     @Test
     void concurrentIdenticalOriginationsStartExactlyOnce() throws Exception {
         JourneyEngine engine = new JourneyEngine(new ExpressionEvaluator());
-        JourneyRegistry registry = new JourneyRegistry(List.of(def), Map.of());
+        JourneyRegistry registry = FixedJourneySource.registry(Map.of("PERSONAL_LOAN", def.key()), def);
         InMemoryJourneyInstanceStore store = new InMemoryJourneyInstanceStore();
 
         // Count how many times the START node (n_customer) is dispatched.
@@ -98,7 +99,7 @@ class JourneyStartIdempotencyTest {
     @Test
     void aSecondSequentialDeliveryIsADuplicateNoOp() {
         JourneyEngine engine = new JourneyEngine(new ExpressionEvaluator());
-        JourneyRegistry registry = new JourneyRegistry(List.of(def), Map.of());
+        JourneyRegistry registry = FixedJourneySource.registry(Map.of("PERSONAL_LOAN", def.key()), def);
         InMemoryJourneyInstanceStore store = new InMemoryJourneyInstanceStore();
         AtomicInteger starts = new AtomicInteger();
         CapabilityRequestPort requests = r -> {
@@ -123,7 +124,7 @@ class JourneyStartIdempotencyTest {
         // top-level keys collide with envelope identity ("type"/"orgId") must NOT
         // override the platform's routing identity in the journey context.
         JourneyEngine engine = new JourneyEngine(new ExpressionEvaluator());
-        JourneyRegistry registry = new JourneyRegistry(List.of(def), Map.of());
+        JourneyRegistry registry = FixedJourneySource.registry(Map.of("PERSONAL_LOAN", def.key()), def);
         InMemoryJourneyInstanceStore store = new InMemoryJourneyInstanceStore();
         JourneyOrchestrator orchestrator = new JourneyOrchestrator(
                 engine, registry, store, r -> { }, d -> { }, () -> "ji-random");

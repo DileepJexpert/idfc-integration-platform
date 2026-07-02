@@ -12,6 +12,25 @@ real external URLs**.
 > build gate — wins on any conflict), the integration registry, and the kickoff
 > prompt. Read the punch list first.
 
+## Production gates (tracked — mocked/asserted locally, real before prod)
+
+Deliberate local simplifications. Each is a **gate**: it must be replaced by the
+real thing before production, and nothing in the codebase may quietly assume
+otherwise.
+
+- **Secrets** — env-var tokens (fail-closed at startup; dev values only in
+  `application-local.yml`/compose). Production: Vault.
+- **Edge auth** — single static token per edge/partner (`X-Auth-Token`,
+  `X-Partner-Token`, `X-Registry-Token`). Production: Hydra + Kong two-token.
+- **Actor identity** — the registry's `X-User-Id` header is **asserted, not
+  authenticated**: anyone holding the service token can claim any user id. The
+  server-side maker-checker rules are real; the identity they act on is not yet.
+  Production: SSO/OIDC-verified identity propagated to the registry.
+- **Transport security** — plain HTTP/PLAINTEXT Kafka locally. Production: TLS
+  everywhere + Kafka ACLs.
+- **SFDC/FinnOne/Karza/S3** — mocked behind OUT ports (see the integration
+  registry for per-system contracts).
+
 ## Build conventions (house style)
 
 - **Kotlin DSL** Gradle scripts (`*.gradle.kts`) throughout; shared logic lives in

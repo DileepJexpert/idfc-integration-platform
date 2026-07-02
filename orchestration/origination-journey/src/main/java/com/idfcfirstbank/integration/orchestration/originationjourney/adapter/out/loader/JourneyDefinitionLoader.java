@@ -47,6 +47,9 @@ public class JourneyDefinitionLoader {
             key = text(root, "key"); // tolerate the bare key field
         }
         String startNodeId = text(root, "startNodeId");
+        // The published version this artifact IS — the pin unit. Registry-stamped
+        // configs always carry it; a bare classpath fixture defaults to 1.
+        int version = root.path("version").asInt(1);
         List<JourneyNode> nodes = new ArrayList<>();
         for (JsonNode n : root.path("nodes")) {
             nodes.add(parseNode(n));
@@ -54,7 +57,7 @@ public class JourneyDefinitionLoader {
         if (key == null || startNodeId == null || nodes.isEmpty()) {
             throw new IllegalStateException("journey contract missing journeyKey/startNodeId/nodes");
         }
-        return new JourneyDefinition(key, startNodeId, nodes);
+        return new JourneyDefinition(key, version, startNodeId, nodes);
     }
 
     private JourneyNode parseNode(JsonNode n) {

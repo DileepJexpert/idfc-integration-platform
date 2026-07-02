@@ -27,7 +27,7 @@ class JourneyEngineTest {
             new JourneyDefinitionLoader(new ObjectMapper()).loadFromClasspath("journeys/loan-origination.journey.json");
 
     private JourneyInstance newInstance() {
-        return new JourneyInstance("ji-1", "corr-1", def.key(), "APP-1", Map.of("pan", "ABCDE1234F"));
+        return new JourneyInstance("ji-1", "corr-1", def.key(), 1, "APP-1", Map.of("pan", "ABCDE1234F"));
     }
 
     /** Feed an OK capability response for {@code node}/{@code cap} and return the engine's next step. */
@@ -123,7 +123,7 @@ class JourneyEngineTest {
     void decisionEchoesTheInboundEdgeIdentity() {
         // The engine echoes source/notificationId from the run payload so an edge
         // can route the decision back over Kafka (P1 decision-return path).
-        JourneyInstance instance = new JourneyInstance("ji-2", "corr-2", def.key(), "APP-2",
+        JourneyInstance instance = new JourneyInstance("ji-2", "corr-2", def.key(), 1, "APP-2",
                 Map.of("source", "SFDC", "notificationId", "ntf-9", "sfdcRecordId", "rec-9"));
         engine.start(def, instance);
         advance(instance, "n_customer", "customer-party", Map.of("crn", "CRN-1"));
@@ -152,9 +152,9 @@ class JourneyEngineTest {
         com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.JourneyNode typoTerminal =
                 com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.JourneyNode.terminal(
                         "end", "push_decision_to_channel", java.util.List.of(), "aproved"); // typo
-        JourneyDefinition typoDef = new JourneyDefinition("typo-journey", "t", java.util.List.of(task, typoTerminal));
+        JourneyDefinition typoDef = new JourneyDefinition("typo-journey", 1, "t", java.util.List.of(task, typoTerminal));
 
-        JourneyInstance instance = new JourneyInstance("ji-typo", "corr-t", "typo-journey", "APP-T", Map.of());
+        JourneyInstance instance = new JourneyInstance("ji-typo", "corr-t", "typo-journey", 1, "APP-T", Map.of());
         engine.start(typoDef, instance);
         EngineOutcome outcome = engine.onCapabilityResponse(typoDef, instance,
                 new CapabilityResponse("ji-typo", "corr-t", "t", "kyc", CapabilityStatus.OK, Map.of()));
@@ -170,7 +170,7 @@ class JourneyEngineTest {
     void unmatchedBranchExceptionCarriesIdsOnlyNeverTheApplicantPayload() {
         // Phase 3 PII: this exception propagates into logs/DLQ — it must not
         // embed the evaluation context (PAN, mobile, ...), only ids.
-        JourneyInstance instance = new JourneyInstance("ji-pii", "corr-p", def.key(), "APP-P",
+        JourneyInstance instance = new JourneyInstance("ji-pii", "corr-p", def.key(), 1, "APP-P",
                 Map.of("pan", "SECRETPAN99"));
         engine.start(def, instance);
         advance(instance, "n_customer", "customer-party", Map.of("crn", "CRN-1"));
@@ -190,8 +190,8 @@ class JourneyEngineTest {
         com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.JourneyNode end =
                 com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.JourneyNode.terminal(
                         "end", "push", java.util.List.of(), "completed");
-        JourneyDefinition noDefault = new JourneyDefinition("nd", "t", java.util.List.of(task, branch, end));
-        JourneyInstance piiInstance = new JourneyInstance("ji-nd", "corr-nd", "nd", "APP-ND",
+        JourneyDefinition noDefault = new JourneyDefinition("nd", 1, "t", java.util.List.of(task, branch, end));
+        JourneyInstance piiInstance = new JourneyInstance("ji-nd", "corr-nd", "nd", 1, "APP-ND",
                 Map.of("pan", "SECRETPAN99"));
         engine.start(noDefault, piiInstance);
 

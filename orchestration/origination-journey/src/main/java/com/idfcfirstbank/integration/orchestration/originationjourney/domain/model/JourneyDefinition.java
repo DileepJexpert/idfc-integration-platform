@@ -6,12 +6,16 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * An immutable, parsed journey definition (the locked
- * {@code loan-origination.journey.json}, layout dropped). Framework-free; the
- * JSON parsing lives in a loader adapter, this is the domain shape the engine
- * walks.
+ * An immutable, parsed journey definition (the locked §7 config artifact, layout
+ * dropped). Framework-free; the JSON parsing lives in a loader adapter, this is
+ * the domain shape the engine walks.
+ *
+ * <p>{@code version} is the definition's PUBLISHED version — the unit of the
+ * engine's version pinning: a run pins {@code key@version} at start and resolves
+ * this exact definition for every later hop, so a publish mid-run never changes
+ * a running journey.
  */
-public record JourneyDefinition(String key, String startNodeId, List<JourneyNode> nodes) {
+public record JourneyDefinition(String key, int version, String startNodeId, List<JourneyNode> nodes) {
 
     public JourneyDefinition {
         nodes = List.copyOf(nodes);

@@ -1,5 +1,6 @@
 package com.idfcfirstbank.integration.fullflow;
 
+import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.loader.ClasspathJourneySource;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.capabilities.communications.adapter.out.meter.SemaphoreSendMeter;
 import com.idfcfirstbank.integration.capabilities.communications.application.CommunicationsService;
@@ -109,9 +110,16 @@ class SfdcSoapEndToEndTest {
         JourneyDefinition def = new JourneyDefinitionLoader(new ObjectMapper())
                 .loadFromClasspath("journeys/loan-origination.journey.json");
         InMemoryJourneyInstanceStore store = new InMemoryJourneyInstanceStore();
+        // A2: routing is EXPLICIT — Inbound_Wrapper -> loan-origination is now a
+        // visible config row (mirrors the engine's application.yml), not a fallback.
+        JourneyRegistry registry = new JourneyRegistry(
+                new ClasspathJourneySource(new JourneyDefinitionLoader(new ObjectMapper()),
+                        List.of("journeys/loan-origination.journey.json")),
+                Map.of("Inbound_Wrapper", "loan-origination"));
+        registry.bootstrap();
         JourneyOrchestrator orchestrator = new JourneyOrchestrator(
                 new JourneyEngine(new ExpressionEvaluator()),
-                new JourneyRegistry(List.of(def), Map.of()),   // empty type map => resolves loan-origination
+                registry,
                 store, r -> { }, d -> { }, () -> "ji-fallback");
 
         String id = orchestrator.onOrigination(asOriginationMap(env));

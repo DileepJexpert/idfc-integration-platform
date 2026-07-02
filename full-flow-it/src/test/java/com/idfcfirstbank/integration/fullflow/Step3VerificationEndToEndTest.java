@@ -1,5 +1,6 @@
 package com.idfcfirstbank.integration.fullflow;
 
+import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.loader.ClasspathJourneySource;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.capabilities.verification.application.AdapterRegistry;
 import com.idfcfirstbank.integration.capabilities.verification.application.MapperPair;
@@ -129,9 +130,14 @@ class Step3VerificationEndToEndTest {
         AtomicReference<JourneyDecision> decision = new AtomicReference<>();
         DecisionOutboundPort decisionPort = decision::set;
         JourneyDefinition def = new JourneyDefinitionLoader(new ObjectMapper()).loadFromClasspath("journeys/" + journeyFile);
+        JourneyRegistry registry = new JourneyRegistry(
+                new ClasspathJourneySource(new JourneyDefinitionLoader(new ObjectMapper()),
+                        List.of("journeys/" + journeyFile)),
+                Map.of(svcName, def.key()));
+        registry.bootstrap();
         JourneyOrchestrator orchestrator = new JourneyOrchestrator(
                 new JourneyEngine(new ExpressionEvaluator()),
-                new JourneyRegistry(List.of(def), Map.of()),
+                registry,
                 new InMemoryJourneyInstanceStore(), bus, decisionPort, () -> "ji-s3");
         bus.bind(orchestrator);
         orchestrator.onOrigination(Map.of("type", svcName, "correlationId", "corr-" + svcName + payload.hashCode(),

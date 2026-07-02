@@ -23,6 +23,13 @@ public final class JourneyInstance {
     private final String journeyInstanceId;
     private final String correlationId;
     private final String journeyKey;
+    /**
+     * The PINNED definition version this run started on (A2): every later hop
+     * resolves {@code journeyKey@journeyVersion}, so a publish mid-run never
+     * changes a running journey. {@code 0} = legacy instance persisted before
+     * pinning existed (resolved to current, with a warn).
+     */
+    private final int journeyVersion;
     private final String applicationRef;
     private final Map<String, Object> payload;
     /** When this run started — used by the liveness sweeper to find stuck RUNNING instances. */
@@ -55,15 +62,18 @@ public final class JourneyInstance {
     private JourneyDecision pendingDecision;
 
     public JourneyInstance(String journeyInstanceId, String correlationId, String journeyKey,
-                           String applicationRef, Map<String, Object> payload) {
-        this(journeyInstanceId, correlationId, journeyKey, applicationRef, payload, Instant.now());
+                           int journeyVersion, String applicationRef, Map<String, Object> payload) {
+        this(journeyInstanceId, correlationId, journeyKey, journeyVersion, applicationRef, payload,
+                Instant.now());
     }
 
     public JourneyInstance(String journeyInstanceId, String correlationId, String journeyKey,
-                           String applicationRef, Map<String, Object> payload, Instant startedAt) {
+                           int journeyVersion, String applicationRef, Map<String, Object> payload,
+                           Instant startedAt) {
         this.journeyInstanceId = journeyInstanceId;
         this.correlationId = correlationId;
         this.journeyKey = journeyKey;
+        this.journeyVersion = journeyVersion;
         this.applicationRef = applicationRef;
         this.payload = payload == null ? new LinkedHashMap<>() : new LinkedHashMap<>(payload);
         this.startedAt = startedAt == null ? Instant.now() : startedAt;
@@ -72,6 +82,7 @@ public final class JourneyInstance {
     public String journeyInstanceId() { return journeyInstanceId; }
     public String correlationId() { return correlationId; }
     public String journeyKey() { return journeyKey; }
+    public int journeyVersion() { return journeyVersion; }
     public String applicationRef() { return applicationRef; }
     public Map<String, Object> payload() { return payload; }
     public Instant startedAt() { return startedAt; }
@@ -116,6 +127,7 @@ public final class JourneyInstance {
      * left off across the async hops.
      */
     public static JourneyInstance restore(String journeyInstanceId, String correlationId, String journeyKey,
+                                          int journeyVersion,
                                           String applicationRef, Map<String, Object> payload, Instant startedAt,
                                           long version,
                                           Map<String, Object> collectedResults, Map<String, Object> context,
@@ -123,7 +135,7 @@ public final class JourneyInstance {
                                           Set<String> dispatchedNodeIds, InstanceStatus status,
                                           List<String> pendingRequestNodeIds, JourneyDecision pendingDecision) {
         JourneyInstance instance = new JourneyInstance(journeyInstanceId, correlationId, journeyKey,
-                applicationRef, payload, startedAt);
+                journeyVersion, applicationRef, payload, startedAt);
         instance.version = version;
         if (collectedResults != null) {
             instance.collectedResults.putAll(collectedResults);
