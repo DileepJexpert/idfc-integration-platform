@@ -11,6 +11,7 @@ description = "bureau capability — CIBIL credit bureau fetch"
 
 dependencies {
     implementation(project(":shared:shared-domain"))   // THE CAPABILITY CONTRACT
+    implementation(project(":platform:platform-messaging"))
     implementation("org.springframework.kafka:spring-kafka:${property("springKafkaVersion")}")
     implementation("com.fasterxml.jackson.core:jackson-databind")
 

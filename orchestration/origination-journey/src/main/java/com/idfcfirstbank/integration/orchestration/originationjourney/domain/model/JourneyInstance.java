@@ -1,5 +1,6 @@
 package com.idfcfirstbank.integration.orchestration.originationjourney.domain.model;
 
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -22,6 +23,8 @@ public final class JourneyInstance {
     private final String journeyKey;
     private final String applicationRef;
     private final Map<String, Object> payload;
+    /** When this run started — used by the liveness sweeper to find stuck RUNNING instances. */
+    private final Instant startedAt;
 
     private final Map<String, Object> collectedResults = new LinkedHashMap<>();
     /** The typed §7 run document: nodes write their `output` here; expressions read it. */
@@ -32,11 +35,17 @@ public final class JourneyInstance {
 
     public JourneyInstance(String journeyInstanceId, String correlationId, String journeyKey,
                            String applicationRef, Map<String, Object> payload) {
+        this(journeyInstanceId, correlationId, journeyKey, applicationRef, payload, Instant.now());
+    }
+
+    public JourneyInstance(String journeyInstanceId, String correlationId, String journeyKey,
+                           String applicationRef, Map<String, Object> payload, Instant startedAt) {
         this.journeyInstanceId = journeyInstanceId;
         this.correlationId = correlationId;
         this.journeyKey = journeyKey;
         this.applicationRef = applicationRef;
         this.payload = payload == null ? new LinkedHashMap<>() : new LinkedHashMap<>(payload);
+        this.startedAt = startedAt == null ? Instant.now() : startedAt;
     }
 
     public String journeyInstanceId() { return journeyInstanceId; }
@@ -44,6 +53,7 @@ public final class JourneyInstance {
     public String journeyKey() { return journeyKey; }
     public String applicationRef() { return applicationRef; }
     public Map<String, Object> payload() { return payload; }
+    public Instant startedAt() { return startedAt; }
     public Map<String, Object> collectedResults() { return collectedResults; }
     public Map<String, Object> context() { return context; }
     public InstanceStatus status() { return status; }
@@ -63,12 +73,12 @@ public final class JourneyInstance {
      * left off across the async hops.
      */
     public static JourneyInstance restore(String journeyInstanceId, String correlationId, String journeyKey,
-                                          String applicationRef, Map<String, Object> payload,
+                                          String applicationRef, Map<String, Object> payload, Instant startedAt,
                                           Map<String, Object> collectedResults, Map<String, Object> context,
                                           Set<String> completedNodeIds,
                                           Set<String> dispatchedNodeIds, InstanceStatus status) {
         JourneyInstance instance = new JourneyInstance(journeyInstanceId, correlationId, journeyKey,
-                applicationRef, payload);
+                applicationRef, payload, startedAt);
         if (collectedResults != null) {
             instance.collectedResults.putAll(collectedResults);
         }

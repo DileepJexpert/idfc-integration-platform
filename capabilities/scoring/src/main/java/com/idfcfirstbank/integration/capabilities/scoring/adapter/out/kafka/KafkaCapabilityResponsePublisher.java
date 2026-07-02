@@ -3,6 +3,7 @@ package com.idfcfirstbank.integration.capabilities.scoring.adapter.out.kafka;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.capabilities.scoring.domain.port.CapabilityResponsePort;
+import com.idfcfirstbank.integration.platform.messaging.KafkaDelivery;
 import com.idfcfirstbank.integration.shared.domain.capability.CapabilityResponse;
 import com.idfcfirstbank.integration.shared.domain.capability.CapabilityTopics;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -24,10 +25,12 @@ public class KafkaCapabilityResponsePublisher implements CapabilityResponsePort 
     @Override
     public void publish(CapabilityResponse response) {
         String topic = CapabilityTopics.response(response.capabilityKey());
+        String payload;
         try {
-            kafkaTemplate.send(topic, response.journeyInstanceId(), objectMapper.writeValueAsString(response));
+            payload = objectMapper.writeValueAsString(response);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("unserializable response for node " + response.nodeId(), e);
         }
+        KafkaDelivery.confirm(kafkaTemplate.send(topic, response.journeyInstanceId(), payload));
     }
 }

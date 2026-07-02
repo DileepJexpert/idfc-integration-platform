@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.capabilities.verification.config.VerificationProperties;
 import com.idfcfirstbank.integration.capabilities.verification.domain.port.out.SfdcNotifyPort;
+import com.idfcfirstbank.integration.platform.messaging.KafkaDelivery;
 import com.idfcfirstbank.integration.shared.domain.capability.CapabilityRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,13 +44,16 @@ public class KafkaSfdcNotifyPublisher implements SfdcNotifyPort {
         notification.put("reason", reason);
         Object orgId = request.payload() == null ? null : request.payload().get("orgId");
         notification.put("orgId", orgId);
+        String payload;
         try {
-            kafka.send(notifyTopic, request.correlationId(), objectMapper.writeValueAsString(notification));
-            log.warn("verify.notify-sfdc correlationId={} svcName={} reason={}",
-                    request.correlationId(), request.operation(), reason);
+            payload = objectMapper.writeValueAsString(notification);
         } catch (JsonProcessingException e) {
             log.error("verify.notify-sfdc.serialise-failed correlationId={} (cause={})",
                     request.correlationId(), e.getClass().getName());
+            return;
         }
+        KafkaDelivery.confirm(kafka.send(notifyTopic, request.correlationId(), payload));
+        log.warn("verify.notify-sfdc correlationId={} svcName={} reason={}",
+                request.correlationId(), request.operation(), reason);
     }
 }

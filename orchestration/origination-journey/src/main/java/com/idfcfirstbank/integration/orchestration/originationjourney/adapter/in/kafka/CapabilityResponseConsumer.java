@@ -2,9 +2,8 @@ package com.idfcfirstbank.integration.orchestration.originationjourney.adapter.i
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.orchestration.originationjourney.application.JourneyOrchestrator;
+import com.idfcfirstbank.integration.platform.messaging.PoisonMessageException;
 import com.idfcfirstbank.integration.shared.domain.capability.CapabilityResponse;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
@@ -15,8 +14,6 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class CapabilityResponseConsumer {
-
-    private static final Logger log = LoggerFactory.getLogger(CapabilityResponseConsumer.class);
 
     private final JourneyOrchestrator orchestrator;
     private final ObjectMapper objectMapper;
@@ -30,10 +27,16 @@ public class CapabilityResponseConsumer {
             topicPattern = "${idfc.engine.response-topic-pattern:cap\\..*\\.response\\.v1}",
             groupId = "${idfc.engine.response-group:origination-journey-engine}")
     public void onMessage(String responseJson) {
+        CapabilityResponse response;
         try {
-            orchestrator.onCapabilityResponse(objectMapper.readValue(responseJson, CapabilityResponse.class));
+            response = objectMapper.readValue(responseJson, CapabilityResponse.class);
         } catch (Exception e) {
-            log.error("engine.response could not process capability response: {}", responseJson, e);
+            // Undeserializable response can never advance a journey: to the DLQ, no retry.
+            throw new PoisonMessageException("engine could not deserialize capability response", e);
         }
+        // A store/publish/engine failure now PROPAGATES to the container error handler
+        // (retry then DLQ) instead of being swallowed — a lost response no longer
+        // silently strands the journey in RUNNING.
+        orchestrator.onCapabilityResponse(response);
     }
 }

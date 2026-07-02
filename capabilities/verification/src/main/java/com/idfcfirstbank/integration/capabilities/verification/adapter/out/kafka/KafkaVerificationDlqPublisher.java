@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.capabilities.verification.config.VerificationProperties;
 import com.idfcfirstbank.integration.capabilities.verification.domain.port.out.VerificationDlqPort;
+import com.idfcfirstbank.integration.platform.messaging.KafkaDelivery;
 import com.idfcfirstbank.integration.shared.domain.capability.CapabilityRequest;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.header.internals.RecordHeader;
@@ -37,17 +38,22 @@ public class KafkaVerificationDlqPublisher implements VerificationDlqPort {
 
     @Override
     public void deadLetter(CapabilityRequest request, String reason) {
+        String payload;
         try {
-            ProducerRecord<String, String> record = new ProducerRecord<>(
-                    dlqTopic, request.journeyInstanceId(), objectMapper.writeValueAsString(request));
-            record.headers().add(new RecordHeader("dlqReason", reason.getBytes(StandardCharsets.UTF_8)));
-            kafka.send(record);
-            // PII: log ids + reason only — NEVER the payload (reg no / email / account no).
-            log.error("verify.dlq.published svcName={} correlationId={} reason={}",
-                    request.operation(), request.correlationId(), reason);
+            payload = objectMapper.writeValueAsString(request);
         } catch (JsonProcessingException e) {
             log.error("verify.dlq.serialise-failed svcName={} correlationId={} (cause={})",
                     request.operation(), request.correlationId(), e.getClass().getName());
+            return;
         }
+        ProducerRecord<String, String> record = new ProducerRecord<>(
+                dlqTopic, request.journeyInstanceId(), payload);
+        record.headers().add(new RecordHeader("dlqReason", reason.getBytes(StandardCharsets.UTF_8)));
+        // DLQ send is CONFIRMED — a delivery failure must propagate so the caller
+        // knows the dead-letter was not persisted (never silent-lose).
+        KafkaDelivery.confirm(kafka.send(record));
+        // PII: log ids + reason only — NEVER the payload (reg no / email / account no).
+        log.error("verify.dlq.published svcName={} correlationId={} reason={}",
+                request.operation(), request.correlationId(), reason);
     }
 }

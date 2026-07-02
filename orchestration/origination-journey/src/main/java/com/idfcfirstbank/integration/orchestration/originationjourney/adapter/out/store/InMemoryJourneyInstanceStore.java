@@ -1,10 +1,14 @@
 package com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.store;
 
+import com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.InstanceStatus;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.JourneyInstance;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.port.JourneyInstanceStore;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * In-memory {@link JourneyInstanceStore} for the demo. Single-engine-instance
@@ -28,5 +32,13 @@ public class InMemoryJourneyInstanceStore implements JourneyInstanceStore {
     @Override
     public Optional<JourneyInstance> find(String journeyInstanceId) {
         return Optional.ofNullable(byId.get(journeyInstanceId));
+    }
+
+    @Override
+    public List<JourneyInstance> findRunningStartedBefore(Instant cutoff) {
+        return byId.values().stream()
+                .filter(i -> i.status() == InstanceStatus.RUNNING)
+                .filter(i -> i.startedAt() != null && i.startedAt().isBefore(cutoff))
+                .collect(Collectors.toList());
     }
 }

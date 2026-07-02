@@ -130,7 +130,11 @@ class SfdcSoapEndToEndTest {
 
         List<String> sentTo = new ArrayList<>();
         CommsHubPort commsHub = (to, body) -> sentTo.add(to);            // the internal shared CommsHub (mock)
-        SentSmsStorePort store = new java.util.HashSet<String>()::add;   // markSentIfAbsent = Set.add
+        java.util.Set<String> sentRefs = new java.util.HashSet<>();
+        SentSmsStorePort store = new SentSmsStorePort() {                 // markSentIfAbsent = Set.add
+            @Override public boolean markSentIfAbsent(String reference) { return sentRefs.add(reference); }
+            @Override public void unmark(String reference) { sentRefs.remove(reference); }
+        };
         CommunicationsService comms = new CommunicationsService(
                 commsHub, new SemaphoreSendMeter(4), store);            // metered send path
 

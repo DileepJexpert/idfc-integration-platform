@@ -3,8 +3,7 @@ package com.idfcfirstbank.integration.capabilities.communications.adapter.in.kaf
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.capabilities.communications.application.CommunicationsService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.idfcfirstbank.integration.platform.messaging.PoisonMessageException;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
@@ -12,13 +11,13 @@ import java.util.Map;
 
 /**
  * IN adapter: consume the SFDC edge's SENDSMS canonical envelopes and hand each to
- * the service. On a parse/handle failure it logs ONLY the exception CLASS — never
- * the message — because the envelope body carries the OTP/mobile (PII).
+ * the service. A send failure now PROPAGATES (retry then DLQ) instead of being
+ * swallowed-and-committed, so an OTP is never silently dropped. PII discipline is
+ * kept: the parse cause is NOT chained (it can echo the OTP/mobile body).
  */
 @Component
 public class CommSmsConsumer {
 
-    private static final Logger log = LoggerFactory.getLogger(CommSmsConsumer.class);
     private static final TypeReference<Map<String, Object>> MAP = new TypeReference<>() {};
 
     private final CommunicationsService service;
@@ -33,11 +32,13 @@ public class CommSmsConsumer {
             topics = "#{'${idfc.communications.sms-topic:comm.sms.send.v1}'.split(',')}",
             groupId = "${idfc.communications.group:communications}")
     public void onMessage(String envelopeJson) {
+        Map<String, Object> envelope;
         try {
-            service.onSmsRequest(objectMapper.readValue(envelopeJson, MAP));
+            envelope = objectMapper.readValue(envelopeJson, MAP);
         } catch (Exception e) {
-            // PII: do NOT log the envelope or the exception message (may echo the body).
-            log.error("comm.sms could not process an envelope (cause={})", e.getClass().getName());
+            // PII: do NOT chain the parse cause (its message can echo the body) — poison to DLQ.
+            throw new PoisonMessageException("comm.sms could not deserialize envelope");
         }
+        service.onSmsRequest(envelope);
     }
 }

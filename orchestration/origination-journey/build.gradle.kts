@@ -12,6 +12,9 @@ dependencies {
     // THE CAPABILITY CONTRACT lives here — engine + every capability share it.
     implementation(project(":shared:shared-domain"))
 
+    // Shared Kafka reliability contract: error handler + DLQ + confirmed delivery.
+    implementation(project(":platform:platform-messaging"))
+
     // Messaging — Kafka is a REAL local dependency (docker-compose), not mocked.
     implementation("org.springframework.kafka:spring-kafka:${property("springKafkaVersion")}")
 

@@ -10,6 +10,7 @@ description = "sfdc-response — consolidated per-org SFDC egress (config-as-dat
 
 dependencies {
     implementation(project(":shared:shared-domain"))
+    implementation(project(":platform:platform-messaging"))
     implementation("org.springframework.kafka:spring-kafka:${property("springKafkaVersion")}")
     implementation("com.fasterxml.jackson.core:jackson-databind")
 

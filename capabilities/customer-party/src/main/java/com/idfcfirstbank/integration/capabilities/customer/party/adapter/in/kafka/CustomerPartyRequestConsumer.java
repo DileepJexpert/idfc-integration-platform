@@ -3,9 +3,8 @@ package com.idfcfirstbank.integration.capabilities.customer.party.adapter.in.kaf
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.capabilities.customer.party.application.CustomerPartyService;
 import com.idfcfirstbank.integration.capabilities.customer.party.domain.port.CapabilityResponsePort;
+import com.idfcfirstbank.integration.platform.messaging.PoisonMessageException;
 import com.idfcfirstbank.integration.shared.domain.capability.CapabilityRequest;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
@@ -15,8 +14,6 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class CustomerPartyRequestConsumer {
-
-    private static final Logger log = LoggerFactory.getLogger(CustomerPartyRequestConsumer.class);
 
     private final CustomerPartyService service;
     private final CapabilityResponsePort responsePort;
@@ -33,11 +30,15 @@ public class CustomerPartyRequestConsumer {
             topics = "#{T(com.idfcfirstbank.integration.shared.domain.capability.CapabilityTopics).request('customer-party')}",
             groupId = "${idfc.capability.group:customer-party}")
     public void onMessage(String requestJson) {
+        CapabilityRequest request;
         try {
-            CapabilityRequest request = objectMapper.readValue(requestJson, CapabilityRequest.class);
-            responsePort.publish(service.handle(request));
+            request = objectMapper.readValue(requestJson, CapabilityRequest.class);
         } catch (Exception e) {
-            log.error("customer-party could not process request: {}", requestJson, e);
+            // Undeserializable input can never succeed: straight to <topic>.dlq, no retry.
+            throw new PoisonMessageException("customer-party could not deserialize capability request", e);
         }
+        // Processing/publish failures propagate to the container error handler
+        // (retry with backoff, then dead-letter) — never swallowed-and-committed.
+        responsePort.publish(service.handle(request));
     }
 }

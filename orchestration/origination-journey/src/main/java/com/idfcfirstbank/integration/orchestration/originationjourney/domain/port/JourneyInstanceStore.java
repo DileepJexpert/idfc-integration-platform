@@ -2,6 +2,8 @@ package com.idfcfirstbank.integration.orchestration.originationjourney.domain.po
 
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.JourneyInstance;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -27,4 +29,12 @@ public interface JourneyInstanceStore {
     void save(JourneyInstance instance);
 
     Optional<JourneyInstance> find(String journeyInstanceId);
+
+    /**
+     * All RUNNING instances whose {@code startedAt} is before {@code cutoff} — the
+     * candidates a liveness sweeper fails-and-notifies. Terminal (COMPLETED/FAILED)
+     * instances are never returned. Used only by the scheduled sweeper, not the hot
+     * path.
+     */
+    List<JourneyInstance> findRunningStartedBefore(Instant cutoff);
 }

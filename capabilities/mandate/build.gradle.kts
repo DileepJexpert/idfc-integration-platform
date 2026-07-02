@@ -11,6 +11,7 @@ description = "mandate capability — e-mandate registration lifecycle"
 
 dependencies {
     implementation(project(":shared:shared-domain"))
+    implementation(project(":platform:platform-messaging"))
     implementation(project(":shared:shared-capability"))
     implementation("org.springframework.kafka:spring-kafka:${property("springKafkaVersion")}")
     implementation("com.fasterxml.jackson.core:jackson-databind")

@@ -23,7 +23,9 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
+import java.time.Clock;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,11 +39,18 @@ import java.util.function.Supplier;
  */
 @Configuration
 @EnableConfigurationProperties(EngineProperties.class)
+@EnableScheduling
 public class EngineConfiguration {
 
     @Bean
     ExpressionEvaluator expressionEvaluator() {
         return new ExpressionEvaluator();
+    }
+
+    /** Clock for the liveness sweeper (overridable in tests). */
+    @Bean
+    Clock engineClock() {
+        return Clock.systemUTC();
     }
 
     @Bean

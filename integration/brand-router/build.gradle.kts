@@ -10,6 +10,7 @@ description = "brand-router — SFDC brand message routing (Kafka | ActiveMQ)"
 
 dependencies {
     implementation(project(":shared:shared-domain"))
+    implementation(project(":platform:platform-messaging"))
     implementation("org.springframework.kafka:spring-kafka:${property("springKafkaVersion")}")
     implementation("com.fasterxml.jackson.core:jackson-databind")
 

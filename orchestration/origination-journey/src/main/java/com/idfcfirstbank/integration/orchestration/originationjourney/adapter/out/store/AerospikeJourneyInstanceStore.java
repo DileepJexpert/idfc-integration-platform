@@ -7,6 +7,7 @@ import com.aerospike.client.Key;
 import com.aerospike.client.Record;
 import com.aerospike.client.ResultCode;
 import com.aerospike.client.policy.RecordExistsAction;
+import com.aerospike.client.policy.ScanPolicy;
 import com.aerospike.client.policy.WritePolicy;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -14,7 +15,10 @@ import com.idfcfirstbank.integration.orchestration.originationjourney.domain.mod
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.JourneyInstance;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.port.JourneyInstanceStore;
 
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -34,6 +38,8 @@ public class AerospikeJourneyInstanceStore implements JourneyInstanceStore {
     private static final TypeReference<Map<String, Object>> MAP = new TypeReference<>() {};
     private static final TypeReference<Set<String>> SET = new TypeReference<>() {};
 
+    private static final String B_ID = "id";
+    private static final String B_STARTED = "started";
     private static final String B_CORR = "corr";
     private static final String B_KEY = "jkey";
     private static final String B_APPREF = "appRef";
@@ -66,7 +72,7 @@ public class AerospikeJourneyInstanceStore implements JourneyInstanceStore {
     @Override
     public boolean insertIfAbsent(JourneyInstance instance) {
         WritePolicy wp = new WritePolicy(client.getWritePolicyDefault());
-        wp.expiration = ttlSeconds;
+        wp.expiration = expirationFor(instance);
         wp.recordExistsAction = RecordExistsAction.CREATE_ONLY; // atomic insert-if-absent
         for (int attempt = 0; ; attempt++) {
             try {
@@ -93,12 +99,24 @@ public class AerospikeJourneyInstanceStore implements JourneyInstanceStore {
     @Override
     public void save(JourneyInstance instance) {
         WritePolicy wp = new WritePolicy(client.getWritePolicyDefault());
-        wp.expiration = ttlSeconds;
+        wp.expiration = expirationFor(instance);
         client.put(wp, key(instance.journeyInstanceId()), bins(instance));
+    }
+
+    /**
+     * In-flight (RUNNING) runs NEVER silently expire (-1): a stuck run must survive
+     * so the liveness sweeper can find it and so the run record — the audit
+     * source-of-truth — outlives the TTL. Only terminal runs keep the configured
+     * retention.
+     */
+    private int expirationFor(JourneyInstance instance) {
+        return instance.status() == InstanceStatus.RUNNING ? -1 : ttlSeconds;
     }
 
     private Bin[] bins(JourneyInstance instance) {
         return new Bin[]{
+                new Bin(B_ID, instance.journeyInstanceId()),
+                new Bin(B_STARTED, instance.startedAt() == null ? null : instance.startedAt().toString()),
                 new Bin(B_CORR, instance.correlationId()),
                 new Bin(B_KEY, instance.journeyKey()),
                 new Bin(B_APPREF, instance.applicationRef()),
@@ -117,13 +135,44 @@ public class AerospikeJourneyInstanceStore implements JourneyInstanceStore {
         if (r == null) {
             return Optional.empty();
         }
-        return Optional.of(JourneyInstance.restore(
+        return Optional.of(restoreFrom(journeyInstanceId, r));
+    }
+
+    @Override
+    public List<JourneyInstance> findRunningStartedBefore(Instant cutoff) {
+        List<JourneyInstance> stuck = new ArrayList<>();
+        ScanPolicy policy = new ScanPolicy(client.getScanPolicyDefault());
+        client.scanAll(policy, namespace, set, (scanKey, record) -> {
+            if (record == null) {
+                return;
+            }
+            String statusName = record.getString(B_STATUS);
+            if (statusName == null || InstanceStatus.valueOf(statusName) != InstanceStatus.RUNNING) {
+                return;
+            }
+            String startedStr = record.getString(B_STARTED);
+            String id = record.getString(B_ID);
+            if (startedStr == null || id == null) {
+                return;
+            }
+            if (Instant.parse(startedStr).isBefore(cutoff)) {
+                stuck.add(restoreFrom(id, record));
+            }
+        });
+        return stuck;
+    }
+
+    private JourneyInstance restoreFrom(String journeyInstanceId, Record r) {
+        String startedStr = r.getString(B_STARTED);
+        Instant startedAt = startedStr == null ? null : Instant.parse(startedStr);
+        return JourneyInstance.restore(
                 journeyInstanceId,
                 r.getString(B_CORR), r.getString(B_KEY), r.getString(B_APPREF),
-                readMap(r.getString(B_PAYLOAD)), readMap(r.getString(B_COLLECTED)),
+                readMap(r.getString(B_PAYLOAD)), startedAt,
+                readMap(r.getString(B_COLLECTED)),
                 readMap(r.getString(B_CONTEXT)),
                 readSet(r.getString(B_COMPLETED)), readSet(r.getString(B_DISPATCHED)),
-                InstanceStatus.valueOf(r.getString(B_STATUS))));
+                InstanceStatus.valueOf(r.getString(B_STATUS)));
     }
 
     private Key key(String journeyInstanceId) {

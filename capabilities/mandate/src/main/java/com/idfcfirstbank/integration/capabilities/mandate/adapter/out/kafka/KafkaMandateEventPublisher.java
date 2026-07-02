@@ -1,7 +1,9 @@
 package com.idfcfirstbank.integration.capabilities.mandate.adapter.out.kafka;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.capabilities.mandate.domain.port.out.MandateEventPort;
+import com.idfcfirstbank.integration.platform.messaging.KafkaDelivery;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,10 +35,15 @@ public class KafkaMandateEventPublisher implements MandateEventPort {
 
     @Override
     public void emitMandateCallback(String invoiceNo, Map<String, Object> event) {
+        String json;
         try {
-            kafkaTemplate.send(topic, invoiceNo, objectMapper.writeValueAsString(event));
-        } catch (Exception e) {
-            log.error("could not emit MandateCallback for invoiceNo={}", invoiceNo, e);
+            json = objectMapper.writeValueAsString(event);
+        } catch (JsonProcessingException e) {
+            log.error("could not serialise MandateCallback for invoiceNo={}", invoiceNo, e);
+            return;
         }
+        // Confirm delivery: a lost MandateCallback must NOT be silently swallowed —
+        // a KafkaPublishException propagates to the caller.
+        KafkaDelivery.confirm(kafkaTemplate.send(topic, invoiceNo, json));
     }
 }

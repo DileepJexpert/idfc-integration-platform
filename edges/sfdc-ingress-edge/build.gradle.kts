@@ -11,6 +11,7 @@ dependencies {
     // The canonical origination envelope is a SHARED platform contract (so every
     // channel edge emits the identical shape the engine consumes).
     implementation(project(":shared:shared-domain"))
+    implementation(project(":platform:platform-messaging"))
 
     // Messaging — Kafka is a REAL local dependency (docker-compose), not mocked.
     implementation("org.springframework.kafka:spring-kafka:${property("springKafkaVersion")}")

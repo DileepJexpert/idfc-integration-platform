@@ -45,13 +45,24 @@ public class CommunicationsService {
             log.warn("comm.sms.malformed notificationId={} — no Mobile__c in Task body", notificationId);
             return;
         }
-        // Idempotent send: the same Notification/Id must never re-send an OTP.
+        // Idempotent send: markSentIfAbsent is the ATOMIC CLAIM that stops a
+        // concurrent duplicate from double-sending the same Notification/Id.
         if (notificationId != null && !store.markSentIfAbsent(notificationId)) {
             log.info("comm.sms.duplicate notificationId={} — already sent, skipping", notificationId);
             return;
         }
-        // Metered: bound concurrent calls to the shared CommsHub (Diwali-burst safe).
-        meter.meter(() -> commsHub.sendSms(to, message));
+        try {
+            // Metered: bound concurrent calls to the shared CommsHub (Diwali-burst safe).
+            meter.meter(() -> commsHub.sendSms(to, message));
+        } catch (RuntimeException e) {
+            // The send did NOT succeed: release the claim so a redelivery re-sends, and
+            // PROPAGATE so the consumer's error handler retries/DLQs. The OTP is marked
+            // "sent" only AFTER a successful send — never before.
+            if (notificationId != null) {
+                store.unmark(notificationId);
+            }
+            throw e;
+        }
     }
 
     private static String str(Object o) {

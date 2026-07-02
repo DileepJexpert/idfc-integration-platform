@@ -3,8 +3,7 @@ package com.idfcfirstbank.integration.orchestration.originationjourney.adapter.i
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.orchestration.originationjourney.application.JourneyOrchestrator;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.idfcfirstbank.integration.platform.messaging.PoisonMessageException;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
@@ -18,7 +17,6 @@ import java.util.Map;
 @Component
 public class OriginationConsumer {
 
-    private static final Logger log = LoggerFactory.getLogger(OriginationConsumer.class);
     private static final TypeReference<Map<String, Object>> MAP = new TypeReference<>() {};
 
     private final JourneyOrchestrator orchestrator;
@@ -33,10 +31,15 @@ public class OriginationConsumer {
             topics = "#{'${idfc.engine.origination-topics:orig.sfdc.pl.v1}'.split(',')}",
             groupId = "${idfc.engine.origination-group:origination-journey-engine}")
     public void onMessage(String envelopeJson) {
+        Map<String, Object> envelope;
         try {
-            orchestrator.onOrigination(objectMapper.readValue(envelopeJson, MAP));
+            envelope = objectMapper.readValue(envelopeJson, MAP);
         } catch (Exception e) {
-            log.error("engine.origination could not process envelope: {}", envelopeJson, e);
+            // Undeserializable envelope can never start a journey: to the DLQ, no retry.
+            throw new PoisonMessageException("engine could not deserialize origination envelope", e);
         }
+        // A start failure (store/publish) now PROPAGATES to the container error handler
+        // (retry then DLQ) instead of being swallowed-and-committed.
+        orchestrator.onOrigination(envelope);
     }
 }

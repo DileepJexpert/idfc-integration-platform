@@ -2,6 +2,7 @@ package com.idfcfirstbank.integration.sfdcresponse.adapter.out.kafka;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.idfcfirstbank.integration.platform.messaging.KafkaDelivery;
 import com.idfcfirstbank.integration.sfdcresponse.domain.model.OrgResponse;
 import com.idfcfirstbank.integration.sfdcresponse.domain.port.out.SfdcResponsePort;
 import org.slf4j.Logger;
@@ -27,12 +28,15 @@ public class KafkaSfdcResponsePublisher implements SfdcResponsePort {
 
     @Override
     public void deliver(OrgResponse target, Map<String, Object> notification) {
+        String key = String.valueOf(notification.get("correlationId"));
+        String payload;
         try {
-            String key = String.valueOf(notification.get("correlationId"));
-            kafka.send(target.responseTopic(), key, objectMapper.writeValueAsString(notification));
+            payload = objectMapper.writeValueAsString(notification);
         } catch (JsonProcessingException e) {
             log.error("sfdc-response.serialise-failed topic={} (cause={})",
                     target.responseTopic(), e.getClass().getName());
+            return;
         }
+        KafkaDelivery.confirm(kafka.send(target.responseTopic(), key, payload));
     }
 }
