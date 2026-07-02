@@ -73,7 +73,10 @@ public class CapabilityFrameworkConfiguration {
                 throw new PoisonMessageException(
                         "capability " + capability.key() + " could not serialize response", e);
             }
-            KafkaDelivery.confirm(kafkaTemplate.send(responseTopic, resp.nodeId(), payload));
+            // Keyed by journeyInstanceId — one run's responses stay ordered on one
+            // partition (nodeId would be a per-definition constant: a hot partition
+            // per node AND one journey's responses scattered across partitions).
+            KafkaDelivery.confirm(kafkaTemplate.send(responseTopic, resp.journeyInstanceId(), payload));
         });
         container.start();
         return container;

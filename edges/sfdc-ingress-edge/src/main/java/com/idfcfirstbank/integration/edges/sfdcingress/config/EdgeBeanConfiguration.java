@@ -79,8 +79,9 @@ public class EdgeBeanConfiguration {
     }
 
     @Bean
-    DedupeService dedupeService(IdempotencyStorePort store, Clock clock) {
-        return new DedupeService(store, clock);
+    DedupeService dedupeService(IdempotencyStorePort store, Clock clock, EdgeProperties properties) {
+        return new DedupeService(store, clock,
+                java.time.Duration.ofSeconds(properties.publishLeaseSeconds()));
     }
 
     @Bean

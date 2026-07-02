@@ -11,6 +11,9 @@ description = "lending-origination capability — FinnOne loan booking (Oracle s
 
 dependencies {
     implementation(project(":shared:shared-domain"))   // THE CAPABILITY CONTRACT
+    // The homogeneous capability framework: Kafka shell + IDEMPOTENT dispatch — a
+    // redelivered booking request must never re-execute the FinnOne stored proc.
+    implementation(project(":shared:shared-capability"))
     implementation(project(":platform:platform-messaging"))
     implementation("org.springframework.kafka:spring-kafka:${property("springKafkaVersion")}")
     implementation("com.fasterxml.jackson.core:jackson-databind")

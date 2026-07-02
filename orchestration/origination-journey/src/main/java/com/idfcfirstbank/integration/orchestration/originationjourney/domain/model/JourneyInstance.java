@@ -1,7 +1,9 @@
 package com.idfcfirstbank.integration.orchestration.originationjourney.domain.model;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.HashSet;
@@ -33,6 +35,25 @@ public final class JourneyInstance {
     private final Set<String> dispatchedNodeIds = new HashSet<>();
     private InstanceStatus status = InstanceStatus.RUNNING;
 
+    /**
+     * Optimistic-lock version for the store's compare-and-set save: the version
+     * this state was LOADED at (0 = not yet persisted). A save must only apply if
+     * the store still holds this version — a concurrent writer (second engine
+     * replica) must lose and redeliver, never blindly overwrite.
+     */
+    private long version;
+
+    /**
+     * The publish INTENT persisted BEFORE side effects (a lightweight outbox):
+     * node ids whose capability requests must go out, and the decision (if any).
+     * Written with the same save that records the engine's state advance; cleared
+     * by a second save once every publish is CONFIRMED. A crash between the two
+     * leaves the intent durable, so the redelivered trigger re-drives the
+     * publishes instead of losing the hop.
+     */
+    private final List<String> pendingRequestNodeIds = new ArrayList<>();
+    private JourneyDecision pendingDecision;
+
     public JourneyInstance(String journeyInstanceId, String correlationId, String journeyKey,
                            String applicationRef, Map<String, Object> payload) {
         this(journeyInstanceId, correlationId, journeyKey, applicationRef, payload, Instant.now());
@@ -62,6 +83,28 @@ public final class JourneyInstance {
     public void markDispatched(String nodeId) { dispatchedNodeIds.add(nodeId); }
     public boolean isCompleted(String nodeId) { return completedNodeIds.contains(nodeId); }
 
+    public long version() { return version; }
+    public void version(long version) { this.version = version; }
+
+    public List<String> pendingRequestNodeIds() { return List.copyOf(pendingRequestNodeIds); }
+    public JourneyDecision pendingDecision() { return pendingDecision; }
+    public boolean hasPendingPublishes() { return !pendingRequestNodeIds.isEmpty() || pendingDecision != null; }
+
+    /** Record the publish intent for this hop (persisted with the state save). */
+    public void setPendingPublishes(List<String> requestNodeIds, JourneyDecision decision) {
+        pendingRequestNodeIds.clear();
+        if (requestNodeIds != null) {
+            pendingRequestNodeIds.addAll(requestNodeIds);
+        }
+        this.pendingDecision = decision;
+    }
+
+    /** All publishes confirmed — clear the intent (persisted by the follow-up save). */
+    public void clearPendingPublishes() {
+        pendingRequestNodeIds.clear();
+        pendingDecision = null;
+    }
+
     /** Read-only views of the tracking sets, for persistence. */
     public Set<String> completedNodeIds() { return Set.copyOf(completedNodeIds); }
     public Set<String> dispatchedNodeIds() { return Set.copyOf(dispatchedNodeIds); }
@@ -74,11 +117,14 @@ public final class JourneyInstance {
      */
     public static JourneyInstance restore(String journeyInstanceId, String correlationId, String journeyKey,
                                           String applicationRef, Map<String, Object> payload, Instant startedAt,
+                                          long version,
                                           Map<String, Object> collectedResults, Map<String, Object> context,
                                           Set<String> completedNodeIds,
-                                          Set<String> dispatchedNodeIds, InstanceStatus status) {
+                                          Set<String> dispatchedNodeIds, InstanceStatus status,
+                                          List<String> pendingRequestNodeIds, JourneyDecision pendingDecision) {
         JourneyInstance instance = new JourneyInstance(journeyInstanceId, correlationId, journeyKey,
                 applicationRef, payload, startedAt);
+        instance.version = version;
         if (collectedResults != null) {
             instance.collectedResults.putAll(collectedResults);
         }
@@ -94,6 +140,10 @@ public final class JourneyInstance {
         if (status != null) {
             instance.status = status;
         }
+        if (pendingRequestNodeIds != null) {
+            instance.pendingRequestNodeIds.addAll(pendingRequestNodeIds);
+        }
+        instance.pendingDecision = pendingDecision;
         return instance;
     }
 

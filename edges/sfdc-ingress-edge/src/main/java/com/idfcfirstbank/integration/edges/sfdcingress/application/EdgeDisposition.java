@@ -7,7 +7,8 @@ package com.idfcfirstbank.integration.edges.sfdcingress.application;
  */
 public enum EdgeDisposition {
     ACK_PROCESSED(true),            // new winner: normalized + published
-    ACK_DUPLICATE_INFLIGHT(true),   // resend while in-flight: re-attached, no publish
+    ACK_DUPLICATE_INFLIGHT(true),   // resend while ACTIVELY in-flight (within lease): re-attached, no publish
+    ACK_DUPLICATE_PUBLISHED(true),  // resend after the envelope was confirmed published: idempotent no-op
     ACK_DUPLICATE_DECIDED(true),    // resend after decision: idempotent, no push
     ACK_DLQ_PERMANENT(true),        // C2 permanent: ACK + DLQ + alert
     ACK_DLQ_POISON(true),           // C5 breaker tripped: ACK + DLQ-as-poison + alert

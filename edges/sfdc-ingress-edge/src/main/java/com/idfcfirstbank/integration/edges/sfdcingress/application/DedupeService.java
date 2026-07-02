@@ -9,6 +9,8 @@ import com.idfcfirstbank.integration.edges.sfdcingress.domain.port.IdempotencySt
 import com.idfcfirstbank.integration.edges.sfdcingress.domain.port.IdempotencyStorePort.LinkOutcome;
 
 import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Optional;
 
 /**
@@ -25,12 +27,21 @@ import java.util.Optional;
  */
 public class DedupeService {
 
+    /** Default publish lease: an IN_FLIGHT older than this is a crashed attempt. */
+    public static final Duration DEFAULT_PUBLISH_LEASE = Duration.ofSeconds(60);
+
     private final IdempotencyStorePort store;
     private final Clock clock;
+    private final Duration publishLease;
 
     public DedupeService(IdempotencyStorePort store, Clock clock) {
+        this(store, clock, DEFAULT_PUBLISH_LEASE);
+    }
+
+    public DedupeService(IdempotencyStorePort store, Clock clock, Duration publishLease) {
         this.store = store;
         this.clock = clock;
+        this.publishLease = publishLease;
     }
 
     public DedupeResult resolve(SfdcInboundEvent event) {
@@ -47,7 +58,9 @@ public class DedupeService {
 
         InsertOutcome insert = store.insertIfAbsent(candidate);
         if (insert == InsertOutcome.ALREADY_EXISTS) {
-            // Lost the identical-id race; the winner just created it. Re-attach.
+            // Lost the identical-id race; the winner just created it. A freshly
+            // created record is by definition within its lease — re-attach as a
+            // live in-flight duplicate, never as stalled.
             IdempotencyRecord current = store.findByNotificationId(event.notificationId())
                     .orElse(candidate.withStatus(RecordStatus.IN_FLIGHT, clock.instant()));
             return resolveExisting(event, current);
@@ -80,7 +93,7 @@ public class DedupeService {
                 return resolveAgainstOwner(appKey, owner.get());
             }
         }
-        return DedupeResult.resend(pathFor(record.status()), record, false);
+        return DedupeResult.resend(pathFor(record), record, false);
     }
 
     private DedupeResult resolveAgainstOwner(ApplicationKey appKey) {
@@ -94,14 +107,30 @@ public class DedupeService {
                 // Owner record not yet visible (rare race): treat as in-flight.
                 .orElse(IdempotencyRecord.newReceived(ownerNotificationId, null, null, null, null, clock.instant())
                         .withStatus(RecordStatus.IN_FLIGHT, clock.instant()));
-        return DedupeResult.resend(pathFor(owner.status()), owner, true);
+        return DedupeResult.resend(pathFor(owner), owner, true);
     }
 
-    private static DedupePath pathFor(RecordStatus status) {
-        return switch (status) {
-            case RECEIVED, IN_FLIGHT -> DedupePath.IN_FLIGHT;
+    /**
+     * Map a record's status to the resend path. A pre-publish state (RECEIVED /
+     * IN_FLIGHT) WITHIN the publish lease is a live duplicate — the winner is
+     * still working; ACK and do not publish. PAST the lease the original attempt
+     * is dead (crashed between claim and publish) and ACKing would silently lose
+     * the message forever — re-drive instead.
+     */
+    private DedupePath pathFor(IdempotencyRecord record) {
+        return switch (record.status()) {
+            case RECEIVED, IN_FLIGHT -> leaseExpired(record) ? DedupePath.STALLED : DedupePath.IN_FLIGHT;
+            case PUBLISHED -> DedupePath.PUBLISHED;
             case DECIDED -> DedupePath.DECIDED;
             case FAILED -> DedupePath.FAILED;
         };
+    }
+
+    private boolean leaseExpired(IdempotencyRecord record) {
+        Instant updatedAt = record.updatedAt();
+        if (updatedAt == null) {
+            return true; // no heartbeat at all — treat as crashed
+        }
+        return clock.instant().isAfter(updatedAt.plus(publishLease));
     }
 }
