@@ -20,6 +20,26 @@
     {
       "key": "partnerToken",
       "value": "cred-dev-token"
+    },
+    {
+      "key": "baseRegistry",
+      "value": "http://localhost:8104"
+    },
+    {
+      "key": "registryToken",
+      "value": "dev-registry-token"
+    },
+    {
+      "key": "makerId",
+      "value": "maker-asha"
+    },
+    {
+      "key": "checkerId",
+      "value": "checker-vikram"
+    },
+    {
+      "key": "journeyKey",
+      "value": "pl-express"
     }
   ],
   "item": [
@@ -233,6 +253,392 @@
           }
         }
       }
+    },
+    {
+      "name": "Journey Registry (control plane — designer writes, engine reads)",
+      "description": "The A1 maker-checker API. Every call needs X-Registry-Token; mutations need X-User-Id (the actor). The SERVER enforces maker != checker (403), one editable draft (409), and validation-gated submit (422 with designer-vocabulary issues). Engine-facing reads at the end serve published configs (the A2 seam).",
+      "item": [
+        {
+          "name": "1. Create journey (maker)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Registry-Token",
+                "value": "{{registryToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{makerId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseRegistry}}/api/v1/journeys",
+              "host": [
+                "{{baseRegistry}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "journeys"
+              ]
+            },
+            "description": "201; 409 if the key exists; 422 if the key is not kebab-case.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"{{journeyKey}}\",\n  \"name\": \"PL Express\",\n  \"businessLine\": \"PL\"\n}"
+            }
+          }
+        },
+        {
+          "name": "2. Create draft v1 (maker)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Registry-Token",
+                "value": "{{registryToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{makerId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseRegistry}}/api/v1/journeys/{{journeyKey}}/versions",
+              "host": [
+                "{{baseRegistry}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "journeys",
+                "{{journeyKey}}",
+                "versions"
+              ]
+            },
+            "description": "The server STAMPS journeyKey/version — client-sent identity is overwritten (anti-spoof). 409 when an editable draft already exists.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"config\": {\n    \"journeyKey\": \"{{journeyKey}}\",\n    \"version\": 1,\n    \"startNodeId\": \"n_verify\",\n    \"nodes\": [\n      {\n        \"id\": \"n_verify\",\n        \"type\": \"task\",\n        \"capability\": \"kyc\",\n        \"operation\": \"verify\",\n        \"output\": \"context.kyc\",\n        \"next\": [\n          \"n_done\"\n        ]\n      },\n      {\n        \"id\": \"n_done\",\n        \"type\": \"terminal\",\n        \"status\": \"completed\"\n      }\n    ],\n    \"layout\": {\n      \"n_verify\": {\n        \"x\": 80,\n        \"y\": 120\n      },\n      \"n_done\": {\n        \"x\": 280,\n        \"y\": 120\n      }\n    }\n  },\n  \"note\": \"first cut\"\n}"
+            }
+          }
+        },
+        {
+          "name": "3. Save draft (maker)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-Registry-Token",
+                "value": "{{registryToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{makerId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseRegistry}}/api/v1/journeys/{{journeyKey}}/versions/1",
+              "host": [
+                "{{baseRegistry}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "journeys",
+                "{{journeyKey}}",
+                "versions",
+                "1"
+              ]
+            },
+            "description": "DRAFT only — published/rejected/pending versions are immutable (409).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"config\": {\n    \"journeyKey\": \"{{journeyKey}}\",\n    \"version\": 1,\n    \"startNodeId\": \"n_verify\",\n    \"nodes\": [\n      {\n        \"id\": \"n_verify\",\n        \"type\": \"task\",\n        \"capability\": \"kyc\",\n        \"operation\": \"verify\",\n        \"output\": \"context.kyc\",\n        \"next\": [\n          \"n_done\"\n        ]\n      },\n      {\n        \"id\": \"n_done\",\n        \"type\": \"terminal\",\n        \"status\": \"completed\"\n      }\n    ],\n    \"layout\": {\n      \"n_verify\": {\n        \"x\": 80,\n        \"y\": 120\n      },\n      \"n_done\": {\n        \"x\": 280,\n        \"y\": 120\n      }\n    }\n  },\n  \"note\": \"edited\"\n}"
+            }
+          }
+        },
+        {
+          "name": "4. Validate (authoritative)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Registry-Token",
+                "value": "{{registryToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseRegistry}}/api/v1/journeys/{{journeyKey}}/versions/1/validate",
+              "host": [
+                "{{baseRegistry}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "journeys",
+                "{{journeyKey}}",
+                "versions",
+                "1",
+                "validate"
+              ]
+            },
+            "description": "Returns {issues:[{code,severity,message,nodeId}]} — the designer vocabulary."
+          }
+        },
+        {
+          "name": "5. Submit (maker)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Registry-Token",
+                "value": "{{registryToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{makerId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseRegistry}}/api/v1/journeys/{{journeyKey}}/versions/1/submit",
+              "host": [
+                "{{baseRegistry}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "journeys",
+                "{{journeyKey}}",
+                "versions",
+                "1",
+                "submit"
+              ]
+            },
+            "description": "422 with issues when the graph fails validation; else -> pendingApproval."
+          }
+        },
+        {
+          "name": "6a. Approve as the AUTHOR (403 demo)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Registry-Token",
+                "value": "{{registryToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{makerId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseRegistry}}/api/v1/journeys/{{journeyKey}}/versions/1/approve",
+              "host": [
+                "{{baseRegistry}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "journeys",
+                "{{journeyKey}}",
+                "versions",
+                "1",
+                "approve"
+              ]
+            },
+            "description": "Maker-checker enforced SERVER-SIDE: the author gets 403, always."
+          }
+        },
+        {
+          "name": "6b. Approve (checker) -> published",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Registry-Token",
+                "value": "{{registryToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{checkerId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseRegistry}}/api/v1/journeys/{{journeyKey}}/versions/1/approve",
+              "host": [
+                "{{baseRegistry}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "journeys",
+                "{{journeyKey}}",
+                "versions",
+                "1",
+                "approve"
+              ]
+            },
+            "description": "A DIFFERENT actor publishes; the pointer moves; the engine refresh picks it up (~30s)."
+          }
+        },
+        {
+          "name": "6c. Reject with comment (checker)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Registry-Token",
+                "value": "{{registryToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{checkerId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseRegistry}}/api/v1/journeys/{{journeyKey}}/versions/1/reject",
+              "host": [
+                "{{baseRegistry}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "journeys",
+                "{{journeyKey}}",
+                "versions",
+                "1",
+                "reject"
+              ]
+            },
+            "description": "Alternative to 6b — releases the draft slot without moving the published pointer.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"comment\": \"branch coverage is too thin\"\n}"
+            }
+          }
+        },
+        {
+          "name": "7. Get journey (+versions)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Registry-Token",
+                "value": "{{registryToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseRegistry}}/api/v1/journeys/{{journeyKey}}",
+              "host": [
+                "{{baseRegistry}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "journeys",
+                "{{journeyKey}}"
+              ]
+            },
+            "description": "activeVersion = the published pointer; version configs via the single-version read."
+          }
+        },
+        {
+          "name": "8. Get version (with config)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Registry-Token",
+                "value": "{{registryToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseRegistry}}/api/v1/journeys/{{journeyKey}}/versions/1",
+              "host": [
+                "{{baseRegistry}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "journeys",
+                "{{journeyKey}}",
+                "versions",
+                "1"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "9. ENGINE READ: published set",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Registry-Token",
+                "value": "{{registryToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseRegistry}}/api/v1/published-journeys",
+              "host": [
+                "{{baseRegistry}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "published-journeys"
+              ]
+            },
+            "description": "What the engine bootstraps/refreshes on — the current pointer of every journey."
+          }
+        },
+        {
+          "name": "10. ENGINE READ: pinned version",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Registry-Token",
+                "value": "{{registryToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseRegistry}}/api/v1/published-journeys/{{journeyKey}}/versions/1",
+              "host": [
+                "{{baseRegistry}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "published-journeys",
+                "{{journeyKey}}",
+                "versions",
+                "1"
+              ]
+            },
+            "description": "Historical published versions stay servable — in-flight runs are pinned to these."
+          }
+        }
+      ]
     }
   ]
 }
