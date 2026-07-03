@@ -1,11 +1,16 @@
 # Legacy-Patterns Demo — "in the old system this was a microservice; here it's config"
 
-**Everything under `demo/` is DEMO SCAFFOLDING.** Vendors are mocked in-process,
-the file edge reads a LOCAL FOLDER (not SFTP), and none of it is the
-census-gated migration target (`docs/legacy-analysis-review.md` §6/§8 — the
-generic-http capability, production SFTP edge, `foreach` execution and sync
-lane stay unbuilt until the pattern census sizes them). If a demo piece and the
-real thing would diverge, the demo is deliberately the obviously-demo version.
+**Everything under `demo/` is DEMO SCAFFOLDING** — but the FLOW is real: the
+capabilities make **real outbound HTTP** (real client, timeouts, per-brand auth,
+HTTP-status → failure-class) to a **WireMock** vendor (`mock-devicefin` /
+`mock-fusion` in `docker-compose.infra.yml`). The ONLY thing mocked is the
+vendor's response DATA (the WireMock mappings under
+`infra/mock-vendors/{device-financing,fusion}/mappings/`). The file edge reads a
+LOCAL FOLDER (not SFTP), and none of it is the census-gated migration target
+(`docs/legacy-analysis-review.md` §6/§8 — the generic-http capability, production
+SFTP edge, `foreach` execution and sync lane stay unbuilt until the pattern
+census sizes them). "Real flow, only data mocked" — the mock sits at the vendor
+boundary, not inside the flow.
 
 **The one-line thesis, repeated at every step:** *in the old estate this was a
 separate Spring Boot microservice; in the new platform it's a config row (or a
@@ -15,8 +20,8 @@ drawn DAG). Same behaviour, no new deployable.*
 
 | piece | what it proves |
 |---|---|
-| `device-financing-demo` app | **Brand-as-config**: ONE journey; SAMSUNG (OAUTH, validate+block), GODREJ (NA, block-only), BOSCH (BAUTH, nested pass path) are ROWS in its `application.yml`. Unknown brands FAIL CLOSED. |
-| `fusion-hcm-demo` app | **File-batch scaffold**: a CSV dropped in `demo/batch-inbox/` becomes one engine run per record (mock Fusion), grouped by ONE batch search key; plus the mocked per-record capability. |
+| `device-financing-demo` app | **Brand-as-config**: ONE journey; SAMSUNG (OAUTH, validate+block), GODREJ (NA, block-only), BOSCH (BAUTH, nested pass path) are ROWS in its `application.yml`. Each row's auth is **real** (Samsung fetches an OAuth token then Bearer; Bosch sends Basic); the vendor call is **real HTTP** to `mock-devicefin`. Unknown brands FAIL CLOSED. |
+| `fusion-hcm-demo` app | **File-batch scaffold**: a CSV dropped in `demo/batch-inbox/` becomes one engine run per record; each record makes a **real HTTP** POST to Fusion (`mock-fusion`) — a malformed date is a real 400 → PERMANENT. Grouped by ONE batch search key. |
 | engine `demo` profile | The two demo doors as CONFIG: topics `orig.demo.device.v1` / `orig.demo.hr.v1`, `type-to-journey` rows, the two journey JSONs. |
 | ops view (existing) | Every run above is watchable: status, node position, per-record outcomes, failure CLASS, DLQ ref. Nothing demo-specific was added to it. |
 | Designer seeds (designer repo) | The runnable demo journeys drawn, plus the two REFERENCE drafts — production file-batch (SFTP → `foreach` → email) and the sync-read lane — **drawn, not built** (the honesty slide). |
@@ -29,7 +34,7 @@ by ledger AND engine dedup, empty file skipped.
 ## Running it live
 
 ```bash
-docker compose -f docker-compose.infra.yml up -d        # Kafka + Aerospike
+docker compose -f docker-compose.infra.yml up -d        # Kafka + Aerospike + mock-devicefin (9106) + mock-fusion (9107)
 
 # 1. the engine with the demo rows (classpath journeys; flip to registry to
 #    show the designer→registry→engine seam instead)
@@ -97,8 +102,8 @@ gap; remaining build, sized by the pattern census."*
 ## What is deliberately NOT here
 
 - No production SFTP edge, no `foreach` execution, no generic-http capability,
-  no AMQ routing, no real vendor calls, no email adapter — all census-gated or
-  explicitly out of the demo.
+  no AMQ routing, no email adapter — all census-gated or out of the demo. (The
+  vendor CALLS are real HTTP; only the vendor's response DATA is a WireMock stub.)
 - No PII anywhere: employee IDS and dates in the sample CSV, brand names and
   device ids on the wire — never names or account data.
 - The `FILE_DEMO` source marker is a demo string on purpose: `SourceSystem`

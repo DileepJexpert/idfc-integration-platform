@@ -7,22 +7,25 @@ import com.idfcfirstbank.integration.shared.domain.capability.CapabilityRequest;
 import com.idfcfirstbank.integration.shared.domain.capability.ErrorClass;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDate;
-import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 
 /**
- * DEMO — the mocked Fusion HCM capability. {@code updateEmployee} is the
- * per-record body of the file-batch demo: a well-formed record "updates"
- * (mock) and completes; a malformed one (blank id, unparseable date) is a
- * classified PERMANENT failure, so exactly that record's run fails while the
- * rest of the batch completes — the per-record error handling the legacy LWD
- * job got right, kept, with the platform's classes on top.
- * {@code getEmployee} exists only for the sync-read reference drawing.
+ * DEMO — the mocked Fusion HCM capability, now over REAL HTTP.
+ * {@code updateEmployee} is the per-record body of the file-batch demo: it POSTs
+ * to Fusion; a well-formed record 200s and completes, a malformed one comes back
+ * a real HTTP 400 → PERMANENT, so exactly that record's run fails while the rest
+ * of the batch completes. {@code getEmployee} backs the sync-read reference.
+ * Only the Fusion response DATA is mocked (on the mock-vendors server).
  */
 @Component
 public class FusionHcmDemoCapability implements Capability {
+
+    private final FusionVendor fusion;
+
+    public FusionHcmDemoCapability(FusionVendor fusion) {
+        this.fusion = fusion;
+    }
 
     @Override
     public String key() {
@@ -37,19 +40,12 @@ public class FusionHcmDemoCapability implements Capability {
 
     private Map<String, Object> updateEmployee(CapabilityRequest request) {
         String employeeId = field(request, "employeeId");
-        String lastWorkingDay = field(request, "lastWorkingDay");
         if (employeeId == null || employeeId.isBlank()) {
             throw new CapabilityException(ErrorClass.PERMANENT, "blank employeeId");
         }
-        try {
-            LocalDate.parse(lastWorkingDay == null ? "" : lastWorkingDay);
-        } catch (DateTimeParseException e) {
-            throw new CapabilityException(ErrorClass.PERMANENT,
-                    "unparseable lastWorkingDay for employeeId=" + employeeId);
-        }
-        // Mocked Fusion accepts the update — ids only in the result.
-        return Map.of("updated", true, "employeeId", employeeId,
-                "lastWorkingDay", lastWorkingDay);
+        Map<String, Object> vendor =
+                fusion.updateEmployee(employeeId, field(request, "lastWorkingDay"));
+        return Map.of("updated", true, "employeeId", employeeId, "vendor", vendor);
     }
 
     private Map<String, Object> getEmployee(CapabilityRequest request) {
@@ -57,7 +53,7 @@ public class FusionHcmDemoCapability implements Capability {
         if (employeeId == null || employeeId.isBlank()) {
             throw new CapabilityException(ErrorClass.PERMANENT, "blank employeeId");
         }
-        return Map.of("employeeId", employeeId, "status", "ACTIVE");
+        return Map.of("employeeId", employeeId, "vendor", fusion.getEmployee(employeeId));
     }
 
     private static String field(CapabilityRequest request, String key) {

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.demo.devicefinancing.DeviceFinancingDemoApplication;
 import com.idfcfirstbank.integration.demo.fusionhcm.FusionHcmDemoApplication;
 import com.idfcfirstbank.integration.orchestration.originationjourney.OriginationJourneyApplication;
+import com.sun.net.httpserver.HttpServer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -64,6 +65,8 @@ class LegacyPatternsDemoIT {
 
     private static EmbeddedKafkaKraftBroker kafka;
     private static String brokers;
+    private static HttpServer vendorStub;   // the mocked-DATA boundary (Docker-free)
+    private static String vendorBase;       // http://127.0.0.1:{port}
     private static ConfigurableApplicationContext engine;
     private static ConfigurableApplicationContext deviceCapability;
     private static ConfigurableApplicationContext fusionCapability;
@@ -78,7 +81,7 @@ class LegacyPatternsDemoIT {
     // ---------------------------------------------------------------------------
 
     @BeforeAll
-    static void bootEverything() {
+    static void bootEverything() throws Exception {
         kafka = new EmbeddedKafkaKraftBroker(1, 1,
                 DEVICE_TOPIC, HR_TOPIC,
                 "cap.device-financing.request.v1", "cap.device-financing.response.v1",
@@ -86,6 +89,13 @@ class LegacyPatternsDemoIT {
                 "orig.decision.v1", "ops.journey.events.v1");
         kafka.afterPropertiesSet();
         brokers = kafka.getBrokersAsString();
+
+        // The MOCKED-DATA BOUNDARY: a real HTTP server the capabilities call over
+        // real HTTP. Docker-free in-JVM stub (the same pattern the platform's own
+        // KarzaVehicleRcAdapterTest uses; WireMock is the compose-time equivalent).
+        // The ONLY thing mocked in the whole flow is the DATA it returns.
+        vendorStub = startVendorStub();
+        vendorBase = "http://127.0.0.1:" + vendorStub.getAddress().getPort();
 
         // Everything as CLI args (highest precedence): full-flow-it's classpath
         // carries many modules' application.yml files, so nothing may depend on
@@ -116,6 +126,8 @@ class LegacyPatternsDemoIT {
                         "--spring.autoconfigure.exclude=org.springframework.boot"
                                 + ".autoconfigure.jdbc.DataSourceAutoConfiguration",
                         "--spring.kafka.bootstrap-servers=" + brokers,
+                        // real HTTP to the vendor stub — only the DATA is mocked
+                        "--demo.fusion.base-url=" + vendorBase + "/vendor/fusion",
                         "--demo.batch.enabled=true",
                         "--demo.batch.inbox-dir=" + inbox.toAbsolutePath(),
                         "--demo.batch.poll-ms=300",
@@ -137,41 +149,120 @@ class LegacyPatternsDemoIT {
                 .build();
     }
 
-    /** The brand table as CLI args — rows, not code. HISENSE only when asked. */
+    /**
+     * The brand table as CLI args — rows, not code. Each row carries only its
+     * auth SCHEME + pass-logic path; the pass/decline/fail DATA comes back from
+     * the real HTTP call to the vendor stub. HISENSE only when asked.
+     */
     private static ConfigurableApplicationContext bootDeviceCapability(boolean withHisense) {
         java.util.List<String> args = new java.util.ArrayList<>(List.of(
                 "--server.port=0",
                 "--spring.autoconfigure.exclude=org.springframework.boot"
                         + ".autoconfigure.jdbc.DataSourceAutoConfiguration",
                 "--spring.kafka.bootstrap-servers=" + brokers,
+                // real HTTP to the vendor stub + OAuth token endpoint
+                "--demo.device-financing.vendor-base-url=" + vendorBase + "/vendor/device-financing",
+                "--demo.device-financing.token-url=" + vendorBase + "/oauth/token",
                 "--demo.device-financing.brands.SAMSUNG.auth-type=OAUTH",
                 "--demo.device-financing.brands.SAMSUNG.validation-required=true",
                 "--demo.device-financing.brands.SAMSUNG.pass-path=respCode",
                 "--demo.device-financing.brands.SAMSUNG.pass-value=0",
-                "--demo.device-financing.brands.SAMSUNG.stub-response.respCode=0",
+                "--demo.device-financing.brands.SAMSUNG.scope=device-financing.samsung",
                 "--demo.device-financing.brands.GODREJ.auth-type=NA",
                 "--demo.device-financing.brands.GODREJ.validation-required=false",
                 "--demo.device-financing.brands.GODREJ.pass-path=status",
                 "--demo.device-financing.brands.GODREJ.pass-value=OK",
-                "--demo.device-financing.brands.GODREJ.stub-response.status=OK",
                 "--demo.device-financing.brands.BOSCH.auth-type=BAUTH",
                 "--demo.device-financing.brands.BOSCH.validation-required=true",
                 "--demo.device-financing.brands.BOSCH.pass-path=result.code",
                 "--demo.device-financing.brands.BOSCH.pass-value=S",
-                "--demo.device-financing.brands.BOSCH.stub-response.result.code=S",
-                "--demo.device-financing.decline-device-ids[0]=DEV-DECLINE",
-                "--demo.device-financing.fail-device-ids[0]=DEV-FAIL"));
+                "--demo.device-financing.brands.BOSCH.basic-user=bosch-demo",
+                "--demo.device-financing.brands.BOSCH.basic-password=bosch-secret"));
         if (withHisense) {
-            // THE "add a brand live" move: a config row + a stubbed vendor shape.
+            // THE "add a brand live" move: a config row (auth scheme + pass path).
             args.addAll(List.of(
                     "--demo.device-financing.brands.HISENSE.auth-type=OAUTH",
                     "--demo.device-financing.brands.HISENSE.validation-required=false",
                     "--demo.device-financing.brands.HISENSE.pass-path=responseStatus",
                     "--demo.device-financing.brands.HISENSE.pass-value=-4",
-                    "--demo.device-financing.brands.HISENSE.stub-response.responseStatus=-4"));
+                    "--demo.device-financing.brands.HISENSE.scope=device-financing.hisense"));
         }
         return new SpringApplicationBuilder(DeviceFinancingDemoApplication.class)
                 .run(args.toArray(String[]::new));
+    }
+
+    /**
+     * The in-JVM vendor stub — the demo's mocked-DATA boundary, Docker-free.
+     * Returns each brand's OWN response SHAPE (the per-brand pass-logic path is
+     * real config), the decline/fail levers, real 401 when an auth-requiring
+     * brand sends none, the Fusion 400 on a bad date, and an OAuth token.
+     * This is the ONLY thing mocked; everything reaching it is real HTTP.
+     */
+    private static HttpServer startVendorStub() throws java.io.IOException {
+        HttpServer server = HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+
+        server.createContext("/oauth/token", exchange -> respond(exchange, 200,
+                Map.of("access_token", "demo-token", "token_type", "Bearer", "expires_in", 3600)));
+
+        server.createContext("/vendor/device-financing/", exchange -> {
+            Map<String, Object> body = readBody(exchange);
+            String brand = String.valueOf(body.get("brand"));
+            String deviceId = String.valueOf(body.get("deviceId"));
+            String auth = exchange.getRequestHeaders().getFirst("Authorization");
+            if (java.util.Set.of("SAMSUNG", "BOSCH").contains(brand)
+                    && (auth == null || auth.isBlank())) {
+                respond(exchange, 401, Map.of("error", "missing_authorization"));
+                return;
+            }
+            if ("DEV-FAIL".equals(deviceId)) {
+                // 422: a permanent vendor rejection → PERMANENT (no retry storm,
+                // deterministic red run). A 5xx would be TRANSIENT (retryable).
+                respond(exchange, 422, Map.of("error", "device_rejected"));
+                return;
+            }
+            boolean pass = !"DEV-DECLINE".equals(deviceId);
+            respond(exchange, 200, deviceShape(brand, pass));
+        });
+
+        server.createContext("/vendor/fusion/employees/", exchange -> {
+            Map<String, Object> body = readBody(exchange);
+            String lwd = String.valueOf(body.get("lastWorkingDay"));
+            if (!lwd.matches("\\d{4}-\\d{2}-\\d{2}")) {
+                respond(exchange, 400, Map.of("error", "invalid_last_working_day"));
+                return;
+            }
+            respond(exchange, 200, Map.of("status", "UPDATED", "lastWorkingDay", lwd));
+        });
+
+        server.start();
+        return server;
+    }
+
+    private static Map<String, Object> deviceShape(String brand, boolean pass) {
+        return switch (brand) {
+            case "SAMSUNG" -> Map.of("respCode", pass ? "0" : "1");
+            case "BOSCH" -> Map.of("result", Map.of("code", pass ? "S" : "F"));
+            case "HISENSE" -> Map.of("responseStatus", pass ? "-4" : "-9");
+            default -> Map.of("status", pass ? "OK" : "DECLINED");
+        };
+    }
+
+    private static Map<String, Object> readBody(com.sun.net.httpserver.HttpExchange exchange)
+            throws java.io.IOException {
+        byte[] in = exchange.getRequestBody().readAllBytes();
+        if (in.length == 0) {
+            return Map.of();
+        }
+        return JSON.readValue(in, Map.class);
+    }
+
+    private static void respond(com.sun.net.httpserver.HttpExchange exchange, int status,
+                                Map<String, Object> body) throws java.io.IOException {
+        byte[] out = JSON.writeValueAsBytes(body);
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        exchange.sendResponseHeaders(status, out.length);
+        exchange.getResponseBody().write(out);
+        exchange.close();
     }
 
     @AfterAll
@@ -181,6 +272,7 @@ class LegacyPatternsDemoIT {
                 List.of(fusionCapability, deviceCapability, engine)) {
             if (ctx != null && ctx.isActive()) ctx.close();
         }
+        if (vendorStub != null) vendorStub.stop(0);
         if (kafka != null) kafka.destroy();
     }
 

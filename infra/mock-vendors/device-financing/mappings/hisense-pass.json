@@ -1,0 +1,13 @@
+{
+  "priority": 5,
+  "request": {
+    "method": "POST",
+    "urlPathPattern": "/vendor/device-financing/(validate|block)",
+    "bodyPatterns": [ { "matchesJsonPath": "$[?(@.brand == 'HISENSE')]" } ]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": { "responseStatus": "-4" }
+  }
+}

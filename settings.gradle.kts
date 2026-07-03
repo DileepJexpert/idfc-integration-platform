@@ -48,8 +48,8 @@ include("orchestration:origination-journey")
 // demo/ — DEMO SCAFFOLDING ONLY (legacy-patterns demo): mocked vendors, a
 // local-folder file edge. Explicitly NOT the census-gated migration target
 // (docs/legacy-analysis-review.md §6/§8) — never grow production code here.
-include("demo:device-financing-demo")   // brand-as-config capability (vendors mocked)
-include("demo:fusion-hcm-demo")         // mocked Fusion capability + demo file edge
+include("demo:device-financing-demo")   // brand-as-config capability (real HTTP → WireMock)
+include("demo:fusion-hcm-demo")         // Fusion capability (real HTTP → WireMock) + demo file edge
 
 // full-flow demo integration test (no main code). Wires the engine + all five
 // capability services to prove the end-to-end choreography (edge output ->

@@ -14,9 +14,17 @@ spring:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
 
-# DEMO file edge (NOT the production SFTP edge — census-gated). Disabled by
-# default: turn on with --demo.batch.enabled=true (see demo/README.md).
+# The mocked Fusion HCM vendor — reached over REAL HTTP (only its response DATA
+# is mocked, on the mock-vendors server). Real client + timeouts + status→class.
 demo:
+  fusion:
+    # The Fusion HCM vendor is the compose WireMock (mock-fusion) — only its DATA
+    # is mocked. Host bootRun -> localhost:9107; in-container -> http://mock-fusion:8080.
+    base-url: ${DEMO_FUSION_URL:http://localhost:9107/vendor/fusion}
+    connect-timeout-ms: 3000
+    read-timeout-ms: 10000
+  # DEMO file edge (NOT the production SFTP edge — census-gated). Disabled by
+  # default: turn on with --demo.batch.enabled=true (see demo/README.md).
   batch:
     enabled: ${DEMO_BATCH_ENABLED:false}
     inbox-dir: ${DEMO_BATCH_INBOX:demo/batch-inbox}

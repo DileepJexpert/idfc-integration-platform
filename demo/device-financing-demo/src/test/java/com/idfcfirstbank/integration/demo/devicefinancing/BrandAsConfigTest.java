@@ -1,65 +1,66 @@
 package com.idfcfirstbank.integration.demo.devicefinancing;
 
+import com.idfcfirstbank.integration.demo.devicefinancing.DeviceFinancingDemoProperties.BrandRow;
 import com.idfcfirstbank.integration.shared.capability.CapabilityException;
 import com.idfcfirstbank.integration.shared.capability.CapabilityOperation;
 import com.idfcfirstbank.integration.shared.domain.capability.CapabilityRequest;
 import com.idfcfirstbank.integration.shared.domain.capability.ErrorClass;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * The brand-as-config proof at the unit level: every behavioural difference in
- * this test comes from the ROWS built here — the capability code contains no
- * brand branching (verified by the HISENSE case: a brand the code has never
- * heard of works the moment a row exists, and FAILS CLOSED the moment it
- * doesn't).
+ * The brand-as-config LOGIC at the unit level (the real HTTP flow is proven in
+ * LegacyPatternsDemoIT against the mock-vendors server). Every behavioural
+ * difference here comes from the ROWS built in this test — the capability code
+ * contains no brand branching, verified by the HISENSE case: a brand the code
+ * has never heard of works the moment a row exists, and FAILS CLOSED the moment
+ * it doesn't. The vendor is a fake returning per-brand shapes (standing in for
+ * the real HTTP response data).
  */
 class BrandAsConfigTest {
 
-    private static DeviceFinancingDemoProperties.BrandRow row(
-            String auth, boolean validation, String passPath, String passValue,
-            Map<String, Object> stub) {
-        return new DeviceFinancingDemoProperties.BrandRow(
-                auth, validation, passPath, passValue, stub);
+    private static BrandRow row(String auth, boolean validation, String passPath, String passValue) {
+        return new BrandRow(auth, validation, passPath, passValue, null, null, null);
     }
 
     private static final DeviceFinancingDemoProperties PROPS =
             new DeviceFinancingDemoProperties(
+                    "http://unused", "http://unused", 3000, 10000,
                     Map.of(
-                            "SAMSUNG", row("OAUTH", true, "respCode", "0",
-                                    Map.of("respCode", "0")),
-                            "GODREJ", row("NA", false, "status", "OK",
-                                    Map.of("status", "OK")),
-                            "BOSCH", row("BAUTH", true, "result.code", "S",
-                                    Map.of("result", Map.of("code", "S")))),
-                    List.of("DEV-DECLINE"),
-                    List.of("DEV-FAIL"));
+                            "SAMSUNG", row("OAUTH", true, "respCode", "0"),
+                            "GODREJ", row("NA", false, "status", "OK"),
+                            "BOSCH", row("BAUTH", true, "result.code", "S")));
+
+    /** Fake vendor: returns the brand's response SHAPE; DEV-DECLINE = non-pass. */
+    private static final DeviceFinancingVendor FAKE_VENDOR =
+            (operation, brand, deviceId, row) -> {
+                boolean pass = !"DEV-DECLINE".equals(deviceId);
+                return switch (brand) {
+                    case "SAMSUNG" -> Map.of("respCode", pass ? "0" : "1");
+                    case "BOSCH" -> Map.of("result", Map.of("code", pass ? "S" : "F"));
+                    case "HISENSE" -> Map.of("responseStatus", pass ? "-4" : "-9");
+                    default -> Map.of("status", pass ? "OK" : "DECLINED");
+                };
+            };
 
     private final DeviceFinancingDemoCapability capability =
-            new DeviceFinancingDemoCapability(PROPS);
+            new DeviceFinancingDemoCapability(PROPS, FAKE_VENDOR);
 
     private static CapabilityRequest request(String operation, Map<String, Object> payload) {
         return new CapabilityRequest("ji-demo-1", "corr-demo-1", "device-financing",
                 "n_test", payload, Map.of(), operation, "ji-demo-1:n_test");
     }
 
-    private Map<String, Object> call(String operation, Map<String, Object> payload)
-            throws Exception {
-        for (CapabilityOperation op : capability.operations()) {
-            if (op.name().equals(operation)) {
-                return op.execute(request(operation, payload));
-            }
-        }
-        throw new IllegalArgumentException("no op " + operation);
+    private Map<String, Object> call(String operation, Map<String, Object> payload) {
+        return call(capability, operation, payload);
     }
 
     @Test
-    void resolveBrand_returnsTheConfigRow_notCode() throws Exception {
+    void resolveBrand_returnsTheConfigRow_notCode() {
         assertThat(call("resolveBrand", Map.of("brand", "SAMSUNG")))
                 .containsEntry("validationRequired", true)
                 .containsEntry("authType", "OAUTH");
@@ -69,7 +70,7 @@ class BrandAsConfigTest {
     }
 
     @Test
-    void passLogicFieldPath_isPerBrandConfig_notBranching() throws Exception {
+    void passLogicFieldPath_isPerBrandConfig_notBranching() {
         // SAMSUNG passes on respCode == "0"; BOSCH on the NESTED result.code == "S".
         assertThat(call("block", Map.of("brand", "SAMSUNG", "deviceId", "DEV-1")))
                 .containsEntry("approved", true);
@@ -78,18 +79,9 @@ class BrandAsConfigTest {
     }
 
     @Test
-    void declineDevice_isABusinessNo_notAnError() throws Exception {
-        Map<String, Object> out =
-                call("validate", Map.of("brand", "SAMSUNG", "deviceId", "DEV-DECLINE"));
-        assertThat(out).containsEntry("approved", false);
-    }
-
-    @Test
-    void failDevice_throwsClassifiedPERMANENT() {
-        assertThatThrownBy(() ->
-                call("block", Map.of("brand", "SAMSUNG", "deviceId", "DEV-FAIL")))
-                .isInstanceOfSatisfying(CapabilityException.class,
-                        e -> assertThat(e.errorClass()).isEqualTo(ErrorClass.PERMANENT));
+    void declineDevice_isABusinessNo_notAnError() {
+        assertThat(call("validate", Map.of("brand", "SAMSUNG", "deviceId", "DEV-DECLINE")))
+                .containsEntry("approved", false);
     }
 
     @Test
@@ -100,21 +92,26 @@ class BrandAsConfigTest {
     }
 
     @Test
-    void addingHisense_isARow_zeroCodeChange() throws Exception {
-        // The "add a brand live" move: same capability CODE, one more row —
-        // HISENSE passes on responseStatus == "-4" (the legacy oddball).
+    void addingHisense_isARow_zeroCodeChange() {
         var withHisense = new DeviceFinancingDemoProperties(
-                Map.of(
-                        "HISENSE", row("OAUTH", false, "responseStatus", "-4",
-                                Map.of("responseStatus", "-4"))),
-                List.of(), List.of());
-        var capability2 = new DeviceFinancingDemoCapability(withHisense);
-        for (CapabilityOperation op : capability2.operations()) {
-            if (op.name().equals("block")) {
-                assertThat(op.execute(request("block",
-                        Map.of("brand", "HISENSE", "deviceId", "DEV-9"))))
-                        .containsEntry("approved", true);
+                "http://unused", "http://unused", 3000, 10000,
+                Map.of("HISENSE", row("OAUTH", false, "responseStatus", "-4")));
+        var capability2 = new DeviceFinancingDemoCapability(withHisense, FAKE_VENDOR);
+        assertThat(call(capability2, "block", Map.of("brand", "HISENSE", "deviceId", "DEV-9")))
+                .containsEntry("approved", true);
+    }
+
+    private Map<String, Object> call(DeviceFinancingDemoCapability cap, String operation,
+                                     Map<String, Object> payload) {
+        for (CapabilityOperation op : cap.operations()) {
+            if (op.name().equals(operation)) {
+                try {
+                    return op.execute(request(operation, payload));
+                } catch (Exception e) {
+                    throw (RuntimeException) e;
+                }
             }
         }
+        throw new IllegalArgumentException("no op " + operation);
     }
 }

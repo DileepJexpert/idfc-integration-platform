@@ -1,0 +1,13 @@
+{
+  "priority": 1,
+  "request": {
+    "method": "POST",
+    "urlPathPattern": "/vendor/fusion/employees/.*",
+    "bodyPatterns": [ { "matchesJsonPath": "$[?(@.lastWorkingDay =~ /\\d{4}-\\d{2}-\\d{2}/)]" } ]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": { "status": "UPDATED" }
+  }
+}

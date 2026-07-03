@@ -7,28 +7,29 @@ import com.idfcfirstbank.integration.shared.domain.capability.CapabilityRequest;
 import com.idfcfirstbank.integration.shared.domain.capability.ErrorClass;
 import org.springframework.stereotype.Component;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
  * DEMO — the org-agnostic executor pattern from the legacy analysis, on the
- * platform's capability framework. Three operations, ZERO brand branching:
- * every per-brand difference (validate-or-not, auth scheme, pass-logic field
- * path) comes from {@link DeviceFinancingDemoProperties} config rows. An
- * unknown brand FAILS CLOSED (PERMANENT) — the legacy estate's fail-open
- * unknown-orgId behaviour is deliberately not reproduced.
- *
- * <p>The "vendor" is the config row's stubbed response shape — this module
- * demonstrates config-selects-behaviour, not real vendor integration.
+ * platform's capability framework, now doing REAL outbound HTTP. Three
+ * operations, ZERO brand branching: every per-brand difference (validate-or-not,
+ * auth scheme, pass-logic field path) comes from {@link DeviceFinancingDemoProperties}
+ * config rows; the vendor call itself goes over the wire via
+ * {@link DeviceFinancingVendorClient} and only the response DATA is mocked. An
+ * unknown brand FAILS CLOSED (PERMANENT) — the legacy fail-open unknown-orgId is
+ * deliberately not reproduced.
  */
 @Component
 public class DeviceFinancingDemoCapability implements Capability {
 
     private final DeviceFinancingDemoProperties props;
+    private final DeviceFinancingVendor vendor;
 
-    public DeviceFinancingDemoCapability(DeviceFinancingDemoProperties props) {
+    public DeviceFinancingDemoCapability(DeviceFinancingDemoProperties props,
+                                         DeviceFinancingVendor vendor) {
         this.props = props;
+        this.vendor = vendor;
     }
 
     @Override
@@ -40,8 +41,8 @@ public class DeviceFinancingDemoCapability implements Capability {
     public List<CapabilityOperation> operations() {
         return List.of(
                 op("resolveBrand", this::resolveBrand),
-                op("validate", this::vendorCheck),
-                op("block", this::vendorCheck));
+                op("validate", r -> vendorCheck("validate", r)),
+                op("block", r -> vendorCheck("block", r)));
     }
 
     /** The journey's first hop: brand name -> its CONFIG ROW (ids/flags only). */
@@ -55,26 +56,16 @@ public class DeviceFinancingDemoCapability implements Capability {
     }
 
     /**
-     * validate and block share ONE implementation on purpose — in the legacy
-     * estate they were the same parameterized vendor call with a different
-     * activity flag. The mocked vendor answers with the row's stub shape; the
-     * row's passPath/passValue decide approved.
+     * validate and block share ONE implementation on purpose — same
+     * parameterized vendor call with a different operation. The REAL HTTP call
+     * returns the vendor's shape; the row's passPath/passValue decide approved.
      */
-    private Map<String, Object> vendorCheck(CapabilityRequest request) {
+    private Map<String, Object> vendorCheck(String operation, CapabilityRequest request) {
         String brand = brandOf(request);
         String deviceId = stringField(request, "deviceId");
         DeviceFinancingDemoProperties.BrandRow row = rowOf(brand);
 
-        if (props.failDeviceIds().contains(deviceId)) {
-            // Demo lever: a technical vendor failure -> classified PERMANENT ->
-            // the run FAILS and triage sees it (class name only on the wire).
-            throw new CapabilityException(ErrorClass.PERMANENT,
-                    "demo vendor rejected deviceId=" + deviceId);
-        }
-
-        Map<String, Object> vendorResponse = props.declineDeviceIds().contains(deviceId)
-                ? responseAt(row.passPath(), "DECLINED")
-                : row.stubResponse();
+        Map<String, Object> vendorResponse = vendor.call(operation, brand, deviceId, row);
         boolean approved = String.valueOf(resolvePath(vendorResponse, row.passPath()))
                 .equals(row.passValue());
         return Map.of(
@@ -119,20 +110,6 @@ public class DeviceFinancingDemoCapability implements Capability {
             current = m.get(segment.trim());
         }
         return current;
-    }
-
-    /** Build a nested map carrying {@code value} at the dotted path (decline shape). */
-    private static Map<String, Object> responseAt(String path, Object value) {
-        String[] segments = path.split("\\.");
-        Map<String, Object> root = new LinkedHashMap<>();
-        Map<String, Object> current = root;
-        for (int i = 0; i < segments.length - 1; i++) {
-            Map<String, Object> child = new LinkedHashMap<>();
-            current.put(segments[i].trim(), child);
-            current = child;
-        }
-        current.put(segments[segments.length - 1].trim(), value);
-        return root;
     }
 
     private static CapabilityOperation op(String name, Operation fn) {

@@ -1,0 +1,13 @@
+{
+  "priority": 2,
+  "request": {
+    "method": "POST",
+    "urlPathPattern": "/vendor/device-financing/(validate|block)",
+    "bodyPatterns": [ { "matchesJsonPath": "$[?(@.brand == 'BOSCH')]" }, { "matchesJsonPath": "$[?(@.deviceId == 'DEV-DECLINE')]" } ]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": { "result": { "code": "F" } }
+  }
+}
