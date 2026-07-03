@@ -1,178 +1,118 @@
-# Legacy analysis review — generic-wrapper-service
+# Legacy Service Analysis — Consolidated Review & Migration Findings
 
-Review of the `SERVICE_ANALYSIS.md` (“Multi-Org Consumer Analysis”) produced for
-the legacy **generic-wrapper-service** in the API-Integration workspace,
-2026-07-03. Sibling analyses (brand-wrapper, brand-details, hrapps-integration)
-exist but are not yet reviewed — see §7.
+**Status: REFERENCE + TRACKING ONLY. This document authorises NO code changes.**
+The migration-target build (file edge, `foreach`, generic-http capability, sync lane) is
+**gated on the pattern census** (§6). Do not build any of it from this document.
 
-> **Sanitization note.** This repository is public. This document deliberately
-> contains **no hostnames, no credentials, no SFDC org ids, and no literal
-> topic names** from the legacy estate. Where the analysis showed concrete
-> values, they are described, not quoted.
+> Sanitization note: this repository is public. One legacy UAT hostname fragment was
+> redacted from §5.1; no credentials, hostnames, or SFDC org ids appear in this file.
 
 ---
 
-## 1. What the legacy service is
+## 1. Services profiled so far
 
-A stateless Kafka-only executor. An upstream **splitter** service routes each
-SFDC-originated request per org/service and publishes it to one shared wrapper
-topic; the wrapper consumes, builds the downstream HTTP call **entirely from
-the message itself**, executes it (internal APIs and external vendors), shapes
-the response (normal / composite / large-via-S3 / error), and publishes it to
-the response topic named *in the message*. Large request/response bodies are
-offloaded to S3. The service owns no state: no DB, no Aerospike, no cache, no
-dedup store.
+Four services from the API-Integration-workspace, read from their `SERVICE_ANALYSIS.md`:
+generic-wrapper, brand-wrapper (partial), brand-details (partial), **hrapps-integration-service** (full).
 
-The analysis verifies the core thesis: **~70 orgs ride ONE parameterized code
-path** — no `switch`/`if`-chain/handler-map/strategy-registry on orgId
-anywhere. Per-org behavior is data, carried in each message’s
-`EndpointConfig` (target host/port/path, auth type + credentials, response
-topic, response-shaping flags).
+## 2. The load-bearing confirmed verdict: org = config, not code (×4)
 
-The architectural trade, named precisely: the design **bought statelessness by
-putting the config — and the secrets — on the wire.** The splitter is the real
-control plane; the wrapper executes whatever arrives.
+Every service profiled independently confirms it: **orgId is pass-through / traceability only** —
+never a routing, config, or branching axis. generic-wrapper and hrapps both state it explicitly
+("ONE service, ONE code path, N orgIds passed through as payload data"). The "~70 orgs" is SFDC-side
+business divisions, not 70 of anything in the integration layer. **This is the single most important
+architectural confirmation** and it is now four-for-four. The platform's org-as-config design is correct.
 
-## 2. Findings, ranked
+## 3. Interaction-pattern taxonomy (discovered, not assumed)
 
-### F1 — Credentials travel inside every Kafka message *(critical)*
+hrapps alone contains **five** patterns in one deployable — the richest service found:
 
-`EndpointConfig` carries the BASIC `authorization` string and the OAuth client
-id/secret as literal values, per message. Consequences:
+| Pattern | Estate example | Platform status |
+|---|---|---|
+| Async request/response (Kafka in → downstream → Kafka out) | hrapps employee-details; generic-wrapper | ✅ **built** |
+| Sync read (call downstream, wait, return) | hrapps Fusion GET worker | ⚠️ **sync lane — designed, not built** |
+| Fire-and-forget job (HTTP trigger → return → background work) | hrapps LWD `/hrms-lwd/trigger` | ⚠️ **job lane — sweeper seam exists, not built** |
+| **File/batch (SFTP → CSV → foreach → downstream → per-record status)** | hrapps LWD `LwdSchedulerService` | ❌ **UNBUILT — no file edge, no `foreach` execution** |
+| Notification output (email results / blank-file alert) | hrapps LWD email report | ⚠️ mail adapter — not built |
+| Stateful callback (owns lifecycle state) | emandate callback (earlier) | ✅ capability pattern exists |
+| Pure transport (config-driven proxy) | generic-wrapper pass-through svcNames | ⚠️ generic-http capability — not built |
 
-- Secrets sit in Kafka log segments for the retention window, in every DLQ
-  copy, in S3 copies of large requests, and on the screen of anyone browsing
-  the topic in Kafka UI.
-- Topic read access ≈ possession of every org’s downstream credentials.
-- Rotation is structurally painful: in-flight and retained messages keep old
-  credentials alive; there is no single revocation point besides topic ACLs.
-- The analysis document itself reproduced one live-format BASIC authorization
-  value in an example block. **Actions: redact it from the doc, rotate that
-  credential (UAT or not — Base64 is encoding, not encryption), and add
-  secret-scanning pre-commit hooks to that workspace before the analyses are
-  committed or shared.**
+**Every pattern maps to an existing architecture concept** (capability, adapter, `foreach`, file edge as
+a new sibling edge). None requires a redesign. The file-batch lane is the largest unbuilt piece.
 
-### F2 — Duplicate-write window: retry × no idempotency *(high)*
+## 4. hrapps-integration-service — full profile
 
-Three verified facts compose badly:
+HR integration hub. Downstreams: Oracle Fusion HCM (REST, OAuth+JWT), Cygnet (PDF signing, POST),
+internal OAuth token service, SFTP server, SMTP/email. **All four downstreams org-agnostic** ("URL/auth
+vary by orgId? NO" on every one). Stateless pass-through, owns no DB/cache.
 
-1. The service “does not enforce idempotency (no dedup store)” — pure
-   pass-through.
-2. There is **no retry in the REST client**, but there IS Kafka-level retry
-   (global error handler: 200 ms backoff, 2 retries) — i.e., redelivery
-   re-runs the *whole* pipeline (S3 fetch, token fetch, HTTP call).
-3. Response timeout is 5 s, and the HTTP method is hardcoded POST.
+- **Cygnet document-signing = a plain outbound adapter call** (POST PDF, config-based auth). NOT a stateful
+  signing lifecycle — no callback consumer, no pending/signed state machine. (Earlier TBD: resolved → adapter.)
+- **LWD job = file-batch pipeline:** pull employee CSV off SFTP → parse → (empty → email alert) →
+  **per-record** loop updating Fusion with individual SUCCESS/FAILURE status → email results CSV.
+  Per-record error handling is correct (one bad record doesn't sink the batch); **but** the overall job
+  runs fire-and-forget with a swallow-and-log catch (the P1 anti-pattern) and has no idempotency on re-run.
 
-So a downstream create (e.g., mandate creation) that takes 6 s but
-**succeeds** times out client-side, gets redelivered, and executes again — up
-to three POSTs for one request, against operations that are not naturally
-idempotent. **Action: confirm whether each write-shaped downstream dedupes on
-the record id. Until confirmed, treat this as an open duplicate-side-effect
-risk.** (This platform’s counter-design: engine-owned per-node retry with
-`runId:node:attempt` idempotency keys; capabilities dedupe on them.)
+## 5. Legacy-system findings (independent of migration — escalate against legacy)
 
-### F3 — Unknown/malformed orgId is fail-open *(medium)*
+1. **[SECURITY / CLOCK] Live credential pasted in a SERVICE_ANALYSIS.md** (`Authorization: Basic`,
+   a UAT host — name withheld: public repo). Scrub before any commit, rotate the credential, add a
+   secret-scan pre-commit hook. **Do not commit the analysis files until scrubbed.**
+2. **[SECURITY] Credentials travel inside every Kafka message** (generic-wrapper `EndpointConfig` carries
+   BASIC auth + client secret). Live secrets sit in Kafka retention, DLQs, S3 offload copies, and Kafka UI.
+   Standalone legacy exposure. Fix (if legacy survives >~2 quarters): ship a `secretRef`, resolve at call time.
+3. **[P1-INVESTIGATE] Duplicate-write window** (generic-wrapper `UPI_CreateMandate`): no dedup store +
+   Kafka retry + 5s timeout → a slow-but-successful create gets redelivered and **creates a second mandate**.
+   Verify FSS server-side dedup on the record id. If absent, this is a **live production double-mandate risk.**
+4. **[SECURITY] Customer payloads persist in S3** (`requestLarge=Y` offload) beyond Kafka retention —
+   bucket retention/masking policy needed (same review as #1–2). S3 object tagging discipline is good, keep it.
+5. **Fail-open on unknown orgId** (both generic-wrapper and hrapps: unknown orgId accepted and processed,
+   no validation/allowlist). The platform's fail-closed-on-unknown-enum is the direct counter-design.
+6. **"OATH" is a frozen wire contract**, not a typo to fix — both real examples carry `"authType":"OATH"`.
+   Any successor accepts it forever OR normalises at the boundary; **never "fix" it in place** (breaks ~70 orgs).
 
-No validation or rejection on orgId; a malformed or missing value flows
-through and lands as null/empty in the response and S3 tags. The downstream
-call executes anyway, and response routing depends on whatever
-`responseTopic` the message carries. A garbage message is executed, not
-refused. (Counter-design here: fail closed on unknown enums/ids.)
+## 6. Platform gaps for the migration target — DO NOT BUILD until census (§8)
 
-### F4 — Retry lives at the wrong layer *(medium)*
+1. **Generic-http capability** — one config-driven caller (host/path, **method incl. GET/PUT not just POST**,
+   auth type, timeouts) in the registry, executed through the existing RetryExecutor/idempotency/breaker.
+   Pass-through svcNames collapse into it; custom-mapper svcNames become real capability operations.
+2. **secretRef seam** — registry configs hold references, never credential values; resolved at call time
+   (env now, vault later). Current fail-closed startup tokens cover service-to-service, not per-downstream creds.
+3. **Sync lane** — a blessed "call-and-return, no engine" path for sync reads (hrapps Fusion GET). Must be
+   documented so reads are NOT forced through async journeys.
+4. **File-batch lane** — file/SFTP edge (sibling to SFDC/digital edges) → `foreach` execution (in §7 schema,
+   unbuilt) → per-record status → email-report output → empty/partial-file handling. **The largest new build.**
 
-Whole-message redelivery is the only retry mechanism, so a transient failure
-in the *last* step re-runs every step, and there is no per-call policy
-(classification, backoff, max attempts) per downstream. Retry semantics belong
-next to the call, with idempotency keys — not at the consumer.
+## 7. Decisions to make NOW (cheap; expensive to retrofit) — notes, not code
 
-### F5 — The auth-type typo is the wire contract *(low, but permanent)*
+- **Org-scoping note:** orgId rides in run context, selects per-org config in the registry, never forks a
+  journey. Decide where the config keys live (shapes the registry schema). One page.
+  → stub: `docs/decisions/org-scoping.md`
+- **Payload-size budget:** platform chose inline payloads (P3.11); legacy has real >1MB payloads (why S3
+  offload exists). Minimum: a documented size limit + explicit rejection behaviour. Offload seam only if
+  migrated traffic needs it.
+  → stub: `docs/decisions/payload-size-budget.md`
 
-The literal value `"OATH"` (sic) appears in real message examples. It is not a
-doc typo; it is the contract. Any successor must accept it forever or
-translate at the boundary — “fixing” it in place silently breaks every
-producer.
+## 8. THE GATE: pattern census before any migration-target build
 
-### F6 — HTTP method hardcoded to POST *(low)*
+hrapps proved one service hides five patterns. ~60 services remain unprofiled. **Before designing or
+building the generic-http capability, the sync lane, or the file-batch lane, run the pattern census**
+(classify every remaining service by interaction pattern + downstream type, get counts-per-pattern). The
+census determines whether file-batch is 3 services or 25 — i.e. whether the file edge is a small slice or a
+workstream. Building the target before the census risks discovering an entire pattern mid-migration with
+nowhere to land — exactly what hrapps would have caused.
 
-GET/PUT/DELETE downstreams cannot be modeled without tunneling semantics
-through POST bodies.
+---
 
-### F7 — Partial-batch failure semantics unverified *(info)*
+## Record of permitted actions (executed 2026-07-03)
 
-Batch listener + manual ack + virtual-thread-per-task execution: what happens
-when message 7 of 20 fails mid-batch needs pinning down (the
-swallow-and-commit family tends to live exactly there).
+Per the advisor's instruction accompanying this document, the ONLY changes made to this repo from it:
 
-### F8 — Payload persistence in S3 *(info)*
+1. This file, as the reference/decision record (supersedes the earlier single-service review).
+2. §7's two decision stubs under `docs/decisions/` (org-scoping, payload-size-budget) — decision pending.
+3. §5 items added to the README's legacy-escalations tracking; one follow-ups line:
+   generic-http capability + secretRef + sync lane + file-batch lane — **GATED on pattern census,
+   do not build speculatively.**
 
-Large requests are fetched from and large responses written to S3
-(`{channel}/{path}/{uuid}.json`), so customer payloads persist beyond Kafka
-retention. Bucket retention + masking policy belongs in the same review as F1.
-The tagging discipline (correlationId, sfdcRecordId, orgId on every object) is
-good and worth keeping.
-
-### F9 — Response correlation by sfdcRecordId *(info)*
-
-`sfdcRecordId` is the Kafka message key for responses; with two in-flight
-requests on one record, disambiguation rests on correlation headers alone, and
-the wrapper stores nothing. (This platform keys framework responses by
-`journeyInstanceId` for exactly this reason; the record id stays a search key,
-not a correlation key.)
-
-## 3. What is genuinely good — keep it in any successor
-
-- **One parameterized flow, zero org branches.** The “70 orgs = config”
-  thesis is proven by absence of org-conditional code. Keep that property.
-- **Statelessness.** No runtime config-store dependency, no cache
-  invalidation, trivially scalable horizontally.
-- **Clean response routing**: four well-named services (normal / composite /
-  large / error) behind one router.
-- Per-host timeout overrides; tight defaults (connect 1 s, response 5 s).
-- Header propagation (correlationId, transactionId, source) and S3 object
-  tagging.
-
-## 4. One nuance to the “everything from the message” verdict
-
-Request/response **mappers are per-service code**, keyed by `svcName` in YAML
-and resolved via a factory, with raw-JSON pass-through as the default. So the
-real split is: *execution* config from the message, *transformation* code from
-service-side config + classes. That mapper YAML is, in effect, a
-proto-capability registry — which is the migration seam (§5).
-
-## 5. Migration mapping onto this platform
-
-| legacy (generic-wrapper) | this platform |
-|---|---|
-| splitter owns per-org routing + config | journey selection + registry (A1/A2), version pinned per run |
-| `EndpointConfig` embedded per message | registry-stored per-org/per-operation config; messages carry ids + context only |
-| credentials in the message | service-side secrets, fail-closed at startup (A0); vault refs, never values on the wire |
-| per-`svcName` mappers in YAML | capability operations with adapters; pass-through svcNames collapse into one generic-http capability |
-| response topic named per message | fixed `cap.<key>.response.v1` convention |
-| correlation by sfdcRecordId | keyed by `journeyInstanceId` (P2.8); record id remains an ops search key |
-| Kafka-redelivery as retry | engine-owned per-node RetrySpec + `:a<n>` idempotency suffix + circuit breakers; DLQ terminal/audit-only |
-| no ops surface (Kafka-UI triage) | audited `/ops` read window + ops console (id-shaped, no payloads) |
-| S3 offload for large payloads | explicit decision needed: inline limits (P3.11 parity) vs. an offload capability with retention policy |
-
-The successor shape in one sentence: **keep the parameterized executor, ship
-references instead of values** — the message carries org/service references
-and a secret reference; the executor resolves config from the registry and
-credentials from a vault at call time.
-
-## 6. Immediate actions on the legacy side (independent of any rebuild)
-
-1. Redact the credential from the analysis doc; rotate it; add secret-scan
-   hooks (F1).
-2. Confirm downstream dedup behavior for every write-shaped `svcName`; list
-   the ones with none (F2).
-3. Decide and document the intended behavior for unknown/malformed orgId (F3).
-4. Record `"OATH"` as a frozen wire value in the contract notes (F5).
-5. Verify partial-batch failure handling in the consumer (F7).
-6. Review S3 bucket retention/masking for offloaded payloads (F8).
-
-## 7. Pending: sibling service analyses
-
-brand-wrapper-service, brand-details-service, hrapps-integration-service —
-review with the same lenses: credentials on the wire? idempotency on writes?
-fail-open unknowns? state owned vs. pass-through? retry layer? Findings to be
-appended here per service.
+No capability, no file edge, no `foreach` execution was built. The credential scrub (§5.1) applies to
+the legacy workspace's analysis files, which live outside this repository — it cannot be verified from
+here and remains **unconfirmed** until done there.

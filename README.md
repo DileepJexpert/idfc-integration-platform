@@ -31,6 +31,25 @@ otherwise.
 - **SFDC/FinnOne/Karza/S3** — mocked behind OUT ports (see the integration
   registry for per-system contracts).
 
+## Legacy escalations (tracked here; fixes land in the legacy estate, not this repo)
+
+From the legacy service analyses (`docs/legacy-analysis-review.md` §5). Tracked so
+they survive session boundaries; none of them changes this codebase.
+
+1. **[CLOCK] Live credential pasted in a legacy `SERVICE_ANALYSIS.md`** — scrub
+   before those files are committed anywhere, rotate the credential, add
+   secret-scan pre-commit hooks. (§5.1 — **unconfirmed until done in that workspace**)
+2. **Credentials travel inside legacy Kafka messages** — if the legacy estate
+   survives >~2 quarters: ship a `secretRef`, resolve at call time. (§5.2)
+3. **[P1-INVESTIGATE] Duplicate-write window on mandate creation** — verify FSS
+   server-side dedup on the record id; if absent, a live double-mandate risk. (§5.3)
+4. **Customer payloads persist in the legacy S3 offload** beyond Kafka retention —
+   bucket retention/masking review. (§5.4)
+5. **Legacy is fail-open on unknown orgId** — this platform fails closed; never
+   copy the legacy behaviour during migration. (§5.5)
+6. **`"OATH"` is a frozen legacy wire value** — normalise at the boundary; never
+   "fix" it in place. (§5.6)
+
 ## Tracked follow-ups (deliberate stopgaps — labelled, not forgotten)
 
 - **`Inbound_Wrapper` → `loan-origination`** (engine `type-to-journey`): SFDC's
@@ -41,6 +60,10 @@ otherwise.
 - **S3 claim-check resolution**: capabilities receive the envelope's identity
   fields; resolving the real applicant payload from the `payloadRef` S3 pointer
   is still mocked (see `docs/DEMO.md`).
+- **Migration-target build — GATED on the pattern census**
+  (`docs/legacy-analysis-review.md` §6/§8): generic-http capability + secretRef
+  seam + sync lane + file-batch lane. Do not build speculatively; the census
+  (run outside this repo) sizes them first.
 
 ## Build conventions (house style)
 
