@@ -41,7 +41,21 @@ public class JourneyDefinitionLoader {
         }
     }
 
+    /** The §7 DSL generation this loader understands (A6, mirrors ConfigSerializer.schemaVersion). */
+    public static final int SUPPORTED_SCHEMA_VERSION = 2;
+
     public JourneyDefinition parse(JsonNode root) {
+        // A6: schemaVersion checked at load. A config stamped with a generation
+        // this loader doesn't understand must REFUSE to load — half-parsing a
+        // future grammar silently drops semantics mid-lending-decision. A config
+        // with NO stamp is a pre-A6 legacy artifact (already-published configs
+        // keep running) and is treated as the supported generation.
+        JsonNode declared = root.get("schemaVersion");
+        if (declared != null && !declared.isNull() && declared.asInt() != SUPPORTED_SCHEMA_VERSION) {
+            throw new IllegalStateException("journey config declares schemaVersion " + declared.asInt()
+                    + " but this engine understands only " + SUPPORTED_SCHEMA_VERSION
+                    + " — refusing to load (fail closed, A6)");
+        }
         String key = text(root, "journeyKey");
         if (key == null) {
             key = text(root, "key"); // tolerate the bare key field

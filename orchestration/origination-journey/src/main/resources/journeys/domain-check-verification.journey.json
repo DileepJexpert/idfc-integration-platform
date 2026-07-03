@@ -1,6 +1,7 @@
 {
   "journeyKey": "domain-check-verification",
   "version": 1,
+  "schemaVersion": 2,
   "context": { "schemaRef": "verification-context@1" },
   "startNodeId": "n_domainCheck",
   "nodes": [

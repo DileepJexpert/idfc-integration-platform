@@ -33,8 +33,24 @@ public class JourneyConfigValidator {
     /** onFailure keywords that are policies, not node references. */
     private static final Set<String> FAILURE_KEYWORDS = Set.of("compensate", "dlq", "fail");
 
+    /** The §7 DSL generation this registry accepts (A6, mirrors the engine loader). */
+    public static final int SUPPORTED_SCHEMA_VERSION = 2;
+
     public List<ValidationIssue> validate(JsonNode root) {
         List<ValidationIssue> issues = new ArrayList<>();
+
+        // A6: reject unknown schema generations at AUTHORING time — a config the
+        // engine would refuse to load must never become publishable. A missing
+        // stamp is a pre-A6 legacy draft and stays accepted.
+        JsonNode declaredSchema = root.get("schemaVersion");
+        if (declaredSchema != null && !declaredSchema.isNull()
+                && declaredSchema.asInt() != SUPPORTED_SCHEMA_VERSION) {
+            issues.add(ValidationIssue.error("unsupportedSchemaVersion",
+                    "config declares schemaVersion " + declaredSchema.asInt()
+                            + " but the platform understands only " + SUPPORTED_SCHEMA_VERSION
+                            + " — the engine would refuse to load it", null));
+            return issues;
+        }
 
         JsonNode nodes = root.path("nodes");
         if (!nodes.isArray() || nodes.isEmpty()) {

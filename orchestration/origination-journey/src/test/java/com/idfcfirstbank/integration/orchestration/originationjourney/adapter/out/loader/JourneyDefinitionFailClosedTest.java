@@ -67,6 +67,34 @@ class JourneyDefinitionFailClosedTest {
                 .hasMessageContaining("policy '" + policy + "'");
     }
 
+    // ---- A6: schemaVersion checked at load ---------------------------------
+
+    private static String journeyWithSchemaLine(String schemaLine) {
+        return """
+                {"journeyKey":"t","version":1,%s"startNodeId":"end",
+                 "nodes":[{"id":"end","type":"terminal","action":"push","status":"completed"}]}
+                """.formatted(schemaLine);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, 3, 99})
+    void unknownSchemaVersionRefusesToLoad(int future) {
+        assertThatThrownBy(() -> parse(journeyWithSchemaLine("\"schemaVersion\":" + future + ",")))
+                .as("a schema generation this engine doesn't understand must fail at load —"
+                        + " half-parsing drops semantics silently")
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("schemaVersion " + future)
+                .hasMessageContaining("refusing to load");
+    }
+
+    @Test
+    void supportedAndLegacyUnstampedConfigsLoad() {
+        assertThat(parse(journeyWithSchemaLine("\"schemaVersion\":"
+                + JourneyDefinitionLoader.SUPPORTED_SCHEMA_VERSION + ",")).key()).isEqualTo("t");
+        // No stamp = pre-A6 artifact already published in a registry: keeps running.
+        assertThat(parse(journeyWithSchemaLine("")).key()).isEqualTo("t");
+    }
+
     @Test
     void allOfAndAbsentJoinPolicyStillLoad() {
         assertThat(parse(journeyWithJoinPolicy("allOf")).node("j").joinPolicy()).isEqualTo("allOf");

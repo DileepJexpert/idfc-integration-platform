@@ -1,6 +1,7 @@
 {
   "journeyKey": "vehicle-rc-verification",
   "version": 1,
+  "schemaVersion": 2,
   "context": {
     "schemaRef": "verification-context@1"
   },

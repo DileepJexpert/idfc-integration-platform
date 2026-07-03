@@ -42,6 +42,31 @@ class JourneyConfigValidatorTest {
         assertThat(errorCodes(issues)).as("real §7 artifact must pass: %s", issues).isEmpty();
     }
 
+    // ---- A6: schemaVersion gate at authoring time ------------------------------------
+
+    @Test
+    void unknownSchemaVersionIsRejectedAtAuthoringTime() {
+        List<ValidationIssue> issues = validate("""
+                {"journeyKey":"t","version":1,"schemaVersion":3,"startNodeId":"end",
+                 "nodes":[{"id":"end","type":"terminal","status":"completed"}]}
+                """);
+        assertThat(errorCodes(issues)).containsExactly("unsupportedSchemaVersion");
+    }
+
+    @Test
+    void supportedAndLegacyUnstampedSchemaVersionsValidate() {
+        String stamped = """
+                {"journeyKey":"t","version":1,"schemaVersion":%d,"startNodeId":"end",
+                 "nodes":[{"id":"end","type":"terminal","status":"completed"}]}
+                """.formatted(JourneyConfigValidator.SUPPORTED_SCHEMA_VERSION);
+        assertThat(errorCodes(validate(stamped))).isEmpty();
+        String legacy = """
+                {"journeyKey":"t","version":1,"startNodeId":"end",
+                 "nodes":[{"id":"end","type":"terminal","status":"completed"}]}
+                """;
+        assertThat(errorCodes(validate(legacy))).isEmpty();
+    }
+
     // ---- structural rules ----------------------------------------------------------
 
     @Test
