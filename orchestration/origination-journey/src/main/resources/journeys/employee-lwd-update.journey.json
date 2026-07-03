@@ -1,0 +1,31 @@
+{
+  "journeyKey": "employee-lwd-update",
+  "version": 1,
+  "schemaVersion": 2,
+  "context": {
+    "schemaRef": "employee-lwd-context@1"
+  },
+  "startNodeId": "n_update",
+  "nodes": [
+    {
+      "id": "n_update",
+      "type": "task",
+      "capability": "fusion-hcm",
+      "operation": "updateEmployee",
+      "input": "{ employeeId: context.employeeId, lastWorkingDay: context.lastWorkingDay }",
+      "output": "context.fusion",
+      "next": ["n_done"]
+    },
+    {
+      "id": "n_done",
+      "type": "terminal",
+      "action": "push_decision_to_channel",
+      "emit": ["EmployeeLwdUpdated"],
+      "status": "completed"
+    }
+  ],
+  "layout": {
+    "n_update": { "x": 120.0, "y": 160.0 },
+    "n_done": { "x": 400.0, "y": 160.0 }
+  }
+}

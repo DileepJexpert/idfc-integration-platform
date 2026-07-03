@@ -1,0 +1,70 @@
+server:
+  port: ${SERVER_PORT:8110}   # DEMO device-financing capability (health/metrics only)
+
+spring:
+  application:
+    name: device-financing-demo
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+# ---------------------------------------------------------------------------
+# THE DEMO TABLE. In the legacy estate each of these was a per-brand JSON
+# config file consumed by a dedicated service (26 brands); the "pass-logic
+# field path" really does differ per brand there. Here: rows against ONE
+# capability + ONE journey. ADDING A BRAND IS ADDING A ROW (see HISENSE in
+# demo/README.md — added at runtime as CLI args, no rebuild).
+# stub-response is the MOCKED vendor answer — demo scaffolding, not production.
+# ---------------------------------------------------------------------------
+demo:
+  device-financing:
+    brands:
+      SAMSUNG:
+        auth-type: OAUTH          # legacy: OAuth client-credential vendor
+        validation-required: true # activities: validation + block
+        pass-path: respCode
+        pass-value: "0"
+        stub-response:
+          respCode: "0"
+      GODREJ:
+        auth-type: NA             # legacy: validation_flag=N, block-only
+        validation-required: false
+        pass-path: status
+        pass-value: OK
+        stub-response:
+          status: OK
+      BOSCH:
+        auth-type: BAUTH          # legacy spelling, kept verbatim
+        validation-required: true
+        pass-path: result.code    # the per-brand pass-logic FIELD PATH differs
+        pass-value: S
+        stub-response:
+          result:
+            code: S
+    # Demo levers: DEV-DECLINE -> vendor says no (business decline, teal in the
+    # ops view); DEV-FAIL -> vendor error (PERMANENT class, red in the ops view).
+    decline-device-ids: [DEV-DECLINE]
+    fail-device-ids: [DEV-FAIL]
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+logging:
+  level:
+    root: ${LOG_LEVEL_ROOT:INFO}
+    com.idfcfirstbank: ${LOG_LEVEL_APP:INFO}
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [${spring.application.name:-app}] [%X{correlationId:-}] %logger{36} - %msg%n"

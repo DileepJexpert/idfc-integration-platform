@@ -22,6 +22,9 @@ dependencies {
     testImplementation(project(":capabilities:verification"))
     testImplementation(project(":edges:sfdc-ingress-edge"))
     testImplementation(project(":edges:digital-partner-edge"))
+    // LegacyPatternsDemoIT — the demo scaffolding apps (mocked vendors/file edge).
+    testImplementation(project(":demo:device-financing-demo"))
+    testImplementation(project(":demo:fusion-hcm-demo"))
     testImplementation("com.fasterxml.jackson.core:jackson-databind")
     testImplementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310") // Instant on the envelope
 

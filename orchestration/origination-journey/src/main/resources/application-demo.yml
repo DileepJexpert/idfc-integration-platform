@@ -1,0 +1,21 @@
+# DEMO profile — the legacy-patterns demo rows ONLY. Base application.yml
+# stays production-shaped; activate with --spring.profiles.active=local,demo
+# (or just demo against embedded infra). Nothing here weakens a token default.
+idfc:
+  engine:
+    # The demo runs from the JAR's journeys/ (Docker-free bootstrap); flip back
+    # via IDFC_ENGINE_JOURNEY_SOURCE=registry to demo the designer→registry→engine
+    # seam instead (publish the same JSONs through the registry first).
+    journey-source: ${IDFC_ENGINE_JOURNEY_SOURCE:classpath}
+    # Profile lists REPLACE (not merge): repeat the base entry + the demo pair.
+    journey-resources:
+      - journeys/loan-origination.journey.json
+      - journeys/device-financing.journey.json
+      - journeys/employee-lwd-update.journey.json
+    # Base topics + the two demo doors (CSV — scalar override replaces).
+    origination-topics: ${IDFC_ENGINE_ORIGINATION_TOPICS:orig.sfdc.pl.v1,orig.sfdc.lap.v1,orig.sfdc.bl.v1,orig.sfdc.commercial.v1,orig.demo.device.v1,orig.demo.hr.v1}
+    # Maps MERGE across profiles: these rows ADD to the base type-to-journey.
+    # Adding a business line is a config row — the demo's whole thesis.
+    type-to-journey:
+      DEVICE_FINANCING: device-financing
+      EMPLOYEE_LWD_UPDATE: employee-lwd-update
