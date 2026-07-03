@@ -37,4 +37,11 @@ public interface JourneyInstanceStore {
      * path.
      */
     List<JourneyInstance> findRunningStartedBefore(Instant cutoff);
+
+    /**
+     * Every persisted instance — the ops read-API's source (B.3), never the hot
+     * path. Terminal instances age out via the store TTL, which bounds the scan;
+     * a filtered secondary index is the documented prod optimization (D15).
+     */
+    List<JourneyInstance> scanAll();
 }

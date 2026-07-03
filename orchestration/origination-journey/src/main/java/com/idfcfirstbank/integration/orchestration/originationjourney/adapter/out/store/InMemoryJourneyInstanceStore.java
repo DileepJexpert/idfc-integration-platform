@@ -66,9 +66,16 @@ public class InMemoryJourneyInstanceStore implements JourneyInstanceStore {
     }
 
     @Override
+    public List<JourneyInstance> scanAll() {
+        return byId.values().stream()
+                .map(v -> snapshot(v.state(), v.version()))
+                .collect(Collectors.toList());
+    }
+
+    @Override
     public List<JourneyInstance> findRunningStartedBefore(Instant cutoff) {
         return byId.values().stream()
-                .filter(v -> v.state().status() == InstanceStatus.RUNNING)
+                .filter(v -> v.state().status().isLive())
                 .filter(v -> v.state().startedAt() != null && v.state().startedAt().isBefore(cutoff))
                 .map(v -> snapshot(v.state(), v.version()))
                 .collect(Collectors.toList());
@@ -81,6 +88,9 @@ public class InMemoryJourneyInstanceStore implements JourneyInstanceStore {
                 i.applicationRef(),
                 i.payload(), i.startedAt(), version, i.collectedResults(), i.context(),
                 i.completedNodeIds(), i.dispatchedNodeIds(), i.status(),
-                i.pendingRequestNodeIds(), i.pendingDecision());
+                i.pendingRequestNodeIds(), i.pendingDecision(),
+                i.transitions(), i.endedAt(), i.terminalNodeId(), i.terminalOutcome(),
+                i.sfdcNotified(),
+                i.failedNodeIds(), i.dispatchAttempts(), i.compensationQueue(), i.compensationOf());
     }
 }

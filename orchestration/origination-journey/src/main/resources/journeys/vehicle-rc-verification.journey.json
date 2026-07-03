@@ -1,6 +1,7 @@
 {
   "journeyKey": "vehicle-rc-verification",
   "version": 1,
+  "schemaVersion": 2,
   "context": {
     "schemaRef": "verification-context@1"
   },
@@ -14,7 +15,6 @@
       "input": "{ registrationNumber: context.registrationNumber, consent: 'Y' }",
       "output": "context.vehicleRc",
       "policies": {
-        "retry": { "maxAttempts": 2, "backoff": { "type": "fixed", "base": "200ms" }, "retryOn": ["TRANSIENT"] },
         "timeout": "20s"
       },
       "onFailure": "n_rcError",

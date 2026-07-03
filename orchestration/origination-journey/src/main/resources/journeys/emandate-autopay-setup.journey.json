@@ -1,6 +1,7 @@
 {
   "journeyKey": "emandate-autopay-setup",
   "version": 1,
+  "schemaVersion": 2,
   "context": {
     "schemaRef": "emandate-context@1"
   },

@@ -1,6 +1,7 @@
 {
   "journeyKey": "domain-check-verification",
   "version": 1,
+  "schemaVersion": 2,
   "context": { "schemaRef": "verification-context@1" },
   "startNodeId": "n_domainCheck",
   "nodes": [
@@ -12,7 +13,6 @@
       "input": "{ organizationName: context.organizationName, individualName: context.individualName, email: context.email, consent: 'Y' }",
       "output": "context.domainCheck",
       "idempotent": true,
-      "policies": { "retry": { "retryOn": ["TRANSIENT"], "maxAttempts": 3, "backoff": { "type": "exponential", "base": "200ms", "max": "5s", "jitter": true } } },
       "onFailure": "n_domainError",
       "next": [ "n_domainDecision" ]
     },

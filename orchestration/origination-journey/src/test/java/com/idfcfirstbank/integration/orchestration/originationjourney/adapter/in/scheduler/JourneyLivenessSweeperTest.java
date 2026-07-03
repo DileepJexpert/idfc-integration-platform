@@ -1,5 +1,6 @@
 package com.idfcfirstbank.integration.orchestration.originationjourney.adapter.in.scheduler;
 
+import com.idfcfirstbank.integration.orchestration.originationjourney.domain.port.OpsEventPort;
 import com.idfcfirstbank.integration.orchestration.originationjourney.adapter.out.store.InMemoryJourneyInstanceStore;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.InstanceStatus;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.JourneyDecision;
@@ -45,7 +46,7 @@ class JourneyLivenessSweeperTest {
         store.insertIfAbsent(done);
 
         List<JourneyDecision> published = new ArrayList<>();
-        var sweeper = new JourneyLivenessSweeper(store, published::add, clock, BUDGET_SECONDS);
+        var sweeper = new JourneyLivenessSweeper(store, published::add, OpsEventPort.NOOP, clock, BUDGET_SECONDS);
 
         int failed = sweeper.sweepStuckRuns();
 
@@ -65,6 +66,22 @@ class JourneyLivenessSweeperTest {
     }
 
     @Test
+    void aStuckCompensatingSagaIsSweptLikeAStuckRun() {
+        var store = new InMemoryJourneyInstanceStore();
+        JourneyInstance saga = running("ji-saga", "APP-9", Duration.ofMinutes(20), Map.of());
+        saga.startCompensation("t3", List.of("t1")); // T2: live but no comp response ever came
+        store.insertIfAbsent(saga);
+
+        List<JourneyDecision> published = new ArrayList<>();
+        var sweeper = new JourneyLivenessSweeper(store, published::add, OpsEventPort.NOOP, clock,
+                BUDGET_SECONDS);
+
+        assertThat(sweeper.sweepStuckRuns()).isEqualTo(1);
+        assertThat(published).hasSize(1);
+        assertThat(store.find("ji-saga").orElseThrow().status()).isEqualTo(InstanceStatus.FAILED);
+    }
+
+    @Test
     void leavesRunRunningWhenNotifyCannotBePublished() {
         var store = new InMemoryJourneyInstanceStore();
         store.insertIfAbsent(running("ji-stale", "APP-1", Duration.ofMinutes(20), Map.of()));
@@ -72,7 +89,7 @@ class JourneyLivenessSweeperTest {
         DecisionOutboundPort throwingPort = d -> {
             throw new RuntimeException("broker down");
         };
-        var sweeper = new JourneyLivenessSweeper(store, throwingPort, clock, BUDGET_SECONDS);
+        var sweeper = new JourneyLivenessSweeper(store, throwingPort, OpsEventPort.NOOP, clock, BUDGET_SECONDS);
 
         int failed = sweeper.sweepStuckRuns();
 

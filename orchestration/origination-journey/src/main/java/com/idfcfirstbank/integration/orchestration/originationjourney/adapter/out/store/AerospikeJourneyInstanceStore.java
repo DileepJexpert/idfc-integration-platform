@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.InstanceStatus;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.JourneyDecision;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.JourneyInstance;
+import com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.NodeTransition;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.port.JourneyInstanceStore;
 
 import java.time.Instant;
@@ -56,6 +57,16 @@ public class AerospikeJourneyInstanceStore implements JourneyInstanceStore {
     private static final String B_CONTEXT = "context";
     private static final String B_COMPLETED = "completed";
     private static final String B_DISPATCHED = "dispatched";
+    private static final String B_TRANSITIONS = "trans";
+    private static final String B_ENDED = "ended";
+    private static final String B_TERM_NODE = "termNode";
+    private static final String B_TERM_OUT = "termOut";
+    private static final String B_NOTIFIED = "notified";
+    // T2 (Workstream B): terminal node failures, retry attempts, compensation saga.
+    private static final String B_FAILED = "failed";
+    private static final String B_ATTEMPTS = "attempts";
+    private static final String B_COMP_QUEUE = "compQ";
+    private static final String B_COMP_OF = "compOf";
 
     private final IAerospikeClient client;
     private final ObjectMapper objectMapper;
@@ -170,7 +181,54 @@ public class AerospikeJourneyInstanceStore implements JourneyInstanceStore {
                 new Bin(B_PENDING_REQ, json(instance.pendingRequestNodeIds())),
                 new Bin(B_PENDING_DEC,
                         instance.pendingDecision() == null ? null : json(instance.pendingDecision())),
+                new Bin(B_TRANSITIONS, json(transitionMaps(instance.transitions()))),
+                new Bin(B_ENDED, instance.endedAt() == null ? null : instance.endedAt().toString()),
+                new Bin(B_TERM_NODE, instance.terminalNodeId()),
+                new Bin(B_TERM_OUT, instance.terminalOutcome()),
+                new Bin(B_NOTIFIED, instance.sfdcNotified().name()),
+                new Bin(B_FAILED, json(instance.failedNodeIds())),
+                new Bin(B_ATTEMPTS, json(instance.dispatchAttempts())),
+                new Bin(B_COMP_QUEUE, json(instance.compensationQueue())),
+                new Bin(B_COMP_OF, instance.compensationOf()),
         };
+    }
+
+    /**
+     * Transitions travel as plain maps with ISO-8601 strings (not Instant
+     * objects), so any ObjectMapper round-trips them without the jsr310 module.
+     */
+    private static List<Map<String, Object>> transitionMaps(List<NodeTransition> transitions) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (NodeTransition t : transitions) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("n", t.nodeId());
+            m.put("s", t.status().name());
+            m.put("at", t.at().toString());
+            m.put("l", t.late());
+            out.add(m);
+        }
+        return out;
+    }
+
+    private List<NodeTransition> readTransitions(String jsonList) {
+        try {
+            if (jsonList == null) {
+                return List.of(); // legacy pre-ops record — empty timeline, never a crash
+            }
+            List<Map<String, Object>> raw = objectMapper.readValue(jsonList,
+                    new TypeReference<List<Map<String, Object>>>() {});
+            List<NodeTransition> out = new ArrayList<>(raw.size());
+            for (Map<String, Object> m : raw) {
+                out.add(new NodeTransition(
+                        String.valueOf(m.get("n")),
+                        NodeTransition.Status.valueOf(String.valueOf(m.get("s"))),
+                        Instant.parse(String.valueOf(m.get("at"))),
+                        Boolean.TRUE.equals(m.get("l"))));
+            }
+            return out;
+        } catch (Exception e) {
+            throw new IllegalStateException("corrupt journey-instance transitions bin", e);
+        }
     }
 
     @Override
@@ -183,6 +241,21 @@ public class AerospikeJourneyInstanceStore implements JourneyInstanceStore {
     }
 
     @Override
+    public List<JourneyInstance> scanAll() {
+        List<JourneyInstance> out = new ArrayList<>();
+        ScanPolicy policy = new ScanPolicy(client.getScanPolicyDefault());
+        client.scanAll(policy, namespace, set, (scanKey, record) -> {
+            String id = record == null ? null : record.getString(B_ID);
+            if (id != null) {
+                synchronized (out) {
+                    out.add(restoreFrom(id, record));
+                }
+            }
+        });
+        return out;
+    }
+
+    @Override
     public List<JourneyInstance> findRunningStartedBefore(Instant cutoff) {
         List<JourneyInstance> stuck = new ArrayList<>();
         ScanPolicy policy = new ScanPolicy(client.getScanPolicyDefault());
@@ -191,7 +264,9 @@ public class AerospikeJourneyInstanceStore implements JourneyInstanceStore {
                 return;
             }
             String statusName = record.getString(B_STATUS);
-            if (statusName == null || InstanceStatus.valueOf(statusName) != InstanceStatus.RUNNING) {
+            // LIVE states only: RUNNING and COMPENSATING both consume the run
+            // budget (a stuck saga must be swept exactly like a stuck run).
+            if (statusName == null || !InstanceStatus.valueOf(statusName).isLive()) {
                 return;
             }
             String startedStr = record.getString(B_STARTED);
@@ -209,6 +284,8 @@ public class AerospikeJourneyInstanceStore implements JourneyInstanceStore {
     private JourneyInstance restoreFrom(String journeyInstanceId, Record r) {
         String startedStr = r.getString(B_STARTED);
         Instant startedAt = startedStr == null ? null : Instant.parse(startedStr);
+        String endedStr = r.getString(B_ENDED);
+        String notified = r.getString(B_NOTIFIED);
         return JourneyInstance.restore(
                 journeyInstanceId,
                 r.getString(B_CORR), r.getString(B_KEY),
@@ -222,7 +299,25 @@ public class AerospikeJourneyInstanceStore implements JourneyInstanceStore {
                 readMap(r.getString(B_CONTEXT)),
                 readSet(r.getString(B_COMPLETED)), readSet(r.getString(B_DISPATCHED)),
                 InstanceStatus.valueOf(r.getString(B_STATUS)),
-                readList(r.getString(B_PENDING_REQ)), readDecision(r.getString(B_PENDING_DEC)));
+                readList(r.getString(B_PENDING_REQ)), readDecision(r.getString(B_PENDING_DEC)),
+                readTransitions(r.getString(B_TRANSITIONS)),
+                endedStr == null ? null : Instant.parse(endedStr),
+                r.getString(B_TERM_NODE), r.getString(B_TERM_OUT),
+                // Legacy records have no notified bin — NONE, never a guess.
+                notified == null ? null : JourneyInstance.NotifyState.valueOf(notified),
+                readSet(r.getString(B_FAILED)),
+                readAttempts(r.getString(B_ATTEMPTS)),
+                readList(r.getString(B_COMP_QUEUE)),
+                r.getString(B_COMP_OF));
+    }
+
+    private Map<String, Integer> readAttempts(String json) {
+        try {
+            return json == null ? new LinkedHashMap<>()
+                    : objectMapper.readValue(json, new TypeReference<Map<String, Integer>>() {});
+        } catch (Exception e) {
+            throw new IllegalStateException("corrupt journey-instance attempts bin", e);
+        }
     }
 
     private Key key(String journeyInstanceId) {

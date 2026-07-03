@@ -1,6 +1,7 @@
 {
   "journeyKey": "loan-origination",
   "version": 1,
+  "schemaVersion": 2,
   "context": {
     "schemaRef": "loan-origination-context@1"
   },

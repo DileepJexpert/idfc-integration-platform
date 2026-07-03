@@ -12,8 +12,18 @@ dependencies {
     // THE CAPABILITY CONTRACT lives here — engine + every capability share it.
     implementation(project(":shared:shared-domain"))
 
+    // T2 retry: the SHARED backoff math (exponential + full jitter) — the same
+    // policy engine capabilities use, so engine-side and capability-side retry
+    // delays follow one formula.
+    implementation(project(":shared:shared-capability"))
+
     // Shared Kafka reliability contract: error handler + DLQ + confirmed delivery.
     implementation(project(":platform:platform-messaging"))
+
+    // The audited read-only ops window (Journey Ops View, Phase 0 B.3) — a
+    // library deployed INSIDE this image; the engine adapts its run store to
+    // the module's read port (the dependency arrow is engine -> ops-query).
+    implementation(project(":platform:ops-query"))
 
     // Messaging — Kafka is a REAL local dependency (docker-compose), not mocked.
     implementation("org.springframework.kafka:spring-kafka:${property("springKafkaVersion")}")

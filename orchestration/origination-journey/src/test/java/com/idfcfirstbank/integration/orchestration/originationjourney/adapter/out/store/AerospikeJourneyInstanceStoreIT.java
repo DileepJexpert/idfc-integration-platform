@@ -49,7 +49,8 @@ class AerospikeJourneyInstanceStoreIT {
         original.markDispatched("n_customer");
         original.recordResult("n_customer", "customer-party", "context.customer", Map.of("crn", "CRN-1"));
         original.recordResult("n_bureau", "bureau", "context.bureau", Map.of("bureauScore", 780));
-        original.complete();
+        original.markSfdcNotified();
+        original.complete("n_done", "APPROVED");
 
         store.save(original);
         JourneyInstance restored = store.find("ji-it-1").orElseThrow();
@@ -57,6 +58,14 @@ class AerospikeJourneyInstanceStoreIT {
         assertThat(restored.correlationId()).isEqualTo("corr-it");
         assertThat(restored.journeyKey()).isEqualTo("loan-origination");
         assertThat(restored.journeyVersion()).as("pinned version round-trips").isEqualTo(3);
+        // Ops state (B.1) round-trips: the timeline, terminal detail and notify bit.
+        assertThat(restored.transitions()).hasSize(3);
+        assertThat(restored.transitions().get(0).nodeId()).isEqualTo("n_customer");
+        assertThat(restored.transitions().get(0).status().name()).isEqualTo("DISPATCHED");
+        assertThat(restored.endedAt()).isNotNull();
+        assertThat(restored.terminalNodeId()).isEqualTo("n_done");
+        assertThat(restored.terminalOutcome()).isEqualTo("APPROVED");
+        assertThat(restored.sfdcNotified().name()).isEqualTo("SENT");
         assertThat(restored.applicationRef()).isEqualTo("APP-1");
         assertThat(restored.status()).isEqualTo(InstanceStatus.COMPLETED);
         assertThat(restored.isDispatched("n_customer")).isTrue();

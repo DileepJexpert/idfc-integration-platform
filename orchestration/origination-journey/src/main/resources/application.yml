@@ -59,12 +59,22 @@ idfc:
     # Journey-instance state: "in-memory" (default, Docker-free) or "aerospike"
     # (durable — the engine is the audit source-of-truth for what ran).
     state-store: ${IDFC_ENGINE_STATE_STORE:in-memory}
+    # Run-lifecycle events for the observability stack (ids only, never payload).
+    ops-events-topic: ops.journey.events.v1
     aerospike:
       host: ${AEROSPIKE_HOST:localhost}
       port: ${AEROSPIKE_PORT:3000}
       namespace: ${AEROSPIKE_NAMESPACE:idfc}
       instance-set: journey_instance
       ttl-seconds: ${JOURNEY_STATE_TTL_SECONDS:604800}
+
+# The audited read-only ops window (/ops/runs...) served from this app.
+# FAIL CLOSED: no OPS_API_TOKEN, no boot (dev value via local profile/compose).
+# This is a DIFFERENT secret from the registry token by design (D14).
+idfc.ops:
+  auth-token: ${OPS_API_TOKEN:}
+  cors-allowed-origin-patterns:
+    - ${OPS_CORS_ORIGIN:http://localhost:[*]}
 
 management:
   endpoints:

@@ -42,6 +42,31 @@ class JourneyConfigValidatorTest {
         assertThat(errorCodes(issues)).as("real §7 artifact must pass: %s", issues).isEmpty();
     }
 
+    // ---- A6: schemaVersion gate at authoring time ------------------------------------
+
+    @Test
+    void unknownSchemaVersionIsRejectedAtAuthoringTime() {
+        List<ValidationIssue> issues = validate("""
+                {"journeyKey":"t","version":1,"schemaVersion":3,"startNodeId":"end",
+                 "nodes":[{"id":"end","type":"terminal","status":"completed"}]}
+                """);
+        assertThat(errorCodes(issues)).containsExactly("unsupportedSchemaVersion");
+    }
+
+    @Test
+    void supportedAndLegacyUnstampedSchemaVersionsValidate() {
+        String stamped = """
+                {"journeyKey":"t","version":1,"schemaVersion":%d,"startNodeId":"end",
+                 "nodes":[{"id":"end","type":"terminal","status":"completed"}]}
+                """.formatted(JourneyConfigValidator.SUPPORTED_SCHEMA_VERSION);
+        assertThat(errorCodes(validate(stamped))).isEmpty();
+        String legacy = """
+                {"journeyKey":"t","version":1,"startNodeId":"end",
+                 "nodes":[{"id":"end","type":"terminal","status":"completed"}]}
+                """;
+        assertThat(errorCodes(validate(legacy))).isEmpty();
+    }
+
     // ---- structural rules ----------------------------------------------------------
 
     @Test
@@ -120,15 +145,32 @@ class JourneyConfigValidatorTest {
 
     @Test
     void unsupportedJoinPolicyFailsClosed() {
-        String json = """
+        assertThat(errorCodes(validate(joinWithPolicy("someOf")))).contains("unsupportedJoinPolicy");
+        assertThat(errorCodes(validate(joinWithPolicy("ANY_OF")))).contains("unsupportedJoinPolicy");
+    }
+
+    @Test
+    void t2JoinPoliciesValidate() {
+        assertThat(errorCodes(validate(joinWithPolicy("allOf")))).isEmpty();
+        assertThat(errorCodes(validate(joinWithPolicy("anyOf")))).isEmpty();
+        assertThat(errorCodes(validate(joinWithPolicy("quorum(2)")))).isEmpty();
+    }
+
+    @Test
+    void outOfBoundsQuorumFailsClosed() {
+        assertThat(errorCodes(validate(joinWithPolicy("quorum(0)")))).contains("quorumOutOfBounds");
+        assertThat(errorCodes(validate(joinWithPolicy("quorum(3)")))).contains("quorumOutOfBounds");
+    }
+
+    private static String joinWithPolicy(String policy) {
+        return """
                 {"startNodeId": "p", "nodes": [
                   {"id": "p", "type": "parallel", "branches": ["x", "y"]},
                   {"id": "x", "type": "task", "next": ["j"]},
                   {"id": "y", "type": "task", "next": ["j"]},
-                  {"id": "j", "type": "join", "policy": "anyOf", "joinOn": ["x", "y"], "next": ["t"]},
+                  {"id": "j", "type": "join", "policy": "%s", "joinOn": ["x", "y"], "next": ["t"]},
                   {"id": "t", "type": "terminal", "status": "completed"}
-                ]}""";
-        assertThat(errorCodes(validate(json))).contains("unsupportedJoinPolicy");
+                ]}""".formatted(policy);
     }
 
     @Test
