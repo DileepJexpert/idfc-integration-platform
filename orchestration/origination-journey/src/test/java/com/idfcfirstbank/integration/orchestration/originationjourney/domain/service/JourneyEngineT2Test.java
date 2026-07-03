@@ -232,6 +232,8 @@ class JourneyEngineT2Test {
             assertThat(exhausted.decision()).isPresent();
             assertThat(exhausted.decision().orElseThrow().outcome()).isEqualTo(JourneyDecision.ERROR);
             assertThat(instance.status()).isEqualTo(InstanceStatus.FAILED);
+            // OPS P2: exhausted retries record the LAST class (TRANSIENT here).
+            assertThat(instance.nodeFailureClasses()).containsEntry("a", "TRANSIENT");
         }
 
         @Test
@@ -244,6 +246,8 @@ class JourneyEngineT2Test {
                     error("a", "flaky", ErrorClass.PERMANENT));
             assertThat(outcome.retries()).isEmpty();
             assertThat(instance.status()).isEqualTo(InstanceStatus.FAILED);
+            // OPS P2: the class rides the run record — the ENUM NAME only.
+            assertThat(instance.nodeFailureClasses()).containsEntry("a", "PERMANENT");
         }
 
         @Test
@@ -256,6 +260,8 @@ class JourneyEngineT2Test {
             assertThat(engine.onCapabilityResponse(strict, strictInstance,
                     error("a", "flaky", null)).retries()).isEmpty();
             assertThat(strictInstance.status()).isEqualTo(InstanceStatus.FAILED);
+            // OPS P2: an UNCLASSIFIED error is reported as AMBIGUOUS, never null/text.
+            assertThat(strictInstance.nodeFailureClasses()).containsEntry("a", "AMBIGUOUS");
 
             // retryOn [TRANSIENT, AMBIGUOUS]: the author opted ambiguous outcomes in.
             JourneyDefinition lenient = parse(RETRY_JOURNEY.formatted(3,
@@ -335,6 +341,8 @@ class JourneyEngineT2Test {
                     .as("an OPEN breaker must not dispatch to the struggling capability").isEmpty();
             assertThat(blockedOutcome.decision()).isPresent();
             assertThat(blocked.status()).isEqualTo(InstanceStatus.FAILED);
+            // OPS P2: a breaker fast-fail is distinguishable on the run record.
+            assertThat(blocked.nodeFailureClasses()).containsEntry("a", "BREAKER_OPEN");
 
             // Past openDuration: HALF-OPEN lets one probe through...
             clock.advanceSeconds(31);

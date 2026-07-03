@@ -57,6 +57,12 @@ public final class JourneyInstance {
      * completion order of the compensable nodes). Head = in flight.
      */
     private final List<String> compensationQueue = new ArrayList<>();
+    /**
+     * OPS P2: nodeId -> failure-class ENUM NAME for terminally-failed nodes
+     * (TRANSIENT exhausted / PERMANENT / AMBIGUOUS / BREAKER_OPEN). Names only —
+     * a free-text reason could carry PII and never enters this record.
+     */
+    private final Map<String, String> nodeFailureClasses = new LinkedHashMap<>();
     /** The node whose failure STARTED the compensation saga (the run's terminal node). */
     private String compensationOf;
     private InstanceStatus status = InstanceStatus.RUNNING;
@@ -157,6 +163,21 @@ public final class JourneyInstance {
         failedNodeIds.add(nodeId);
         recordTransition(nodeId, NodeTransition.Status.FAILED);
     }
+
+    /**
+     * OPS P2: failure recorded WITH its class — the ENUM NAME only (TRANSIENT /
+     * PERMANENT / AMBIGUOUS / BREAKER_OPEN), never a message: exception text is
+     * the classic PII smuggling route and stays off this record entirely.
+     */
+    public void recordNodeFailure(String nodeId, String failureClass) {
+        recordNodeFailure(nodeId);
+        if (failureClass != null && !failureClass.isBlank()) {
+            nodeFailureClasses.put(nodeId, failureClass);
+        }
+    }
+
+    /** nodeId -> failure-class ENUM NAME (ops read model; empty for old records). */
+    public Map<String, String> nodeFailureClasses() { return Map.copyOf(nodeFailureClasses); }
 
     // ---- T2: retry attempts --------------------------------------------------
 
@@ -293,6 +314,28 @@ public final class JourneyInstance {
                                           NotifyState sfdcNotified,
                                           Set<String> failedNodeIds, Map<String, Integer> dispatchAttempts,
                                           List<String> compensationQueue, String compensationOf) {
+        return restore(journeyInstanceId, correlationId, journeyKey, journeyVersion, applicationRef,
+                payload, startedAt, version, collectedResults, context, completedNodeIds,
+                dispatchedNodeIds, status, pendingRequestNodeIds, pendingDecision, transitions, endedAt,
+                terminalNodeId, terminalOutcome, sfdcNotified, failedNodeIds, dispatchAttempts,
+                compensationQueue, compensationOf, null);
+    }
+
+    /** OPS P2 form: adds the per-node failure classes (enum names). */
+    public static JourneyInstance restore(String journeyInstanceId, String correlationId, String journeyKey,
+                                          int journeyVersion,
+                                          String applicationRef, Map<String, Object> payload, Instant startedAt,
+                                          long version,
+                                          Map<String, Object> collectedResults, Map<String, Object> context,
+                                          Set<String> completedNodeIds,
+                                          Set<String> dispatchedNodeIds, InstanceStatus status,
+                                          List<String> pendingRequestNodeIds, JourneyDecision pendingDecision,
+                                          List<NodeTransition> transitions, Instant endedAt,
+                                          String terminalNodeId, String terminalOutcome,
+                                          NotifyState sfdcNotified,
+                                          Set<String> failedNodeIds, Map<String, Integer> dispatchAttempts,
+                                          List<String> compensationQueue, String compensationOf,
+                                          Map<String, String> nodeFailureClasses) {
         JourneyInstance instance = new JourneyInstance(journeyInstanceId, correlationId, journeyKey,
                 journeyVersion, applicationRef, payload, startedAt);
         instance.version = version;
@@ -318,6 +361,9 @@ public final class JourneyInstance {
             instance.compensationQueue.addAll(compensationQueue);
         }
         instance.compensationOf = compensationOf;
+        if (nodeFailureClasses != null) {
+            instance.nodeFailureClasses.putAll(nodeFailureClasses);
+        }
         if (status != null) {
             instance.status = status;
         }

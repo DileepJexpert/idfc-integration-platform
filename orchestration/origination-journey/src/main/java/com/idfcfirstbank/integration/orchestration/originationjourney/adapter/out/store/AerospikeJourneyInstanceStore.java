@@ -67,6 +67,8 @@ public class AerospikeJourneyInstanceStore implements JourneyInstanceStore {
     private static final String B_ATTEMPTS = "attempts";
     private static final String B_COMP_QUEUE = "compQ";
     private static final String B_COMP_OF = "compOf";
+    // OPS P2: nodeId -> failure-class ENUM NAME (never a message).
+    private static final String B_FAIL_CLS = "failCls";
 
     private final IAerospikeClient client;
     private final ObjectMapper objectMapper;
@@ -190,6 +192,7 @@ public class AerospikeJourneyInstanceStore implements JourneyInstanceStore {
                 new Bin(B_ATTEMPTS, json(instance.dispatchAttempts())),
                 new Bin(B_COMP_QUEUE, json(instance.compensationQueue())),
                 new Bin(B_COMP_OF, instance.compensationOf()),
+                new Bin(B_FAIL_CLS, json(instance.nodeFailureClasses())),
         };
     }
 
@@ -308,7 +311,17 @@ public class AerospikeJourneyInstanceStore implements JourneyInstanceStore {
                 readSet(r.getString(B_FAILED)),
                 readAttempts(r.getString(B_ATTEMPTS)),
                 readList(r.getString(B_COMP_QUEUE)),
-                r.getString(B_COMP_OF));
+                r.getString(B_COMP_OF),
+                readStringMap(r.getString(B_FAIL_CLS)));
+    }
+
+    private Map<String, String> readStringMap(String json) {
+        try {
+            return json == null ? new LinkedHashMap<>()
+                    : objectMapper.readValue(json, new TypeReference<Map<String, String>>() {});
+        } catch (Exception e) {
+            throw new IllegalStateException("corrupt journey-instance string-map bin", e);
+        }
     }
 
     private Map<String, Integer> readAttempts(String json) {

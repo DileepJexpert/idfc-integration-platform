@@ -52,7 +52,11 @@ public class OpsRunStoreAdapter implements OpsRunStore {
                 i.correlationId(),
                 idFromPayload(i, "notificationId"),
                 idFromPayload(i, "sfdcRecordId"),
-                transitionsOf(i.transitions()));
+                transitionsOf(i.transitions()),
+                i.dispatchAttempts(),
+                i.nodeFailureClasses(),
+                i.compensationOf(),
+                i.compensationQueue());
     }
 
     private static OpsRun.State stateOf(InstanceStatus status) {

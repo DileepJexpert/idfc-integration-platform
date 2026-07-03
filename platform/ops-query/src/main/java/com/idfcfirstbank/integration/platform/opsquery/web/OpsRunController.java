@@ -51,7 +51,7 @@ public class OpsRunController {
                 parseInstant("since", since), parseInstant("until", until), stuckOnly);
         OpsRunQueryService.Page result = service.list(
                 filter, Math.max(0, page), clamp(size));
-        return PageDto.of(result, service::isStuck);
+        return PageDto.of(result, service::isStuck, service::sweepDeadline);
     }
 
     @GetMapping("/runs/search")
@@ -61,14 +61,15 @@ public class OpsRunController {
                     + " (runId | correlationId | notificationId | sfdcRecordId)");
         }
         return service.search(key.trim()).stream()
-                .map(r -> RunSummaryDto.of(r, service.isStuck(r)))
+                .map(r -> RunSummaryDto.of(r, service.isStuck(r), service.sweepDeadline(r)))
                 .toList();
     }
 
     @GetMapping("/runs/{runId}")
     public ResponseEntity<RunDetailDto> detail(@PathVariable String runId) {
         return service.detail(runId)
-                .map(r -> ResponseEntity.ok(RunDetailDto.of(r, service.isStuck(r), dlqRef(r))))
+                .map(r -> ResponseEntity.ok(RunDetailDto.of(
+                        r, service.isStuck(r), dlqRef(r), service.sweepDeadline(r))))
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
