@@ -138,6 +138,45 @@ class OpsApiQueryTest {
     }
 
     @Test
+    void p2FieldsRideTheWire_deadlineStatsAndSaga() throws Exception {
+        // A live run with T2 stats + saga state, built with the FULL ctor.
+        Instant started = now.minusSeconds(120);
+        store.runs.add(new OpsRun("ji-p2", "loan-origination", 1, OpsRun.State.RUNNING, null,
+                OpsRun.Notify.SENT, started, null, null,
+                "corr-p2", "ntf-p2", "rec-p2",
+                List.of(new OpsTransition(0, "n_kyc", "DISPATCHED", started, false)),
+                java.util.Map.of("n_kyc", 2),
+                java.util.Map.of("n_bureau", "PERMANENT"),
+                "n_book",
+                List.of("n_t1")));
+
+        // sweepDeadline = startedAt + budget (900s) for LIVE runs...
+        mockMvc.perform(authed("/ops/runs/ji-p2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sweepDeadline", is(started.plusSeconds(900).toString())))
+                .andExpect(jsonPath("$.nodeStats", hasSize(2)))
+                .andExpect(jsonPath("$.nodeStats[0].nodeId", is("n_bureau")))
+                .andExpect(jsonPath("$.nodeStats[0].attempts", is(0)))
+                .andExpect(jsonPath("$.nodeStats[0].failureClass", is("PERMANENT")))
+                .andExpect(jsonPath("$.nodeStats[1].nodeId", is("n_kyc")))
+                .andExpect(jsonPath("$.nodeStats[1].attempts", is(2)))
+                .andExpect(jsonPath("$.nodeStats[1].failureClass").doesNotExist())
+                .andExpect(jsonPath("$.compensationOf", is("n_book")))
+                .andExpect(jsonPath("$.compensationPending[0]", is("n_t1")));
+
+        // ...and null once terminal (the system will not act further).
+        mockMvc.perform(authed("/ops/runs/ji-approved"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sweepDeadline").doesNotExist());
+
+        // The list rows carry the deadline too.
+        mockMvc.perform(authed("/ops/runs?status=RUNNING&size=50"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[?(@.runId=='ji-p2')].sweepDeadline",
+                        hasSize(1)));
+    }
+
+    @Test
     void badParametersAre400sWithAMessage() throws Exception {
         mockMvc.perform(authed("/ops/runs").param("status", "GREENISH"))
                 .andExpect(status().isBadRequest())

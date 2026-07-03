@@ -87,7 +87,7 @@ public final class JourneyEngine {
                 return outcome;
             }
 
-            instance.recordNodeFailure(response.nodeId());
+            instance.recordNodeFailure(response.nodeId(), failureClassOf(response));
             handleNodeFailure(def, instance, node, outcome);
             return outcome;
         }
@@ -191,6 +191,15 @@ public final class JourneyEngine {
 
     // ---- T2: retry ---------------------------------------------------------------
 
+    /**
+     * OPS P2: the failure class recorded on a terminally-failed node — the
+     * ErrorClass ENUM NAME the capability stamped, with an UNCLASSIFIED error
+     * reported as AMBIGUOUS (consistent with the retry semantics). Never text.
+     */
+    private static String failureClassOf(CapabilityResponse response) {
+        return response.errorClass() == null ? "AMBIGUOUS" : response.errorClass().name();
+    }
+
     private static boolean isRetryable(RetrySpec retry, CapabilityResponse response) {
         String errorClass = response.errorClass() == null ? "AMBIGUOUS" : response.errorClass().name();
         return retry.retryOn().contains(errorClass);
@@ -231,7 +240,7 @@ public final class JourneyEngine {
         if (response.status() == CapabilityStatus.ERROR) {
             // The UNDO itself failed: stop the saga, leave the FAILED timeline row
             // for ops — this is precisely what a human must look at (manual fix).
-            instance.recordNodeFailure(compNodeId);
+            instance.recordNodeFailure(compNodeId, failureClassOf(response));
             instance.fail(instance.compensationOf(), JourneyDecision.ERROR);
             return;
         }
@@ -308,7 +317,7 @@ public final class JourneyEngine {
                 if (!breakers.allowDispatch(node.capability(), node.circuitBreakerSpec())) {
                     // Breaker OPEN: fail fast into the NORMAL failure handling —
                     // optional / onFailure / compensate semantics all apply.
-                    instance.recordNodeFailure(node.id());
+                    instance.recordNodeFailure(node.id(), "BREAKER_OPEN");
                     handleNodeFailure(def, instance, node, outcome);
                 } else {
                     instance.bumpAttempt(node.id());

@@ -47,4 +47,26 @@ class OpsRunStoreAdapterTest {
         assertThat(run.transitions().get(1).status()).isEqualTo("COMPLETED");
         assertThat(adapter.scanAll()).hasSize(1);
     }
+
+    @Test
+    void mapsTheP2Stats_attemptsClassesAndSagaState() {
+        InMemoryJourneyInstanceStore store = new InMemoryJourneyInstanceStore();
+        JourneyInstance i = new JourneyInstance("ji-p2-1", "corr-p2", "loan-origination", 1,
+                "APP-1", Map.of());
+        store.insertIfAbsent(i);
+        i.markDispatched("n_kyc");
+        i.bumpAttempt("n_kyc");
+        i.bumpAttempt("n_kyc");
+        i.recordNodeFailure("n_kyc", "TRANSIENT");
+        i.startCompensation("n_book", java.util.List.of("n_t2", "n_t1"));
+        store.save(i);
+
+        OpsRun run = new OpsRunStoreAdapter(store).find("ji-p2-1").orElseThrow();
+        assertThat(run.dispatchAttempts()).containsEntry("n_kyc", 2);
+        assertThat(run.nodeFailureClasses()).containsEntry("n_kyc", "TRANSIENT");
+        assertThat(run.compensationOf()).isEqualTo("n_book");
+        assertThat(run.compensationPending()).containsExactly("n_t2", "n_t1");
+        // COMPENSATING remains in the RUNNING band (vocabulary is fixed).
+        assertThat(run.state()).isEqualTo(OpsRun.State.RUNNING);
+    }
 }

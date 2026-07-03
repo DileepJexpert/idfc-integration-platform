@@ -21,6 +21,8 @@ public class OpsRunQueryService {
     private final OpsRunStore store;
     private final Clock clock;
     private final Duration stuckAfter;
+    /** The full liveness budget — a LIVE run will be swept at startedAt + runBudget. */
+    private final Duration runBudget;
 
     public OpsRunQueryService(OpsRunStore store, Clock clock,
                               Duration runBudget, Duration sweepInterval) {
@@ -31,6 +33,7 @@ public class OpsRunQueryService {
         // floor it so stuckOnly still means "approaching the budget".
         this.stuckAfter = threshold.isNegative() || threshold.isZero()
                 ? Duration.ofSeconds(1) : threshold;
+        this.runBudget = runBudget;
     }
 
     public record Page(List<OpsRun> items, int page, int size, long totalItems, int totalPages) {
@@ -79,6 +82,18 @@ public class OpsRunQueryService {
                     .sorted(newestFirst()).toList();
         }
         return scanned;
+    }
+
+    /**
+     * OPS P2: WHEN the liveness sweeper will act on a live run (startedAt +
+     * budget) — the dashboard shows ops when the system will move on its own.
+     * Null for terminal runs.
+     */
+    public Instant sweepDeadline(OpsRun run) {
+        if (run.state() != OpsRun.State.RUNNING || run.startedAt() == null) {
+            return null;
+        }
+        return run.startedAt().plus(runBudget);
     }
 
     public boolean isStuck(OpsRun run) {

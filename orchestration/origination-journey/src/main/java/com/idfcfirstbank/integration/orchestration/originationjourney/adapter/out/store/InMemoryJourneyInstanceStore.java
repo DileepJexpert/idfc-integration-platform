@@ -91,6 +91,7 @@ public class InMemoryJourneyInstanceStore implements JourneyInstanceStore {
                 i.pendingRequestNodeIds(), i.pendingDecision(),
                 i.transitions(), i.endedAt(), i.terminalNodeId(), i.terminalOutcome(),
                 i.sfdcNotified(),
-                i.failedNodeIds(), i.dispatchAttempts(), i.compensationQueue(), i.compensationOf());
+                i.failedNodeIds(), i.dispatchAttempts(), i.compensationQueue(), i.compensationOf(),
+                i.nodeFailureClasses());
     }
 }
