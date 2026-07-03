@@ -62,6 +62,11 @@ public class AerospikeJourneyInstanceStore implements JourneyInstanceStore {
     private static final String B_TERM_NODE = "termNode";
     private static final String B_TERM_OUT = "termOut";
     private static final String B_NOTIFIED = "notified";
+    // T2 (Workstream B): terminal node failures, retry attempts, compensation saga.
+    private static final String B_FAILED = "failed";
+    private static final String B_ATTEMPTS = "attempts";
+    private static final String B_COMP_QUEUE = "compQ";
+    private static final String B_COMP_OF = "compOf";
 
     private final IAerospikeClient client;
     private final ObjectMapper objectMapper;
@@ -181,6 +186,10 @@ public class AerospikeJourneyInstanceStore implements JourneyInstanceStore {
                 new Bin(B_TERM_NODE, instance.terminalNodeId()),
                 new Bin(B_TERM_OUT, instance.terminalOutcome()),
                 new Bin(B_NOTIFIED, instance.sfdcNotified().name()),
+                new Bin(B_FAILED, json(instance.failedNodeIds())),
+                new Bin(B_ATTEMPTS, json(instance.dispatchAttempts())),
+                new Bin(B_COMP_QUEUE, json(instance.compensationQueue())),
+                new Bin(B_COMP_OF, instance.compensationOf()),
         };
     }
 
@@ -255,7 +264,9 @@ public class AerospikeJourneyInstanceStore implements JourneyInstanceStore {
                 return;
             }
             String statusName = record.getString(B_STATUS);
-            if (statusName == null || InstanceStatus.valueOf(statusName) != InstanceStatus.RUNNING) {
+            // LIVE states only: RUNNING and COMPENSATING both consume the run
+            // budget (a stuck saga must be swept exactly like a stuck run).
+            if (statusName == null || !InstanceStatus.valueOf(statusName).isLive()) {
                 return;
             }
             String startedStr = record.getString(B_STARTED);
@@ -293,7 +304,20 @@ public class AerospikeJourneyInstanceStore implements JourneyInstanceStore {
                 endedStr == null ? null : Instant.parse(endedStr),
                 r.getString(B_TERM_NODE), r.getString(B_TERM_OUT),
                 // Legacy records have no notified bin — NONE, never a guess.
-                notified == null ? null : JourneyInstance.NotifyState.valueOf(notified));
+                notified == null ? null : JourneyInstance.NotifyState.valueOf(notified),
+                readSet(r.getString(B_FAILED)),
+                readAttempts(r.getString(B_ATTEMPTS)),
+                readList(r.getString(B_COMP_QUEUE)),
+                r.getString(B_COMP_OF));
+    }
+
+    private Map<String, Integer> readAttempts(String json) {
+        try {
+            return json == null ? new LinkedHashMap<>()
+                    : objectMapper.readValue(json, new TypeReference<Map<String, Integer>>() {});
+        } catch (Exception e) {
+            throw new IllegalStateException("corrupt journey-instance attempts bin", e);
+        }
     }
 
     private Key key(String journeyInstanceId) {

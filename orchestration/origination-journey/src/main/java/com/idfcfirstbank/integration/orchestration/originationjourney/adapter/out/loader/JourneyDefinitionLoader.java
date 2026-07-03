@@ -3,10 +3,12 @@ package com.idfcfirstbank.integration.orchestration.originationjourney.adapter.o
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.BranchArm;
+import com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.CircuitBreakerSpec;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.Compensation;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.JourneyDefinition;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.JourneyNode;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.NodeType;
+import com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.RetrySpec;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -71,7 +73,12 @@ public class JourneyDefinitionLoader {
         if (key == null || startNodeId == null || nodes.isEmpty()) {
             throw new IllegalStateException("journey contract missing journeyKey/startNodeId/nodes");
         }
-        return new JourneyDefinition(key, version, startNodeId, nodes);
+        JourneyDefinition def = new JourneyDefinition(key, version, startNodeId, nodes);
+        // T2 load-time validation: structural integrity + policy bounds. A config
+        // that would misbehave mid-run must refuse to LOAD (publish-time, not with
+        // an applicant in flight).
+        JourneyDefinitionValidator.validate(def);
+        return def;
     }
 
     private JourneyNode parseNode(JsonNode n) {
@@ -81,7 +88,8 @@ public class JourneyDefinitionLoader {
         return switch (type) {
             case TASK -> JourneyNode.task(id, condition, text(n, "capability"), text(n, "operation"),
                     text(n, "input"), text(n, "output"), text(n, "onFailure"), meterPool(n),
-                    compensation(n), n.path("optional").asBoolean(false), stringList(n, "next"));
+                    compensation(n), retrySpec(id, n), circuitBreakerSpec(id, n),
+                    n.path("optional").asBoolean(false), stringList(n, "next"));
             case BRANCH -> JourneyNode.branch(id, condition, arms(n), text(n, "default"));
             case PARALLEL -> JourneyNode.parallel(id, condition, stringList(n, "branches"));
             case JOIN -> JourneyNode.join(id, condition, stringList(n, "joinOn"),
@@ -105,7 +113,8 @@ public class JourneyDefinitionLoader {
     // in flight.
 
     private static final Set<String> TERMINAL_STATUSES = Set.of("completed", "rejected", "failed");
-    private static final String JOIN_POLICY_ALL_OF = "allOf";
+    private static final java.util.regex.Pattern QUORUM =
+            java.util.regex.Pattern.compile("^quorum\\((\\d+)\\)$");
 
     private static String validTerminalStatus(String nodeId, String status) {
         if (status != null && !TERMINAL_STATUSES.contains(status)) {
@@ -116,13 +125,87 @@ public class JourneyDefinitionLoader {
         return status;
     }
 
+    /**
+     * T2 executes {@code allOf} / {@code anyOf} / {@code quorum(n)}. Anything
+     * else still refuses to load — running an unknown policy silently as allOf
+     * would change the journey's semantics. Quorum BOUNDS (1 ≤ n ≤ |joinOn|)
+     * are checked by the {@link JourneyDefinitionValidator} where the joinOn
+     * list is in scope.
+     */
     private static String validJoinPolicy(String nodeId, String policy) {
-        if (policy != null && !JOIN_POLICY_ALL_OF.equals(policy)) {
-            throw new IllegalStateException("join '" + nodeId + "' declares policy '" + policy
-                    + "' which engine tier T1 cannot execute (only '" + JOIN_POLICY_ALL_OF + "') — refusing"
-                    + " to load: running it silently as allOf would change the journey's semantics");
+        if (policy == null || "allOf".equals(policy) || "anyOf".equals(policy)
+                || QUORUM.matcher(policy).matches()) {
+            return policy;
         }
-        return policy;
+        throw new IllegalStateException("join '" + nodeId + "' declares policy '" + policy
+                + "' which engine tier T2 cannot execute (allOf | anyOf | quorum(n)) — refusing"
+                + " to load: running it silently as allOf would change the journey's semantics");
+    }
+
+    // ---- T2 policy parsing ------------------------------------------------------
+
+    private static RetrySpec retrySpec(String nodeId, JsonNode n) {
+        JsonNode r = n.path("policies").path("retry");
+        if (r.isMissingNode()) {
+            return null;
+        }
+        int maxAttempts = r.path("maxAttempts").asInt(1);
+        JsonNode backoff = r.path("backoff");
+        long base = backoff.isMissingNode() ? 0 : durationMillis(nodeId, "backoff.base", text(backoff, "base"));
+        long max = backoff.isMissingNode() ? 0 : durationMillis(nodeId, "backoff.max", text(backoff, "max"));
+        Set<String> retryOn = new java.util.LinkedHashSet<>();
+        for (JsonNode c : r.path("retryOn")) {
+            retryOn.add(c.asText());
+        }
+        return new RetrySpec(maxAttempts, base, max, r.path("jitter").asBoolean(false), retryOn);
+    }
+
+    private static CircuitBreakerSpec circuitBreakerSpec(String nodeId, JsonNode n) {
+        JsonNode cb = n.path("policies").path("circuitBreaker");
+        if (cb.isMissingNode()) {
+            return null;
+        }
+        double rawThreshold = cb.path("failureThreshold").asDouble(0);
+        if (rawThreshold < 1 || rawThreshold != Math.floor(rawThreshold)) {
+            throw new IllegalStateException("task '" + nodeId + "' circuitBreaker.failureThreshold must be"
+                    + " an integral count >= 1 (consecutive failures), got " + rawThreshold
+                    + " — refusing to load");
+        }
+        long open = durationMillis(nodeId, "circuitBreaker.openDuration", text(cb, "openDuration"));
+        return new CircuitBreakerSpec((int) rawThreshold, open, cb.path("halfOpenTrial").asInt(1));
+    }
+
+    private static final java.util.regex.Pattern SHORTHAND_DURATION =
+            java.util.regex.Pattern.compile("^(\\d+)\\s*(ms|s|m|h)$");
+
+    /**
+     * §7 durations come in two authored forms — the shipped journeys' shorthand
+     * ({@code 200ms}, {@code 5s}, {@code 2m}, {@code 1h}) and ISO-8601
+     * ({@code PT2S}). Anything else refuses to load.
+     */
+    private static long durationMillis(String nodeId, String field, String raw) {
+        if (raw == null || raw.isBlank()) {
+            throw new IllegalStateException("task '" + nodeId + "' declares policies with a missing '"
+                    + field + "' duration — refusing to load");
+        }
+        String trimmed = raw.trim();
+        java.util.regex.Matcher m = SHORTHAND_DURATION.matcher(trimmed);
+        if (m.matches()) {
+            long value = Long.parseLong(m.group(1));
+            return switch (m.group(2)) {
+                case "ms" -> value;
+                case "s" -> value * 1_000;
+                case "m" -> value * 60_000;
+                default -> value * 3_600_000; // "h"
+            };
+        }
+        try {
+            return java.time.Duration.parse(trimmed).toMillis();
+        } catch (java.time.format.DateTimeParseException e) {
+            throw new IllegalStateException("task '" + nodeId + "' policy '" + field + "' is not a §7"
+                    + " duration ('200ms'/'5s'/'2m'/'1h' or ISO-8601 'PT2S'): '" + raw
+                    + "' — refusing to load");
+        }
     }
 
     private List<BranchArm> arms(JsonNode n) {

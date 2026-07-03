@@ -98,26 +98,30 @@ class RegistryEngineSeamIT {
         publishVersion(registry, key, 1, v1Config(key));
 
         // ---- the ENGINE side: boots FROM the registry ---------------------------
+        // Config as COMMAND-LINE args (highest precedence): builder.properties()
+        // are defaultProperties, which the app's own application.yml OUTRANKS —
+        // the yml's ${IDFC_ENGINE_JOURNEY_SOURCE:classpath} / ${OPS_API_TOKEN:}
+        // defaults would silently override this test's intent.
         ConfigurableApplicationContext engine = new SpringApplicationBuilder(
                 OriginationJourneyApplication.class)
-                .properties(
-                        "server.port=0",
+                .run(
+                        "--server.port=0",
                         // full-flow-it's classpath carries OTHER services' JDBC
                         // starter; the engine app itself has no datasource.
-                        "spring.autoconfigure.exclude=org.springframework.boot"
+                        "--spring.autoconfigure.exclude=org.springframework.boot"
                                 + ".autoconfigure.jdbc.DataSourceAutoConfiguration",
-                        "spring.kafka.bootstrap-servers=" + brokers,
-                        "idfc.engine.journey-source=registry",
-                        "idfc.engine.registry.base-url=" + REGISTRY,
-                        "idfc.engine.registry.auth-token=" + TOKEN,
-                        "idfc.engine.registry.refresh-seconds=1",
-                        "idfc.engine.origination-topics=" + ORIG_TOPIC,
-                        "idfc.engine.origination-group=seam-engine",
-                        "idfc.engine.response-group=seam-engine-responses",
-                        "idfc.engine.type-to-journey.SEAM=" + key,
-                        "idfc.engine.state-store=in-memory",
-                        "idfc.ops.auth-token=seam-ops-token")
-                .run();
+                        "--spring.kafka.bootstrap-servers=" + brokers,
+                        "--idfc.engine.journey-source=registry",
+                        "--idfc.engine.registry.base-url=" + REGISTRY,
+                        "--idfc.engine.registry.auth-token=" + TOKEN,
+                        "--idfc.engine.registry.refresh-seconds=1",
+                        "--idfc.engine.origination-topics=" + ORIG_TOPIC,
+                        "--idfc.engine.origination-group=seam-engine",
+                        "--idfc.engine.response-group=seam-engine-responses",
+                        "--idfc.engine.type-to-journey.SEAM=" + key,
+                        "--idfc.engine.state-store=in-memory",
+                        "--OPS_API_TOKEN=seam-ops-token",
+                        "--idfc.ops.auth-token=seam-ops-token");
 
         List<JsonNode> capRequests = new CopyOnWriteArrayList<>();
         List<JsonNode> extraRequests = new CopyOnWriteArrayList<>();
@@ -172,22 +176,25 @@ class RegistryEngineSeamIT {
 
     @Test
     void engineRefusesToStartWhenTheRegistryIsUnreachable() {
+        // Command-line-strength args for the same reason as the live boot above:
+        // the app yml's own defaults must not be able to flip this boot back to
+        // the classpath source or trip the ops-token gate first.
         assertThatThrownBy(() -> new SpringApplicationBuilder(OriginationJourneyApplication.class)
-                .properties(
-                        "server.port=0",
-                        "spring.autoconfigure.exclude=org.springframework.boot"
+                .run(
+                        "--server.port=0",
+                        "--spring.autoconfigure.exclude=org.springframework.boot"
                                 + ".autoconfigure.jdbc.DataSourceAutoConfiguration",
                         // nothing listens here — connection refused at bootstrap
-                        "idfc.engine.journey-source=registry",
-                        "idfc.engine.registry.base-url=http://localhost:59997",
-                        "idfc.engine.registry.auth-token=any",
-                        "idfc.engine.registry.connect-timeout-ms=500",
-                        "idfc.engine.registry.read-timeout-ms=500",
+                        "--idfc.engine.journey-source=registry",
+                        "--idfc.engine.registry.base-url=http://localhost:59997",
+                        "--idfc.engine.registry.auth-token=any",
+                        "--idfc.engine.registry.connect-timeout-ms=500",
+                        "--idfc.engine.registry.read-timeout-ms=500",
                         // never reached — bootstrap fails first
-                        "spring.kafka.bootstrap-servers=localhost:59998",
-                        "idfc.engine.state-store=in-memory",
-                        "idfc.ops.auth-token=seam-ops-token")
-                .run()
+                        "--spring.kafka.bootstrap-servers=localhost:59998",
+                        "--idfc.engine.state-store=in-memory",
+                        "--OPS_API_TOKEN=seam-ops-token",
+                        "--idfc.ops.auth-token=seam-ops-token")
                 .close())
                 .hasStackTraceContaining("refusing to start");
     }

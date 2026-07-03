@@ -66,6 +66,22 @@ class JourneyLivenessSweeperTest {
     }
 
     @Test
+    void aStuckCompensatingSagaIsSweptLikeAStuckRun() {
+        var store = new InMemoryJourneyInstanceStore();
+        JourneyInstance saga = running("ji-saga", "APP-9", Duration.ofMinutes(20), Map.of());
+        saga.startCompensation("t3", List.of("t1")); // T2: live but no comp response ever came
+        store.insertIfAbsent(saga);
+
+        List<JourneyDecision> published = new ArrayList<>();
+        var sweeper = new JourneyLivenessSweeper(store, published::add, OpsEventPort.NOOP, clock,
+                BUDGET_SECONDS);
+
+        assertThat(sweeper.sweepStuckRuns()).isEqualTo(1);
+        assertThat(published).hasSize(1);
+        assertThat(store.find("ji-saga").orElseThrow().status()).isEqualTo(InstanceStatus.FAILED);
+    }
+
+    @Test
     void leavesRunRunningWhenNotifyCannotBePublished() {
         var store = new InMemoryJourneyInstanceStore();
         store.insertIfAbsent(running("ji-stale", "APP-1", Duration.ofMinutes(20), Map.of()));

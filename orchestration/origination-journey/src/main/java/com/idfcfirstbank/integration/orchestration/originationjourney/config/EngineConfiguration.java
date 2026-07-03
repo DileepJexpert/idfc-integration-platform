@@ -64,9 +64,32 @@ public class EngineConfiguration {
         return Clock.systemUTC();
     }
 
+    /** T2 per-capability circuit breakers (per replica, in-memory — see spec). */
     @Bean
-    JourneyEngine journeyEngine(ExpressionEvaluator evaluator) {
-        return new JourneyEngine(evaluator);
+    com.idfcfirstbank.integration.orchestration.originationjourney.domain.service.CapabilityCircuitBreakers
+    capabilityCircuitBreakers(Clock clock) {
+        return new com.idfcfirstbank.integration.orchestration.originationjourney
+                .domain.service.CapabilityCircuitBreakers(clock);
+    }
+
+    @Bean
+    JourneyEngine journeyEngine(ExpressionEvaluator evaluator,
+            com.idfcfirstbank.integration.orchestration.originationjourney.domain.service
+                    .CapabilityCircuitBreakers breakers) {
+        return new JourneyEngine(evaluator, breakers);
+    }
+
+    /**
+     * T2 retry timer: a small daemon scheduler. The retry INTENT is durable in
+     * the store outbox; this thread only realizes the delay.
+     */
+    @Bean(destroyMethod = "shutdownNow")
+    java.util.concurrent.ScheduledExecutorService journeyRetryExecutor() {
+        return java.util.concurrent.Executors.newScheduledThreadPool(1, r -> {
+            Thread t = new Thread(r, "journey-retry");
+            t.setDaemon(true);
+            return t;
+        });
     }
 
     @Bean
@@ -189,8 +212,11 @@ public class EngineConfiguration {
     JourneyOrchestrator journeyOrchestrator(JourneyEngine engine, JourneyRegistry registry,
                                             JourneyInstanceStore store, CapabilityRequestPort capabilityRequestPort,
                                             DecisionOutboundPort decisionOutboundPort,
-                                            Supplier<String> instanceIdSupplier, OpsEventPort opsEventPort) {
+                                            Supplier<String> instanceIdSupplier, OpsEventPort opsEventPort,
+                                            java.util.concurrent.ScheduledExecutorService journeyRetryExecutor) {
+        JourneyOrchestrator.RetryScheduler scheduler = (task, delayMillis) ->
+                journeyRetryExecutor.schedule(task, delayMillis, java.util.concurrent.TimeUnit.MILLISECONDS);
         return new JourneyOrchestrator(engine, registry, store, capabilityRequestPort, decisionOutboundPort,
-                instanceIdSupplier, opsEventPort);
+                instanceIdSupplier, opsEventPort, scheduler);
     }
 }

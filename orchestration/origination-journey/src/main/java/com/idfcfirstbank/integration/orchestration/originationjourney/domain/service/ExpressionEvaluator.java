@@ -72,6 +72,82 @@ public final class ExpressionEvaluator {
         throw new IllegalArgumentException("unsupported branch expression: " + expression);
     }
 
+    /**
+     * T2 INPUT MAPPING: evaluate a §7 object-literal mapping like
+     * <pre>{@code { loanId: context.loan.id, mode: 'FULL', amount: 42, force: true }}</pre>
+     * into a map. Values are context PATHS (resolved like branch-expression
+     * left-hand sides; a missing path maps to null), quoted string literals,
+     * numbers, or {@code true}/{@code false}. Same deliberate-subset stance as
+     * the boolean grammar: no nesting, no expressions — each addition is a
+     * conscious extension.
+     */
+    public Map<String, Object> evaluateMapping(String mapping, Map<String, Object> context) {
+        if (mapping == null || mapping.isBlank()) {
+            return Map.of();
+        }
+        String body = mapping.trim();
+        if (!body.startsWith("{") || !body.endsWith("}")) {
+            throw new IllegalArgumentException("input mapping must be an object literal { k: v, ... }");
+        }
+        body = body.substring(1, body.length() - 1).trim();
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        if (body.isEmpty()) {
+            return out;
+        }
+        for (String pair : splitTopLevel(body, ",")) {
+            int colon = topLevelColon(pair);
+            if (colon < 0) {
+                throw new IllegalArgumentException("input mapping pair without ':': " + pair.trim());
+            }
+            String key = unquote(pair.substring(0, colon).trim());
+            String raw = pair.substring(colon + 1).trim();
+            if (key.isEmpty()) {
+                throw new IllegalArgumentException("input mapping pair with empty key: " + pair.trim());
+            }
+            out.put(key, literalOrPath(raw, context));
+        }
+        return out;
+    }
+
+    /** First colon outside quotes (keys may be quoted; paths never contain colons). */
+    private static int topLevelColon(String s) {
+        boolean inSingle = false;
+        boolean inDouble = false;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '\'' && !inDouble) {
+                inSingle = !inSingle;
+            } else if (c == '"' && !inSingle) {
+                inDouble = !inDouble;
+            } else if (c == ':' && !inSingle && !inDouble) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /** A mapping VALUE: quoted literal, number, boolean — otherwise a context path. */
+    private static Object literalOrPath(String raw, Map<String, Object> context) {
+        if (raw.isEmpty()) {
+            return null;
+        }
+        if (raw.startsWith("'") || raw.startsWith("\"")) {
+            return unquote(raw);
+        }
+        if ("true".equals(raw) || "false".equals(raw)) {
+            return Boolean.parseBoolean(raw);
+        }
+        char first = raw.charAt(0);
+        if (first == '-' || Character.isDigit(first)) {
+            try {
+                return raw.contains(".") ? (Object) Double.parseDouble(raw) : (Object) Long.parseLong(raw);
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("input mapping value is not a number: " + raw);
+            }
+        }
+        return resolvePath(raw, context);
+    }
+
     /** Split on a top-level delimiter ({@code &&}/{@code ||}), ignoring delimiters inside quotes. */
     private static List<String> splitTopLevel(String expr, String delim) {
         List<String> parts = new ArrayList<>();

@@ -13,7 +13,6 @@
       "input": "{ addressId: context.addressId, consent: 'Y' }",
       "output": "context.negativeArea",
       "idempotent": true,
-      "policies": { "retry": { "retryOn": ["TRANSIENT"], "maxAttempts": 3, "backoff": { "type": "exponential", "base": "200ms", "max": "5s", "jitter": true } } },
       "onFailure": "n_negativeError",
       "next": [ "n_negativeDecision" ]
     },

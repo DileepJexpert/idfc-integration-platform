@@ -42,6 +42,21 @@ import java.util.function.Supplier;
  */
 public class JourneyOrchestrator {
 
+    /**
+     * How a T2 retry's DELAY is realized (in-JVM timer; a virtual thread pool in
+     * production). The retry INTENT itself is durable — it sits in the
+     * pending-publish outbox — so a crashed timer degrades to the next event
+     * for this run re-driving it, or the liveness sweeper failing-with-notify
+     * at budget. Never a silent loss.
+     */
+    @FunctionalInterface
+    public interface RetryScheduler {
+        void schedule(Runnable task, long delayMillis);
+
+        /** Run inline (tests / no-delay wiring). */
+        RetryScheduler IMMEDIATE = (task, delayMillis) -> task.run();
+    }
+
     private static final Logger log = LoggerFactory.getLogger(JourneyOrchestrator.class);
 
     private final JourneyEngine engine;
@@ -51,6 +66,7 @@ public class JourneyOrchestrator {
     private final DecisionOutboundPort decisionOutboundPort;
     private final Supplier<String> instanceIdSupplier;
     private final OpsEventPort opsEvents;
+    private final RetryScheduler retryScheduler;
 
     public JourneyOrchestrator(JourneyEngine engine, JourneyRegistry registry, JourneyInstanceStore store,
                                CapabilityRequestPort capabilityRequestPort,
@@ -65,6 +81,16 @@ public class JourneyOrchestrator {
                                DecisionOutboundPort decisionOutboundPort,
                                Supplier<String> instanceIdSupplier,
                                OpsEventPort opsEvents) {
+        this(engine, registry, store, capabilityRequestPort, decisionOutboundPort, instanceIdSupplier,
+                opsEvents, RetryScheduler.IMMEDIATE);
+    }
+
+    public JourneyOrchestrator(JourneyEngine engine, JourneyRegistry registry, JourneyInstanceStore store,
+                               CapabilityRequestPort capabilityRequestPort,
+                               DecisionOutboundPort decisionOutboundPort,
+                               Supplier<String> instanceIdSupplier,
+                               OpsEventPort opsEvents,
+                               RetryScheduler retryScheduler) {
         this.engine = engine;
         this.registry = registry;
         this.store = store;
@@ -72,6 +98,7 @@ public class JourneyOrchestrator {
         this.decisionOutboundPort = decisionOutboundPort;
         this.instanceIdSupplier = instanceIdSupplier;
         this.opsEvents = opsEvents;
+        this.retryScheduler = retryScheduler;
     }
 
     /** Start a journey from a parsed inbound origination envelope. Returns the new instance id. */
@@ -129,10 +156,11 @@ public class JourneyOrchestrator {
         JourneyDefinition def = registry.definitionFor(instance.journeyKey(), instance.journeyVersion());
 
         // Duplicate / late-response guard: the hop was already applied (node done)
-        // or the run is terminal. Never re-run the engine for it — that would
+        // or the run is TERMINAL. Never re-run the engine for it — that would
         // re-fail a completed run or double-emit a decision. Just finish any
-        // publishes the crashed attempt left pending, then drop.
-        if (instance.isCompleted(response.nodeId()) || instance.status() != InstanceStatus.RUNNING) {
+        // publishes the crashed attempt left pending, then drop. COMPENSATING is
+        // a LIVE state: saga responses must flow through (T2).
+        if (instance.isCompleted(response.nodeId()) || !instance.status().isLive()) {
             log.info("journey.response.duplicate instanceId={} node={} status={} — {}",
                     response.journeyInstanceId(), response.nodeId(), instance.status(),
                     instance.hasPendingPublishes() ? "re-driving pending publishes" : "dropped");
@@ -161,16 +189,21 @@ public class JourneyOrchestrator {
      */
     private void dispatch(EngineOutcome outcome, JourneyInstance instance, JourneyDefinition def) {
         List<CapabilityRequest> requests = outcome.requests();
+        List<EngineOutcome.RetryDirective> retries = outcome.retries();
         JourneyDecision decision = outcome.decision().orElse(null);
 
-        if (requests.isEmpty() && decision == null) {
+        if (requests.isEmpty() && retries.isEmpty() && decision == null) {
             store.save(instance); // pure state advance (e.g. one join arm done)
             emitRunEndedIfTerminal(instance);
             return;
         }
 
-        instance.setPendingPublishes(
-                requests.stream().map(CapabilityRequest::nodeId).toList(), decision);
+        // The outbox intent covers IMMEDIATE requests and scheduled RETRIES alike:
+        // both are publishes this hop owes the world.
+        List<String> pendingIds = new java.util.ArrayList<>(
+                requests.stream().map(CapabilityRequest::nodeId).toList());
+        retries.forEach(r -> pendingIds.add(r.nodeId()));
+        instance.setPendingPublishes(pendingIds, decision);
         store.save(instance); // save #1: state + publish intent, BEFORE side effects
 
         for (CapabilityRequest request : requests) {
@@ -183,9 +216,47 @@ public class JourneyOrchestrator {
             publishDecision(instance, decision);
         }
 
-        instance.clearPendingPublishes();
+        if (retries.isEmpty()) {
+            instance.clearPendingPublishes();
+        } else {
+            // Confirmed publishes leave the outbox; the retry ids STAY pending
+            // until the delayed re-drive publishes them.
+            if (decision != null) {
+                instance.markSfdcNotified();
+            }
+            instance.setPendingPublishes(
+                    retries.stream().map(EngineOutcome.RetryDirective::nodeId).toList(), null);
+        }
         saveClearedIntent(instance); // save #2: benign if a newer state won
         emitRunEndedIfTerminal(instance);
+
+        for (EngineOutcome.RetryDirective retry : retries) {
+            log.info("journey.retry.scheduled instanceId={} node={} delayMs={} attempt={}",
+                    instance.journeyInstanceId(), retry.nodeId(), retry.delayMillis(),
+                    instance.attemptsOf(retry.nodeId()));
+            String instanceId = instance.journeyInstanceId();
+            retryScheduler.schedule(() -> redrivePending(instanceId), retry.delayMillis());
+        }
+    }
+
+    /**
+     * Publish whatever the outbox still owes for this run (T2 delayed retries;
+     * also safe for any crashed hop's leftovers). Exceptions are logged, never
+     * thrown — the timer thread must survive; the sweeper is the net.
+     */
+    public void redrivePending(String instanceId) {
+        try {
+            Optional<JourneyInstance> found = store.find(instanceId);
+            if (found.isEmpty() || !found.get().hasPendingPublishes()) {
+                return;
+            }
+            JourneyInstance instance = found.get();
+            JourneyDefinition def = registry.definitionFor(instance.journeyKey(), instance.journeyVersion());
+            publishPending(def, instance);
+        } catch (Exception e) {
+            log.error("journey.retry.redrive failed for instanceId={} — sweeper will cover at budget",
+                    instanceId, e);
+        }
     }
 
     /** Re-drive the publishes a crashed/failed attempt persisted but never confirmed. */

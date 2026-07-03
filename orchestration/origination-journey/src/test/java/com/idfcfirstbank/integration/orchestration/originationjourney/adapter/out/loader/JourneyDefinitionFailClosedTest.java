@@ -35,9 +35,14 @@ class JourneyDefinitionFailClosedTest {
     }
 
     private static String journeyWithJoinPolicy(String policy) {
+        // a/b are REAL nodes: the T2 load-time validator rejects dangling joinOn
+        // references before the policy is even considered.
         return """
-                {"journeyKey":"t","startNodeId":"j",
-                 "nodes":[{"id":"j","type":"join","joinOn":["a","b"],"policy":"%s","next":["end"]},
+                {"journeyKey":"t","startNodeId":"p",
+                 "nodes":[{"id":"p","type":"parallel","branches":["a","b"]},
+                          {"id":"a","type":"task","capability":"kyc","next":["j"]},
+                          {"id":"b","type":"task","capability":"bureau","next":["j"]},
+                          {"id":"j","type":"join","joinOn":["a","b"],"policy":"%s","next":["end"]},
                           {"id":"end","type":"terminal","action":"push","status":"completed"}]}
                 """.formatted(policy);
     }
@@ -59,12 +64,98 @@ class JourneyDefinitionFailClosedTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"anyOf", "quorum(2)", "ANY_OF", "any"})
+    @ValueSource(strings = {"ANY_OF", "any", "someOf", "quorum()", "quorum(x)"})
     void nonExecutableJoinPolicyRefusesToLoad(String policy) {
         assertThatThrownBy(() -> parse(journeyWithJoinPolicy(policy)))
-                .as("a join policy T1 cannot execute must fail at load — never silently run as allOf")
+                .as("a join policy the engine cannot execute must fail at load — never silently run as allOf")
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("policy '" + policy + "'");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"allOf", "anyOf", "quorum(1)", "quorum(2)"})
+    void theT2JoinPoliciesLoad(String policy) {
+        assertThat(parse(journeyWithJoinPolicy(policy)).node("j").joinPolicy()).isEqualTo(policy);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"quorum(0)", "quorum(3)", "quorum(99)"})
+    void outOfBoundsQuorumRefusesToLoad(String policy) {
+        assertThatThrownBy(() -> parse(journeyWithJoinPolicy(policy)))
+                .as("a quorum outside [1, |joinOn|] can never fire correctly — refuse at load")
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("out of bounds");
+    }
+
+    // ---- T2 load-time validator: structural integrity -------------------------
+
+    @Test
+    void danglingReferencesRefuseToLoad() {
+        String dangling = """
+                {"journeyKey":"t","startNodeId":"a",
+                 "nodes":[{"id":"a","type":"task","capability":"kyc","next":["ghost"]},
+                          {"id":"end","type":"terminal","action":"push","status":"completed"}]}
+                """;
+        assertThatThrownBy(() -> parse(dangling))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("missing node 'ghost'");
+    }
+
+    @Test
+    void branchWithoutDefaultRefusesToLoad() {
+        String noDefault = """
+                {"journeyKey":"t","startNodeId":"b",
+                 "nodes":[{"id":"b","type":"branch","arms":[{"when":"context.x == '1'","next":"end"}]},
+                          {"id":"end","type":"terminal","action":"push","status":"completed"}]}
+                """;
+        assertThatThrownBy(() -> parse(noDefault))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("no default arm");
+    }
+
+    @Test
+    void permanentInRetryOnRefusesToLoad() {
+        String retryPermanent = """
+                {"journeyKey":"t","startNodeId":"a",
+                 "nodes":[{"id":"a","type":"task","capability":"kyc",
+                           "policies":{"retry":{"maxAttempts":3,
+                             "backoff":{"type":"exponential","base":"PT1S","max":"PT10S"},
+                             "retryOn":["PERMANENT"]}},
+                           "next":["end"]},
+                          {"id":"end","type":"terminal","action":"push","status":"completed"}]}
+                """;
+        assertThatThrownBy(() -> parse(retryPermanent))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("PERMANENT is never retryable");
+    }
+
+    @Test
+    void malformedBackoffDurationRefusesToLoad() {
+        String badDuration = """
+                {"journeyKey":"t","startNodeId":"a",
+                 "nodes":[{"id":"a","type":"task","capability":"kyc",
+                           "policies":{"retry":{"maxAttempts":3,
+                             "backoff":{"type":"exponential","base":"2 seconds","max":"PT10S"}}},
+                           "next":["end"]},
+                          {"id":"end","type":"terminal","action":"push","status":"completed"}]}
+                """;
+        assertThatThrownBy(() -> parse(badDuration))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("is not a §7 duration");
+    }
+
+    @Test
+    void bothAuthoredDurationFormsLoad() {
+        String shorthandAndIso = """
+                {"journeyKey":"t","startNodeId":"a",
+                 "nodes":[{"id":"a","type":"task","capability":"kyc",
+                           "policies":{"retry":{"maxAttempts":3,
+                             "backoff":{"type":"exponential","base":"200ms","max":"PT10S"}}},
+                           "next":["end"]},
+                          {"id":"end","type":"terminal","action":"push","status":"completed"}]}
+                """;
+        assertThat(parse(shorthandAndIso).node("a").retrySpec().backoffBaseMillis()).isEqualTo(200);
+        assertThat(parse(shorthandAndIso).node("a").retrySpec().backoffMaxMillis()).isEqualTo(10_000);
     }
 
     // ---- A6: schemaVersion checked at load ---------------------------------
@@ -96,11 +187,13 @@ class JourneyDefinitionFailClosedTest {
     }
 
     @Test
-    void allOfAndAbsentJoinPolicyStillLoad() {
-        assertThat(parse(journeyWithJoinPolicy("allOf")).node("j").joinPolicy()).isEqualTo("allOf");
+    void absentJoinPolicyStillLoads() {
         String noPolicy = """
-                {"journeyKey":"t","startNodeId":"j",
-                 "nodes":[{"id":"j","type":"join","joinOn":["a","b"],"next":["end"]},
+                {"journeyKey":"t","startNodeId":"p",
+                 "nodes":[{"id":"p","type":"parallel","branches":["a","b"]},
+                          {"id":"a","type":"task","capability":"kyc","next":["j"]},
+                          {"id":"b","type":"task","capability":"bureau","next":["j"]},
+                          {"id":"j","type":"join","joinOn":["a","b"],"next":["end"]},
                           {"id":"end","type":"terminal","action":"push","status":"completed"}]}
                 """;
         assertThat(parse(noPolicy).node("j").joinPolicy()).isNull();

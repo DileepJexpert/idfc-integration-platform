@@ -40,6 +40,25 @@ public final class JourneyInstance {
     private final Map<String, Object> context = new LinkedHashMap<>();
     private final Set<String> completedNodeIds = new HashSet<>();
     private final Set<String> dispatchedNodeIds = new HashSet<>();
+    /**
+     * Nodes that FAILED for good — retries exhausted or none configured (T2).
+     * Joins read this: a quorum/anyOf join counts completed members against its
+     * threshold and uses the failed set to detect a join that can NEVER fire.
+     */
+    private final Set<String> failedNodeIds = new HashSet<>();
+    /**
+     * Dispatch attempts per task node (T2 retry): bumped every time the engine
+     * decides to (re)dispatch the node's capability request. Persisted so a
+     * redelivered hop re-derives the SAME idempotency key for the same attempt.
+     */
+    private final Map<String, Integer> dispatchAttempts = new LinkedHashMap<>();
+    /**
+     * The compensation saga's remaining work (T2), in dispatch order (reverse
+     * completion order of the compensable nodes). Head = in flight.
+     */
+    private final List<String> compensationQueue = new ArrayList<>();
+    /** The node whose failure STARTED the compensation saga (the run's terminal node). */
+    private String compensationOf;
     private InstanceStatus status = InstanceStatus.RUNNING;
 
     /**
@@ -127,9 +146,52 @@ public final class JourneyInstance {
 
     public boolean isCompleted(String nodeId) { return completedNodeIds.contains(nodeId); }
 
-    /** A node-level failure (ERROR capability response) — timeline only; the run-level outcome follows. */
+    public boolean isNodeFailed(String nodeId) { return failedNodeIds.contains(nodeId); }
+
+    /**
+     * A node-level TERMINAL failure (retries exhausted or none): timeline row +
+     * the failed set joins read. The run-level outcome is the caller's decision
+     * (fail / continue-optional / compensate).
+     */
     public void recordNodeFailure(String nodeId) {
+        failedNodeIds.add(nodeId);
         recordTransition(nodeId, NodeTransition.Status.FAILED);
+    }
+
+    // ---- T2: retry attempts --------------------------------------------------
+
+    /** Dispatches of this node so far (0 = never dispatched). */
+    public int attemptsOf(String nodeId) {
+        return dispatchAttempts.getOrDefault(nodeId, 0);
+    }
+
+    /** Count one (re)dispatch decision for the node; returns the new attempt number. */
+    public int bumpAttempt(String nodeId) {
+        int next = attemptsOf(nodeId) + 1;
+        dispatchAttempts.put(nodeId, next);
+        return next;
+    }
+
+    public Map<String, Integer> dispatchAttempts() { return Map.copyOf(dispatchAttempts); }
+
+    // ---- T2: compensation saga -------------------------------------------------
+
+    /** Enter the saga: business outcome is already decided (ERROR); comps remain. */
+    public void startCompensation(String failedNodeId, List<String> queue) {
+        this.status = InstanceStatus.COMPENSATING;
+        this.compensationOf = failedNodeId;
+        this.compensationQueue.clear();
+        this.compensationQueue.addAll(queue);
+    }
+
+    public List<String> compensationQueue() { return List.copyOf(compensationQueue); }
+
+    public String compensationOf() { return compensationOf; }
+
+    /** The comp at the head of the queue finished — remove it; returns the next head or null. */
+    public String advanceCompensation(String finishedNodeId) {
+        compensationQueue.remove(finishedNodeId);
+        return compensationQueue.isEmpty() ? null : compensationQueue.get(0);
     }
 
     /**
@@ -192,6 +254,7 @@ public final class JourneyInstance {
     /** Read-only views of the tracking sets, for persistence. */
     public Set<String> completedNodeIds() { return Set.copyOf(completedNodeIds); }
     public Set<String> dispatchedNodeIds() { return Set.copyOf(dispatchedNodeIds); }
+    public Set<String> failedNodeIds() { return Set.copyOf(failedNodeIds); }
 
     /**
      * Rehydrate a persisted instance (used by a durable {@code JourneyInstanceStore}
@@ -210,6 +273,26 @@ public final class JourneyInstance {
                                           List<NodeTransition> transitions, Instant endedAt,
                                           String terminalNodeId, String terminalOutcome,
                                           NotifyState sfdcNotified) {
+        return restore(journeyInstanceId, correlationId, journeyKey, journeyVersion, applicationRef,
+                payload, startedAt, version, collectedResults, context, completedNodeIds,
+                dispatchedNodeIds, status, pendingRequestNodeIds, pendingDecision, transitions, endedAt,
+                terminalNodeId, terminalOutcome, sfdcNotified, null, null, null, null);
+    }
+
+    /** T2 form: adds the failed-node set, retry attempts and the compensation saga state. */
+    public static JourneyInstance restore(String journeyInstanceId, String correlationId, String journeyKey,
+                                          int journeyVersion,
+                                          String applicationRef, Map<String, Object> payload, Instant startedAt,
+                                          long version,
+                                          Map<String, Object> collectedResults, Map<String, Object> context,
+                                          Set<String> completedNodeIds,
+                                          Set<String> dispatchedNodeIds, InstanceStatus status,
+                                          List<String> pendingRequestNodeIds, JourneyDecision pendingDecision,
+                                          List<NodeTransition> transitions, Instant endedAt,
+                                          String terminalNodeId, String terminalOutcome,
+                                          NotifyState sfdcNotified,
+                                          Set<String> failedNodeIds, Map<String, Integer> dispatchAttempts,
+                                          List<String> compensationQueue, String compensationOf) {
         JourneyInstance instance = new JourneyInstance(journeyInstanceId, correlationId, journeyKey,
                 journeyVersion, applicationRef, payload, startedAt);
         instance.version = version;
@@ -225,6 +308,16 @@ public final class JourneyInstance {
         if (dispatchedNodeIds != null) {
             instance.dispatchedNodeIds.addAll(dispatchedNodeIds);
         }
+        if (failedNodeIds != null) {
+            instance.failedNodeIds.addAll(failedNodeIds);
+        }
+        if (dispatchAttempts != null) {
+            instance.dispatchAttempts.putAll(dispatchAttempts);
+        }
+        if (compensationQueue != null) {
+            instance.compensationQueue.addAll(compensationQueue);
+        }
+        instance.compensationOf = compensationOf;
         if (status != null) {
             instance.status = status;
         }

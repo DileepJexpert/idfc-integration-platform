@@ -57,7 +57,10 @@ public class OpsRunStoreAdapter implements OpsRunStore {
 
     private static OpsRun.State stateOf(InstanceStatus status) {
         return switch (status) {
-            case RUNNING -> OpsRun.State.RUNNING;
+            // COMPENSATING is a live state: the saga is still working. The ops
+            // vocabulary stays fixed (C.4) — the timeline's #comp rows tell the
+            // fuller story; the decision (already sent) drives the notify bit.
+            case RUNNING, COMPENSATING -> OpsRun.State.RUNNING;
             case COMPLETED -> OpsRun.State.COMPLETED;
             case FAILED -> OpsRun.State.FAILED;
         };

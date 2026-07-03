@@ -12,6 +12,11 @@ dependencies {
     // THE CAPABILITY CONTRACT lives here — engine + every capability share it.
     implementation(project(":shared:shared-domain"))
 
+    // T2 retry: the SHARED backoff math (exponential + full jitter) — the same
+    // policy engine capabilities use, so engine-side and capability-side retry
+    // delays follow one formula.
+    implementation(project(":shared:shared-capability"))
+
     // Shared Kafka reliability contract: error handler + DLQ + confirmed delivery.
     implementation(project(":platform:platform-messaging"))
 

@@ -123,13 +123,27 @@ public class JourneyConfigValidator {
                 }
             }
             if ("join".equals(type)) {
+                int joinOnSize = n.path("joinOn").isArray() ? n.path("joinOn").size() : 0;
                 String policy = text(n, "policy");
-                if (policy != null && !"allOf".equals(policy)) {
-                    issues.add(ValidationIssue.error("unsupportedJoinPolicy",
-                            "join '" + id + "' declares policy '" + policy
-                                    + "' which the current engine tier cannot execute (only allOf)", id));
+                if (policy != null && !"allOf".equals(policy) && !"anyOf".equals(policy)) {
+                    // T2 executes allOf / anyOf / quorum(n); quorum must be in bounds.
+                    java.util.regex.Matcher quorum =
+                            java.util.regex.Pattern.compile("^quorum\\((\\d+)\\)$").matcher(policy);
+                    if (!quorum.matches()) {
+                        issues.add(ValidationIssue.error("unsupportedJoinPolicy",
+                                "join '" + id + "' declares policy '" + policy
+                                        + "' which the engine cannot execute (allOf | anyOf | quorum(n))",
+                                id));
+                    } else {
+                        int q = Integer.parseInt(quorum.group(1));
+                        if (q < 1 || q > joinOnSize) {
+                            issues.add(ValidationIssue.error("quorumOutOfBounds",
+                                    "join '" + id + "' quorum(" + q + ") is out of bounds for "
+                                            + joinOnSize + " joinOn member(s) (1 <= n <= |joinOn|)", id));
+                        }
+                    }
                 }
-                if (!n.path("joinOn").isArray() || n.path("joinOn").isEmpty()) {
+                if (joinOnSize == 0) {
                     issues.add(ValidationIssue.error("joinOnUnknownPredecessor",
                             "join '" + id + "' has no joinOn members", id));
                 } else {
