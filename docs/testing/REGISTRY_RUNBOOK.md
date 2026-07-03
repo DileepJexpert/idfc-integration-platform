@@ -60,7 +60,7 @@ Unmapped types go to the DLQ as poison (fail-closed routing; no default journey)
 ## 3. Run the designer against the live registry
 
 ```bash
-cd ../journey-dag-designer
+cd ../journey-dag-designer/apps/journey_dag_designer
 flutter run -d chrome --dart-define=USE_MOCK_BACKEND=false \
   --dart-define=API_BASE_URL=http://localhost:8104 \
   --dart-define=REGISTRY_TOKEN=dev-registry-token
