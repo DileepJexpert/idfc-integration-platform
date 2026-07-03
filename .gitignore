@@ -9,3 +9,6 @@ build/
 # like `adapter/out/` (an un-anchored `out/` silently excluded every out-adapter).
 /out/
 /bin/
+
+# host dev-run artifacts (run-services.sh)
+.run/

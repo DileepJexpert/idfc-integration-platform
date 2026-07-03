@@ -10,7 +10,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * the DAG-walk logic is framework-free (see {@code domain.service.JourneyEngine}).
  */
 @SpringBootApplication
-public class OriginationJourneyApplication {
+public class
+OriginationJourneyApplication {
     public static void main(String[] args) {
         SpringApplication.run(OriginationJourneyApplication.class, args);
     }

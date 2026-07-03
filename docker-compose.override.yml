@@ -1,0 +1,11 @@
+# LOCAL-DEV override (untracked). Runs the origination engine off its BUNDLED
+# classpath journeys instead of the journey-registry control plane, so the stack
+# comes up without first publishing a journey (the registry starts empty and the
+# engine otherwise fails closed — see docs/testing/REGISTRY_RUNBOOK.md §1 note).
+#
+# To exercise the real registry instead: delete this file, publish a journey
+# (REGISTRY_RUNBOOK.md §2), then `docker compose up -d origination-journey`.
+services:
+  origination-journey:
+    environment:
+      IDFC_ENGINE_JOURNEY_SOURCE: classpath
