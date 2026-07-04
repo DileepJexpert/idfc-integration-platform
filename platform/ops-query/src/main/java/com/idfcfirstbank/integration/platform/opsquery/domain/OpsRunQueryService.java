@@ -21,14 +21,39 @@ import java.util.Optional;
  */
 public class OpsRunQueryService {
 
+    /**
+     * Default metrics memo window. {@code /ops/metrics} aggregates the WHOLE run
+     * set, so without a memo every operator's 15s poll re-triggers a full store
+     * scan — K dashboards ⇒ K scans per window. One poll interval of caching
+     * (matching the ops view cadence and the {@code journeys.stuck.count} gauge)
+     * makes it ONE scan per window; the snapshot's generatedAt surfaces the
+     * ≤15s staleness to the operator.
+     */
+    private static final Duration DEFAULT_METRICS_TTL = Duration.ofSeconds(15);
+
     private final OpsRunStore store;
     private final Clock clock;
     private final Duration stuckAfter;
     /** The full liveness budget — a LIVE run will be swept at startedAt + runBudget. */
     private final Duration runBudget;
+    /** How long a computed metrics snapshot is served before a re-scan (see {@link #metrics()}). */
+    private final Duration metricsTtl;
+    /** Last computed snapshot; re-served while inside {@link #metricsTtl}. Volatile: benign recompute race. */
+    private volatile MetricsSnapshot cachedMetrics;
 
+    /** Production ctor — memoizes {@code /ops/metrics} for one poll window (15s). */
     public OpsRunQueryService(OpsRunStore store, Clock clock,
                               Duration runBudget, Duration sweepInterval) {
+        this(store, clock, runBudget, sweepInterval, DEFAULT_METRICS_TTL);
+    }
+
+    /**
+     * TTL-explicit ctor: {@code metricsTtl} bounds how stale a served metrics
+     * snapshot may be. {@link Duration#ZERO} disables the memo (every call
+     * re-scans) — used by tests that assert freshness.
+     */
+    public OpsRunQueryService(OpsRunStore store, Clock clock, Duration runBudget,
+                              Duration sweepInterval, Duration metricsTtl) {
         this.store = store;
         this.clock = clock;
         Duration threshold = runBudget.minus(sweepInterval);
@@ -37,6 +62,7 @@ public class OpsRunQueryService {
         this.stuckAfter = threshold.isNegative() || threshold.isZero()
                 ? Duration.ofSeconds(1) : threshold;
         this.runBudget = runBudget;
+        this.metricsTtl = metricsTtl == null ? Duration.ZERO : metricsTtl;
     }
 
     public record Page(List<OpsRun> items, int page, int size, long totalItems, int totalPages) {
@@ -127,6 +153,19 @@ public class OpsRunQueryService {
      */
     public MetricsSnapshot metrics() {
         Instant now = clock.instant();
+        MetricsSnapshot cached = cachedMetrics;
+        // Serve the memo for one poll window so concurrent dashboards don't each
+        // trigger a full store scan (the stuck gauge caches its scan the same way).
+        if (cached != null
+                && Duration.between(cached.generatedAt(), now).compareTo(metricsTtl) < 0) {
+            return cached;
+        }
+        MetricsSnapshot fresh = computeMetrics(now);
+        cachedMetrics = fresh;
+        return fresh;
+    }
+
+    private MetricsSnapshot computeMetrics(Instant now) {
         Instant dayAgo = now.minus(Duration.ofHours(24));
         Map<String, List<OpsRun>> byJourney = new HashMap<>();
         for (OpsRun r : store.scanAll()) {

@@ -146,6 +146,38 @@ class OpsRunQueryServiceTest {
         assertThat(service.metrics().journeys()).isEmpty();
     }
 
+    @Test
+    void metricsAreMemoizedWithinTheTtlSoPollingDoesNotRescan() {
+        store.runs.add(run("alpha", "a0", OpsRun.State.RUNNING, null,
+                NOW.minusSeconds(30), null, OpsRun.Notify.NONE));
+        OpsRunQueryService.MetricsSnapshot first = service.metrics();
+
+        // A run appears AFTER the first read; the clock is frozen, so the next
+        // call is inside the 15s memo window and must serve the SAME cached
+        // snapshot rather than re-scanning the store.
+        store.runs.add(run("alpha", "a1", OpsRun.State.RUNNING, null,
+                NOW.minusSeconds(20), null, OpsRun.Notify.NONE));
+
+        assertThat(service.metrics())
+                .as("same instant is inside the TTL — the cached snapshot is re-served")
+                .isSameAs(first);
+    }
+
+    @Test
+    void metricsRecomputeEachCallWhenTheTtlIsZero() {
+        OpsRunQueryService noCache = new OpsRunQueryService(
+                store, CLOCK, Duration.ofSeconds(900), Duration.ofSeconds(60), Duration.ZERO);
+        store.runs.add(run("alpha", "a0", OpsRun.State.RUNNING, null,
+                NOW.minusSeconds(30), null, OpsRun.Notify.NONE));
+        assertThat(noCache.metrics().journeys()).hasSize(1);
+
+        store.runs.add(run("beta", "b0", OpsRun.State.RUNNING, null,
+                NOW.minusSeconds(20), null, OpsRun.Notify.NONE));
+        assertThat(noCache.metrics().journeys())
+                .as("TTL=0 disables the memo — the new journey shows immediately")
+                .hasSize(2);
+    }
+
     private static OpsRun run(String journeyKey, String runId, OpsRun.State state, String outcome,
                              Instant start, Instant end, OpsRun.Notify notify) {
         return new OpsRun(runId, journeyKey, 1, state, outcome, notify, start, end,
