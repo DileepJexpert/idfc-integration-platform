@@ -116,6 +116,31 @@ public final class OpsDtos {
         }
     }
 
+    /**
+     * Per-journey aggregate (Temporal-style "Workflows" metrics). RAW counts +
+     * duration percentiles only — rates (approval/failure %) are derived
+     * client-side, so no {@code double} field crosses the allow-listed wire.
+     */
+    public record JourneyMetricDto(
+            String journeyKey, long total, long running,
+            long completedApproved, long completedDeclined, long failed, long stuck,
+            long startedLast24h, Long p50Millis, Long p95Millis) {
+
+        static JourneyMetricDto of(OpsRunQueryService.JourneyMetrics m) {
+            return new JourneyMetricDto(m.journeyKey(), m.total(), m.running(),
+                    m.completedApproved(), m.completedDeclined(), m.failed(), m.stuck(),
+                    m.startedLast24h(), m.p50Millis(), m.p95Millis());
+        }
+    }
+
+    public record MetricsDto(Instant generatedAt, List<JourneyMetricDto> journeys) {
+
+        static MetricsDto of(OpsRunQueryService.MetricsSnapshot snapshot) {
+            return new MetricsDto(snapshot.generatedAt(),
+                    snapshot.journeys().stream().map(JourneyMetricDto::of).toList());
+        }
+    }
+
     public record ErrorDto(String error, String message) {
     }
 }

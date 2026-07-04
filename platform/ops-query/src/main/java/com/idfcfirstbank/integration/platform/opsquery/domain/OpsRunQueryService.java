@@ -3,8 +3,11 @@ package com.idfcfirstbank.integration.platform.opsquery.domain;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -104,6 +107,74 @@ public class OpsRunQueryService {
 
     public long stuckCount() {
         return store.scanAll().stream().filter(this::isStuck).count();
+    }
+
+    /** Per-journey aggregate at a point in time (Temporal-style "Workflows" metrics). */
+    public record JourneyMetrics(
+            String journeyKey, long total, long running,
+            long completedApproved, long completedDeclined, long failed, long stuck,
+            long startedLast24h, Long p50Millis, Long p95Millis) {
+    }
+
+    public record MetricsSnapshot(Instant generatedAt, List<JourneyMetrics> journeys) {
+    }
+
+    /**
+     * Aggregate the visible run set into per-journey metrics — counts by the C.4
+     * status vocabulary, the stuck count, a 24h throughput proxy, and end-to-end
+     * duration p50/p95 over runs that have ended. Same scanAll() source as the
+     * runs list; ids and numbers only, so it stays inside the no-payload contract.
+     */
+    public MetricsSnapshot metrics() {
+        Instant now = clock.instant();
+        Instant dayAgo = now.minus(Duration.ofHours(24));
+        Map<String, List<OpsRun>> byJourney = new HashMap<>();
+        for (OpsRun r : store.scanAll()) {
+            byJourney.computeIfAbsent(r.journeyKey() == null ? "(unknown)" : r.journeyKey(),
+                    k -> new ArrayList<>()).add(r);
+        }
+        List<JourneyMetrics> journeys = new ArrayList<>();
+        for (Map.Entry<String, List<OpsRun>> e : byJourney.entrySet()) {
+            long running = 0, approved = 0, declined = 0, failed = 0, stuck = 0, last24h = 0;
+            List<Long> durations = new ArrayList<>();
+            for (OpsRun r : e.getValue()) {
+                switch (r.status()) {
+                    case RUNNING -> running++;
+                    case COMPLETED_APPROVED -> approved++;
+                    case COMPLETED_DECLINED -> declined++;
+                    case FAILED_SFDC_NOTIFIED, FAILED_NOTIFY_PENDING -> failed++;
+                }
+                if (isStuck(r)) {
+                    stuck++;
+                }
+                if (r.startedAt() != null && !r.startedAt().isBefore(dayAgo)) {
+                    last24h++;
+                }
+                if (r.startedAt() != null && r.endedAt() != null) {
+                    long ms = Duration.between(r.startedAt(), r.endedAt()).toMillis();
+                    if (ms >= 0) {
+                        durations.add(ms);
+                    }
+                }
+            }
+            durations.sort(null);
+            journeys.add(new JourneyMetrics(e.getKey(), e.getValue().size(), running,
+                    approved, declined, failed, stuck, last24h,
+                    percentile(durations, 50), percentile(durations, 95)));
+        }
+        journeys.sort(Comparator.comparingLong(JourneyMetrics::total).reversed()
+                .thenComparing(JourneyMetrics::journeyKey));
+        return new MetricsSnapshot(now, journeys);
+    }
+
+    /** Nearest-rank percentile over an ascending list; null when empty. */
+    private static Long percentile(List<Long> ascending, int p) {
+        if (ascending.isEmpty()) {
+            return null;
+        }
+        int rank = (int) Math.ceil(p / 100.0 * ascending.size());
+        int idx = Math.min(ascending.size() - 1, Math.max(0, rank - 1));
+        return ascending.get(idx);
     }
 
     private static Comparator<OpsRun> newestFirst() {

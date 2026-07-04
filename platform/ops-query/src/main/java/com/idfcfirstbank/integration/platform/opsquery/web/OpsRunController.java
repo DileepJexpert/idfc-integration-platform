@@ -3,6 +3,7 @@ package com.idfcfirstbank.integration.platform.opsquery.web;
 import com.idfcfirstbank.integration.platform.opsquery.domain.OpsRun;
 import com.idfcfirstbank.integration.platform.opsquery.domain.OpsRunQueryService;
 import com.idfcfirstbank.integration.platform.opsquery.web.OpsDtos.ErrorDto;
+import com.idfcfirstbank.integration.platform.opsquery.web.OpsDtos.MetricsDto;
 import com.idfcfirstbank.integration.platform.opsquery.web.OpsDtos.PageDto;
 import com.idfcfirstbank.integration.platform.opsquery.web.OpsDtos.RunDetailDto;
 import com.idfcfirstbank.integration.platform.opsquery.web.OpsDtos.RunSummaryDto;
@@ -63,6 +64,12 @@ public class OpsRunController {
         return service.search(key.trim()).stream()
                 .map(r -> RunSummaryDto.of(r, service.isStuck(r), service.sweepDeadline(r)))
                 .toList();
+    }
+
+    /** Per-journey aggregate metrics (Temporal-style "Workflows" analytics). */
+    @GetMapping("/metrics")
+    public MetricsDto metrics() {
+        return MetricsDto.of(service.metrics());
     }
 
     @GetMapping("/runs/{runId}")

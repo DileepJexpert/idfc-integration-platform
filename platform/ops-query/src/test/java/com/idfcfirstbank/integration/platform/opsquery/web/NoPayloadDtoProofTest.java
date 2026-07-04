@@ -33,6 +33,7 @@ class NoPayloadDtoProofTest {
     void theOpsDtoTreeHasNoFieldAPayloadCouldRideIn() {
         walk(OpsDtos.PageDto.class, "PageDto");
         walk(OpsDtos.RunDetailDto.class, "RunDetailDto");
+        walk(OpsDtos.MetricsDto.class, "MetricsDto");
         walk(OpsDtos.ErrorDto.class, "ErrorDto");
     }
 

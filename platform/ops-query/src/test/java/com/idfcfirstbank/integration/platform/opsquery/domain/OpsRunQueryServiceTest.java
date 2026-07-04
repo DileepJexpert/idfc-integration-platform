@@ -96,4 +96,60 @@ class OpsRunQueryServiceTest {
                 .extracting(OpsRun::runId).containsExactly("ji-s2", "ji-s3");
         assertThat(service.search("corr")).as("EXACT match only, no substrings").isEmpty();
     }
+
+    @Test
+    void metricsAggregatePerJourneyWithStatusCountsSortingAndDurationPercentiles() {
+        Instant t = NOW.minusSeconds(3600);
+        // journey "alpha": 5 approved (10/20/30/40/100s), 1 failed (5s), 1 running.
+        int[] secs = {10, 20, 30, 40, 100};
+        for (int i = 0; i < secs.length; i++) {
+            store.runs.add(run("alpha", "a" + i, OpsRun.State.COMPLETED, "APPROVED",
+                    t, t.plusSeconds(secs[i]), OpsRun.Notify.SENT));
+        }
+        store.runs.add(run("alpha", "afail", OpsRun.State.FAILED, "ERROR",
+                t, t.plusSeconds(5), OpsRun.Notify.PENDING));
+        store.runs.add(run("alpha", "arun", OpsRun.State.RUNNING, null,
+                NOW.minusSeconds(30), null, OpsRun.Notify.NONE));
+        // journey "beta": 1 declined (15s).
+        store.runs.add(run("beta", "b0", OpsRun.State.COMPLETED, "REJECTED",
+                t, t.plusSeconds(15), OpsRun.Notify.SENT));
+
+        OpsRunQueryService.MetricsSnapshot snap = service.metrics();
+
+        assertThat(snap.generatedAt()).isEqualTo(NOW);
+        assertThat(snap.journeys()).extracting(OpsRunQueryService.JourneyMetrics::journeyKey)
+                .as("sorted by total desc: alpha(7) before beta(1)")
+                .containsExactly("alpha", "beta");
+
+        OpsRunQueryService.JourneyMetrics alpha = snap.journeys().get(0);
+        assertThat(alpha.total()).isEqualTo(7);
+        assertThat(alpha.completedApproved()).isEqualTo(5);
+        assertThat(alpha.completedDeclined()).isZero();
+        assertThat(alpha.failed()).isEqualTo(1);
+        assertThat(alpha.running()).isEqualTo(1);
+        assertThat(alpha.stuck())
+                .as("the lone running run started 30s ago — nowhere near the budget").isZero();
+        assertThat(alpha.startedLast24h()).isEqualTo(7);
+        // ended durations ascending (ms): 5000,10000,20000,30000,40000,100000 (running excluded).
+        assertThat(alpha.p50Millis()).isEqualTo(20_000L);  // nearest-rank p50 of 6 -> idx 2
+        assertThat(alpha.p95Millis()).isEqualTo(100_000L); // idx 5
+
+        OpsRunQueryService.JourneyMetrics beta = snap.journeys().get(1);
+        assertThat(beta.total()).isEqualTo(1);
+        assertThat(beta.completedDeclined()).isEqualTo(1);
+        assertThat(beta.p50Millis()).isEqualTo(15_000L);
+        assertThat(beta.p95Millis()).isEqualTo(15_000L);
+    }
+
+    @Test
+    void metricsAreEmptyWhenThereAreNoRuns() {
+        assertThat(service.metrics().journeys()).isEmpty();
+    }
+
+    private static OpsRun run(String journeyKey, String runId, OpsRun.State state, String outcome,
+                             Instant start, Instant end, OpsRun.Notify notify) {
+        return new OpsRun(runId, journeyKey, 1, state, outcome, notify, start, end,
+                state == OpsRun.State.RUNNING ? null : "n_done",
+                "corr-" + runId, "ntf-" + runId, "rec-" + runId, List.of());
+    }
 }
