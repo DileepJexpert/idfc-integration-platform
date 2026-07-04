@@ -11,15 +11,14 @@ Copy-paste companion for the `device-financing` demo journey. Full detail lives 
 ```bash
 docker compose -f docker-compose.infra.yml up -d          # infra + mock-devicefin :9106 + Kafka UI :8085
 
-# engine WITH the demo profile — this is what activates the orig.demo.device.v1 door + journey
+# engine on local (classpath) — application-local.yml carries the orig.demo.device.v1 door + journey
 ./gradlew :orchestration:origination-journey:bootRun \
-  --args='--spring.profiles.active=local,demo --idfc.engine.journey-source=classpath --idfc.engine.state-store=in-memory'
+  --args='--spring.profiles.active=local --idfc.engine.journey-source=classpath --idfc.engine.state-store=in-memory'
 
 # the demo capability app (real HTTP to :9106)
 ./gradlew :demo:device-financing-demo:bootRun --args='--spring.profiles.active=local'   # :8110
 ```
-> NOTE: the one-click `run-services` starts the engine on `local` only — the demo door is NOT active there.
-> You must use the `local,demo` engine above for this journey.
+> NOTE: the one-click `./run-services.sh` starts the engine on `local` with `IDFC_ENGINE_JOURNEY_SOURCE=classpath`, so the `orig.demo.device.v1` door + journey ARE active — that is the simplest path. The `bootRun` above does the same thing explicitly (there is no separate `demo` profile any more).
 
 **Engine-only (no capability app; you hand-publish every hop):** start just the engine (same command,
 capability app not needed). You publish the start envelope AND each `cap.device-financing.response.v1`.
@@ -182,7 +181,7 @@ Detail fields to check: `status`, `terminalNodeId` (`n_approve`/`n_reject`/faili
 
 ## 9. Fastest smoke test
 
-1. Infra up + engine on `local,demo` + `device-financing-demo` app.
+1. Infra up + engine on `local` (classpath) + `device-financing-demo` app — or just `./run-services.sh`.
 2. Kafka UI → topic `orig.demo.device.v1` → Produce: key `corr-df-approve-samsung`, value = §2 template
    with `CORR=corr-df-approve-samsung`, `BRAND=SAMSUNG`, `DEVICE=DEV-1`.
 3. `GET /ops/runs/search?key=corr-df-approve-samsung` → expect `COMPLETED_APPROVED`.

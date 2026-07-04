@@ -22,7 +22,7 @@ drawn DAG). Same behaviour, no new deployable.*
 |---|---|
 | `device-financing-demo` app | **Brand-as-config**: ONE journey; SAMSUNG (OAUTH, validate+block), GODREJ (NA, block-only), BOSCH (BAUTH, nested pass path) are ROWS in its `application.yml`. Each row's auth is **real** (Samsung fetches an OAuth token then Bearer; Bosch sends Basic); the vendor call is **real HTTP** to `mock-devicefin`. Unknown brands FAIL CLOSED. |
 | `fusion-hcm-demo` app | **File-batch scaffold**: a CSV dropped in `demo/batch-inbox/` becomes one engine run per record; each record makes a **real HTTP** POST to Fusion (`mock-fusion`) — a malformed date is a real 400 → PERMANENT. Grouped by ONE batch search key. |
-| engine `demo` profile | The two demo doors as CONFIG: topics `orig.demo.device.v1` / `orig.demo.hr.v1`, `type-to-journey` rows, the two journey JSONs. |
+| engine `local` profile | The two demo doors as CONFIG (in `application-local.yml` — no separate `demo` profile): topics `orig.demo.device.v1` / `orig.demo.hr.v1`, `type-to-journey` rows, the two journey JSONs. Loaded via classpath (`run-services.sh`, or `--idfc.engine.journey-source=classpath`). |
 | ops view (existing) | Every run above is watchable: status, node position, per-record outcomes, failure CLASS, DLQ ref. Nothing demo-specific was added to it. |
 | Designer seeds (designer repo) | The runnable demo journeys drawn, plus the two REFERENCE drafts — production file-batch (SFTP → `foreach` → email) and the sync-read lane — **drawn, not built** (the honesty slide). |
 
@@ -39,7 +39,7 @@ docker compose -f docker-compose.infra.yml up -d        # Kafka + Aerospike + mo
 # 1. the engine with the demo rows (classpath journeys; flip to registry to
 #    show the designer→registry→engine seam instead)
 ./gradlew :orchestration:origination-journey:bootRun \
-  --args='--spring.profiles.active=local,demo --idfc.engine.journey-source=classpath --idfc.engine.state-store=in-memory'
+  --args='--spring.profiles.active=local --idfc.engine.journey-source=classpath --idfc.engine.state-store=in-memory'
 
 # 2. the two demo apps
 ./gradlew :demo:device-financing-demo:bootRun --args='--spring.profiles.active=local' &
@@ -67,8 +67,7 @@ extra CLI rows — no rebuild, no new service:
   --demo.device-financing.brands.HISENSE.auth-type=OAUTH \
   --demo.device-financing.brands.HISENSE.validation-required=false \
   --demo.device-financing.brands.HISENSE.pass-path=responseStatus \
-  --demo.device-financing.brands.HISENSE.pass-value=-4 \
-  --demo.device-financing.brands.HISENSE.stub-response.responseStatus=-4'
+  --demo.device-financing.brands.HISENSE.pass-value=-4'   # WireMock hisense-pass returns responseStatus:-4
 demo/run-demo1.sh HISENSE         # now approves (before the row: FAILED, fail-closed)
 ```
 

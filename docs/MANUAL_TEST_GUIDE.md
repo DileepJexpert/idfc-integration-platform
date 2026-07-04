@@ -54,14 +54,14 @@ Use this to hand-drive a run node-by-node: you publish the starting envelope AND
 
 `state-store=in-memory` means an engine restart clears all runs (clean slate between test cases). `journey-source=classpath` loads only `loan-origination.journey.json` by default — see the troubleshooting table for how to make the verification / e-mandate journeys reachable.
 
-### Mode C — Demo profile (device-financing + fusion-hcm file batch)
+### Mode C — Demo features (device-financing + fusion-hcm file batch)
 
-Activates the two demo doors and their journeys, plus the two demo capability apps that make real HTTP calls to `mock-devicefin` (9106) / `mock-fusion` (9107):
+There is **no separate `demo` profile** — the two demo doors + journeys live in the engine's `local` profile (`application-local.yml`), loaded via classpath. Mode C is just Mode A/B **plus** the two demo capability apps that make real HTTP calls to `mock-devicefin` (9106) / `mock-fusion` (9107). The one-click `./run-services.sh` already starts all of this; the explicit commands are:
 
 ```bash
 # engine with the demo rows (adds topics orig.demo.device.v1 / orig.demo.hr.v1 and 2 demo journeys)
 ./gradlew :orchestration:origination-journey:bootRun \
-  --args='--spring.profiles.active=local,demo --idfc.engine.journey-source=classpath --idfc.engine.state-store=in-memory'
+  --args='--spring.profiles.active=local --idfc.engine.journey-source=classpath --idfc.engine.state-store=in-memory'
 
 # the two demo capability apps
 ./gradlew :demo:device-financing-demo:bootRun --args='--spring.profiles.active=local' &          # :8110
@@ -3325,7 +3325,7 @@ Journey file: `orchestration/origination-journey/src/main/resources/journeys/ema
 
 ### PREREQUISITE — make this journey reachable (do this once before any Kafka permutation)
 
-This journey ships in `resources/journeys/` but is **NOT loaded and NOT routable by any default profile**: no `idfc.engine.type-to-journey` row maps to `emandate-autopay-setup`, and the classpath loader only lists `journeys/loan-origination.journey.json` (base) or the three demo journeys (demo profile) — never `emandate-autopay-setup`. You MUST wire BOTH a loader and a type row, then start the engine.
+This journey ships in `resources/journeys/` but is **NOT loaded and NOT routable by any default profile**: no `idfc.engine.type-to-journey` row maps to `emandate-autopay-setup`, and the classpath loader only lists `journeys/loan-origination.journey.json` (base) or the demo journeys on the local profile — never `emandate-autopay-setup`. You MUST wire BOTH a loader and a type row, then start the engine.
 
 **Option A — classpath mode (simplest for manual runs).** Start the engine (`origination-journey`) with these overrides:
 ```
@@ -4080,9 +4080,9 @@ I have everything I need. Here is the section.
 
 ## Demo: device-financing (brand-as-config, real HTTP -> WireMock)
 
-This journey is the demo profile door where **every per-brand difference is a config row, not code**: validate-or-not, auth scheme (OAUTH / BASIC / NA), and the "approved" pass-path/pass-value all come from `demo.device-financing.brands.*`. The capability (`device-financing`, ops `resolveBrand` / `validate` / `block`) makes a **real HTTP POST** to the WireMock vendor at `http://localhost:9106/vendor/device-financing/{validate|block}`; only the response DATA is mocked.
+This journey is the local-profile demo door where **every per-brand difference is a config row, not code**: validate-or-not, auth scheme (OAUTH / BASIC / NA), and the "approved" pass-path/pass-value all come from `demo.device-financing.brands.*`. The capability (`device-financing`, ops `resolveBrand` / `validate` / `block`) makes a **real HTTP POST** to the WireMock vendor at `http://localhost:9106/vendor/device-financing/{validate|block}`; only the response DATA is mocked.
 
-### Pinned journey facts (device-financing v1, classpath-loaded in demo profile)
+### Pinned journey facts (device-financing v1, classpath-loaded on the local profile)
 
 Nodes (start `n_brand`):
 
@@ -4103,7 +4103,7 @@ Key derived facts (all confirmed in code):
 - **No node has a `retrySpec`, `onFailure`, or breaker policy.** Any capability `status:ERROR` fails the node on the first response and fails the run — TRANSIENT and AMBIGUOUS are **not retried** here (they die exactly like PERMANENT); only the recorded `failureClass` differs. There is **no compensation** (no completed compensable node). **`BREAKER_OPEN` is unreachable** in this journey (no circuit-breaker configured, and `ErrorClass` only has TRANSIENT/PERMANENT/AMBIGUOUS — see the N/A permutation below).
 - HTTP→ErrorClass map (`DeviceFinancingVendorClient`): **4xx → PERMANENT**, **5xx → TRANSIENT**, **read-timeout(>10000ms) → AMBIGUOUS**, **connect/IO refused → TRANSIENT**, empty body → PERMANENT, unknown/missing brand → PERMANENT (fail-closed).
 
-### Config levers (demo profile)
+### Config levers (local profile, `application-local.yml`)
 
 | Brand | `auth-type` | `validation-required` | `pass-path` | `pass-value` | vendor pass body |
 |---|---|---|---|---|---|
@@ -4121,7 +4121,7 @@ deviceId levers (WireMock, `POST /vendor/device-financing/{validate|block}`):
 
 There is **no REST entry** for this journey — it is a **Kafka door**. Produce to topic **`orig.demo.device.v1`**, message **key = `correlationId`**, value = the CanonicalEnvelope. `type` MUST be `DEVICE_FINANCING`; `payload.brand` and `payload.deviceId` are the only business fields the capability reads. Engine instance id is `"ji-" + correlationId` (correlationId is the first non-null dedup key). Ops search keys for a run = its `correlationId`, `notificationId`, `sfdcRecordId`.
 
-Full-stack prereq: engine on `--spring.profiles.active=local,demo`, the `device-financing-demo` app, and the WireMock mock-vendors server (`:9106`) all running (or just run `demo/run-demo1.sh` for the canned four-outcome set). Engine-only manual prereq: engine running; you hand-publish `cap.device-financing.response.v1` messages to steer each hop.
+Full-stack prereq: engine started via `./run-services.sh` (or `bootRun --spring.profiles.active=local --idfc.engine.journey-source=classpath`), the `device-financing-demo` app, and the WireMock mock-vendors server (`:9106`) all running (or just run `demo/run-demo1.sh` for the canned four-outcome set). Engine-only manual prereq: engine running; you hand-publish `cap.device-financing.response.v1` messages to steer each hop.
 
 ---
 
@@ -4592,7 +4592,7 @@ Take a `runId` from any search/list result: `GET /ops/runs/{runId}` → `RunDeta
 
 ### Maker-checker — not applicable to this section
 
-The device-financing journey is loaded from **classpath** in the demo profile (`idfc.engine.journey-source=classpath`, `journey-resources` includes `journeys/device-financing.journey.json`); it does **not** pass through the journey-registry maker-checker lifecycle. The registry endpoints (create/draft/submit/approve, 403 self-approve, 409 second-draft/lifecycle, 422 validation) are exercised in the journey-registry section, not here. No maker-checker permutation is triggerable via the device-financing demo door.
+The device-financing journey is loaded from **classpath** on the local profile (`idfc.engine.journey-source=classpath`, `journey-resources` includes `journeys/device-financing.journey.json`); it does **not** pass through the journey-registry maker-checker lifecycle. The registry endpoints (create/draft/submit/approve, 403 self-approve, 409 second-draft/lifecycle, 422 validation) are exercised in the journey-registry section, not here. No maker-checker permutation is triggerable via the device-financing demo door.
 
 
 ---
@@ -4604,7 +4604,7 @@ The device-financing journey is loaded from **classpath** in the demo profile (`
 This journey is the **file-batch** demo: a local-folder CSV edge (`FolderBatchPoller`) turns each CSV row into **one engine run**, publishing a canonical envelope per record to `orig.demo.hr.v1`. The journey graph is **linear with no branch** — one task node `n_update` → one terminal `n_done`. There is therefore exactly **one business outcome** (`COMPLETED_APPROVED`) and a family of **failure** outcomes driven purely by the Fusion HCM HTTP status → `ErrorClass` mapping.
 
 **Prerequisites (all permutations):**
-- Engine (`origination-journey`) started with `--spring.profiles.active=local,demo`. The `demo` profile is what loads `journeys/employee-lwd-update.journey.json`, adds the door topic `orig.demo.hr.v1` to `idfc.engine.origination-topics`, and merges the `type-to-journey` row `EMPLOYEE_LWD_UPDATE → employee-lwd-update`. Without it this journey is unreachable.
+- Engine (`origination-journey`) started via `./run-services.sh` (or `bootRun --spring.profiles.active=local --idfc.engine.journey-source=classpath`). The **`local` profile** (`application-local.yml`) loads `journeys/employee-lwd-update.journey.json`, adds the door topic `orig.demo.hr.v1` to `idfc.engine.origination-topics`, and merges the `type-to-journey` row `EMPLOYEE_LWD_UPDATE → employee-lwd-update` — **there is no separate `demo` profile** (`run-services.sh` sets `IDFC_ENGINE_JOURNEY_SOURCE=classpath`; a bare `--spring.profiles.active=local` defaults to `registry` and needs the `journey-source=classpath` override to load the classpath journeys).
 - Full-stack mode additionally needs the `fusion-hcm-demo` app running (capability `fusion-hcm`, listening on `cap.fusion-hcm.request.v1`) plus the WireMock fusion server on `http://localhost:9107` and `demo.batch.enabled=true` (poller scans `demo/batch-inbox/` every 2000 ms).
 - Ops API: `http://localhost:8082/ops`, headers `X-Ops-Token: dev-ops-token` + `X-User-Id: ops.analyst@bank`.
 
@@ -6058,7 +6058,7 @@ curl -i "$OPS/runs" -H 'X-Ops-Token:dev-ops-token'    # 401 X-User-Id header is 
 
 | Symptom | Likely cause | Check / fix |
 |---|---|---|
-| **Message produced but no run starts / no `journey.start` log** | (a) `type` has no `type-to-journey` row → poison to `<topic>.dlq`; (b) same `correlationId`/`notificationId` as a prior run → `insertIfAbsent` drop; (c) engine not consuming that topic. | Check `orig.*.v1.dlq` and the engine log for `UnroutableTypeException` / `journey.start.duplicate`. Confirm `type` is mapped (base: PERSONAL_LOAN, LAP, BUSINESS_LOAN, COMMERCIAL, Inbound_Wrapper → loan-origination; +DEVICE_FINANCING/EMPLOYEE_LWD_UPDATE in demo profile). Use a fresh `correlationId`. Verify the topic is in `idfc.engine.origination-topics`. |
+| **Message produced but no run starts / no `journey.start` log** | (a) `type` has no `type-to-journey` row → poison to `<topic>.dlq`; (b) same `correlationId`/`notificationId` as a prior run → `insertIfAbsent` drop; (c) engine not consuming that topic. | Check `orig.*.v1.dlq` and the engine log for `UnroutableTypeException` / `journey.start.duplicate`. Confirm `type` is mapped (base: PERSONAL_LOAN, LAP, BUSINESS_LOAN, COMMERCIAL, Inbound_Wrapper → loan-origination; +DEVICE_FINANCING/EMPLOYEE_LWD_UPDATE in local profile). Use a fresh `correlationId`. Verify the topic is in `idfc.engine.origination-topics`. |
 | **Journey not reachable at all** (verification / e-mandate / payment-execution) | Not loaded by the default `classpath` source and/or no `type-to-journey` row. `payment-execution.journey.json` does not exist (payments is a stub with no consumer). | Add the journey file to `idfc.engine.journey-resources` (or publish via registry + `journey-source=registry`) AND add a `type-to-journey` row; then publish an envelope with that `type`. |
 | **Run stuck / never completes** | A task node is waiting on a `cap.<key>.response.v1` you haven't published (Mode B), or a capability service is down, or a response was mis-addressed. | In Kafka UI read `cap.<key>.request.v1` for the exact `journeyInstanceId`+`nodeId`, then publish a matching response. After `run-budget-seconds` (default 900s) the liveness sweeper force-fails it → `FAILED_SFDC_NOTIFIED`, `terminalNodeId=__timeout__`. Watch `stuckOnly=true` / `sweepDeadline` in ops. |
 | **Capability response ignored (run doesn't advance)** | Wrong `journeyInstanceId` or `nodeId` in the JSON body, response for an already-completed node/terminal run, or malformed JSON (→ `cap.<key>.response.v1.dlq`). | The Kafka key is irrelevant — fix the **body** ids to the exact values from the request message / `journey.start` log. `nodeId` must exist in the pinned journey. Check the response `.dlq`. |
