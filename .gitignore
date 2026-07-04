@@ -12,3 +12,7 @@ build/
 
 # host dev-run artifacts (run-services.sh)
 .run/
+
+# fusion-hcm file-batch demo runtime (dropped CSVs, processed ledger) — keep README
+demo/batch-inbox/*
+!demo/batch-inbox/README.txt

@@ -60,6 +60,8 @@ $Services = @(
     @{ name = 'bureau';              module = 'capabilities/bureau';                port = 8092 }
     @{ name = 'scoring';             module = 'capabilities/scoring';               port = 8093 }
     @{ name = 'lending-origination'; module = 'capabilities/lending-origination';   port = 8094 }
+    @{ name = 'device-financing-demo'; module = 'demo/device-financing-demo';       port = 8110 }
+    @{ name = 'fusion-hcm-demo';     module = 'demo/fusion-hcm-demo';               port = 8111 }
 )
 
 # --- Optional machine-local port overrides (gitignored) ---------------------
@@ -105,14 +107,19 @@ function Test-Port($hostName, $port) {
 }
 
 function Test-Infra {
+    # Infra (Kafka/Aerospike/mocks) is YOUR responsibility - you start it manually.
+    # We only probe and WARN; we never block the one-click launch. Services retry
+    # their broker/db connections on their own, so a late infra start still works.
     $ok = $true
     if (-not (Test-Port 'localhost' 29092)) { Warn '  Kafka   localhost:29092  NOT reachable'; $ok = $false }
     if (-not (Test-Port 'localhost' 3000))  { Warn '  Aerospike localhost:3000 NOT reachable'; $ok = $false }
     if (-not $ok) {
-        Err 'Infra is not up. Start it first:  docker compose -f docker-compose.infra.yml up -d'
-        exit 1
+        Warn 'Infra not fully reachable. Start it yourself when ready:'
+        Warn '    docker compose -f docker-compose.infra.yml up -d'
+        Warn 'Continuing anyway - services will retry their connections.'
+    } else {
+        Ok 'Infra reachable (Kafka :29092, Aerospike :3000)'
     }
-    Ok 'Infra reachable (Kafka :29092, Aerospike :3000)'
 }
 
 function Test-PidAlive($processId) {

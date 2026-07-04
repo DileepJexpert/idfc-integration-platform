@@ -1,0 +1,14 @@
+# LOCAL profile — run this capability + demo file edge on the host against the
+# docker-compose infra + mock vendors. This is the ONLY profile used locally
+# (no 'demo' profile). Kafka via the HOST listener (29092); the Fusion HCM
+# vendor is the compose WireMock on 9107 (base application.yml already points
+# there for host bootRun). The demo file-batch edge is enabled here so the
+# employee-lwd-update flow is one-click: drop a CSV into demo/batch-inbox and
+# it is produced to orig.demo.hr.v1.
+spring:
+  kafka:
+    bootstrap-servers: localhost:29092
+
+demo:
+  batch:
+    enabled: true

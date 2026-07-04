@@ -51,6 +51,8 @@ SERVICES=(
   "bureau|capabilities/bureau|8092"
   "scoring|capabilities/scoring|8093"
   "lending-origination|capabilities/lending-origination|8094"
+  "device-financing-demo|demo/device-financing-demo|8110"
+  "fusion-hcm-demo|demo/fusion-hcm-demo|8111"
 )
 
 c_green=$'\e[32m'; c_red=$'\e[31m'; c_yellow=$'\e[33m'; c_dim=$'\e[2m'; c_off=$'\e[0m'
@@ -64,14 +66,19 @@ port_open() { # host port -> 0 if a listener answers
 }
 
 check_infra() {
+  # Infra (Kafka/Aerospike/mocks) is YOUR responsibility — you start it manually.
+  # We only probe and WARN; we never block the one-click launch. Services retry
+  # their broker/db connections on their own, so a late infra start still works.
   local ok=1
   port_open localhost 29092 || { warn "  Kafka   localhost:29092  NOT reachable"; ok=0; }
   port_open localhost 3000  || { warn "  Aerospike localhost:3000 NOT reachable"; ok=0; }
   if [ "$ok" -ne 1 ]; then
-    err "Infra is not up. Start it first:  docker compose -f docker-compose.infra.yml up -d"
-    exit 1
+    warn "Infra not fully reachable. Start it yourself when ready:"
+    warn "    docker compose -f docker-compose.infra.yml up -d"
+    warn "Continuing anyway — services will retry their connections."
+  else
+    info "${c_green}Infra reachable${c_off} (Kafka :29092, Aerospike :3000)"
   fi
-  info "${c_green}Infra reachable${c_off} (Kafka :29092, Aerospike :3000)"
 }
 
 pid_alive() { [ -n "${1:-}" ] && kill -0 "$1" 2>/dev/null; }

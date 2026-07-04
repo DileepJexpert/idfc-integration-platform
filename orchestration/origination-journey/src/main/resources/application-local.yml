@@ -20,6 +20,18 @@ idfc:
     aerospike:
       host: localhost
       port: 3000
+    # Demo journeys/doors are available on LOCAL too — no separate 'demo'
+    # profile needed. Lists REPLACE across profiles, so the base
+    # loan-origination entry is repeated here alongside the demo journeys;
+    # the type-to-journey MAP merges with the base rows in application.yml.
+    journey-resources:
+      - journeys/loan-origination.journey.json
+      - journeys/device-financing.journey.json
+      - journeys/employee-lwd-update.journey.json
+    origination-topics: ${IDFC_ENGINE_ORIGINATION_TOPICS:orig.sfdc.pl.v1,orig.sfdc.lap.v1,orig.sfdc.bl.v1,orig.sfdc.commercial.v1,orig.demo.device.v1,orig.demo.hr.v1}
+    type-to-journey:
+      DEVICE_FINANCING: device-financing
+      EMPLOYEE_LWD_UPDATE: employee-lwd-update
 
   # DEV ONLY ops-window token (the base profile fails closed without one).
   ops:
