@@ -45,8 +45,8 @@ docker compose -f docker-compose.infra.yml up -d        # Kafka + Aerospike + mo
 ./gradlew :demo:device-financing-demo:bootRun --args='--spring.profiles.active=local' &
 ./gradlew :demo:fusion-hcm-demo:bootRun --args='--spring.profiles.active=local --demo.batch.enabled=true' &
 
-# 3. the ops view (designer repo) against the engine
-#    (apps/journey_ops_view: flutter run -d chrome --dart-define=USE_MOCK_OPS_API=false ...)
+# 3. the ops view (designer repo) against the engine — LIVE by default now
+#    (apps/journey_ops_view: flutter run -d chrome --dart-define=OPS_API_BASE_URL=http://localhost:8082 ...)
 ```
 
 ### Demo 1 — brand-as-config (~2 min)
@@ -92,11 +92,15 @@ insertIfAbsent dedup refuses the re-run (the legacy LWD job re-runs blind).
 
 ### Demo 3 — the honesty slide
 
-Open the Designer (mock mode): two REFERENCE drafts — `reference-file-batch`
+Open the Designer in **mock mode** (`flutter run -d chrome
+--dart-define=USE_MOCK_BACKEND=true`): two REFERENCE drafts — `reference-file-batch`
 (SFTP edge → empty-check → bounded-parallel `foreach` → per-record adapter →
-email report) and `reference-sync-read`. *"Three patterns run live today; these
-two are designed, not built — here is exactly where they slot. No architectural
-gap; remaining build, sized by the pattern census."*
+email report) and `reference-sync-read`. These live in the designer's seed set,
+NOT the real registry, precisely because they are *drawn, not built* (the engine
+has no `foreach`/SFTP yet) — so they never seed into a registry the engine loads.
+*"Three patterns run live today; these two are designed, not built — here is
+exactly where they slot. No architectural gap; remaining build, sized by the
+pattern census."*
 
 ## What is deliberately NOT here
 

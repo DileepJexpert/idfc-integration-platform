@@ -16,4 +16,17 @@ dependencies {
     implementation("com.fasterxml.jackson.core:jackson-databind")
 }
 
+// LOCAL-DEV SEED (single source of truth): bundle the engine's CANONICAL
+// *.journey.json contract artifacts into this jar under seed-journeys/ so the
+// local-profile RegistrySeeder can publish them into an empty registry. No
+// committed duplicate — the engine copy (itself locked to the Designer's emitted
+// output by JourneyContractLoaderTest) is copied at build time, so it can never
+// drift. Production journeys are authored in the Designer; this seeds dev only.
+tasks.named<ProcessResources>("processResources") {
+    from(rootProject.file("orchestration/origination-journey/src/main/resources/journeys")) {
+        include("*.journey.json")
+        into("seed-journeys")
+    }
+}
+
 tasks.named<Test>("test") { useJUnitPlatform { excludeTags("integration") } }

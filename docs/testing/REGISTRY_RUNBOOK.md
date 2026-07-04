@@ -24,10 +24,15 @@ gives it `depends_on` + `restart: on-failure:5` to absorb start ordering; if
 the registry is genuinely down the engine container ends **Exited** with
 `refusing to start` in `docker logs idfc-origination-journey`.
 
-> First boot note: a fresh registry has NO published journeys, so the engine
-> will retry-exit until you publish one (section 2) or flip it to the classpath
-> fallback (`IDFC_ENGINE_JOURNEY_SOURCE: classpath`). That is the fail-closed
-> contract working as intended, not a bug.
+> First boot note: on the **local profile** the registry SELF-SEEDS the
+> canonical journeys at startup (`RegistrySeeder`), so a fresh local registry is
+> already publishing — the DAG Designer lists them and the engine's registry
+> mode boots with journeys out of the box (`run-services.sh --registry` holds
+> the engine until the seed lands). A registry with NO published journeys (e.g.
+> a non-local profile, or seeding disabled) still makes the engine retry-exit
+> until you publish one (section 2) or flip it to the classpath fallback
+> (`IDFC_ENGINE_JOURNEY_SOURCE: classpath`) — the fail-closed contract working as
+> intended, not a bug.
 
 ## 2. Publish a journey (maker → checker)
 

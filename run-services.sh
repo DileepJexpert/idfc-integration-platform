@@ -83,6 +83,30 @@ check_infra() {
 
 pid_alive() { [ -n "${1:-}" ] && kill -0 "$1" 2>/dev/null; }
 
+# Registry seam readiness: the engine in registry mode FAILS CLOSED at startup
+# unless the registry has a published journey (EngineConfiguration.journeyRegistry).
+# The local registry self-seeds the canonical journeys, but that completes a beat
+# after its port opens — so hold the engine until /published-journeys is non-empty.
+wait_for_registry_seeded() {
+  local port token url body tries=0 max=60
+  port="$(eff_port journey-registry 8104)"
+  token="${REGISTRY_AUTH_TOKEN:-dev-registry-token}"
+  url="http://localhost:$port/api/v1/published-journeys"
+  if ! command -v curl >/dev/null 2>&1; then
+    warn "  curl not found — cannot confirm the registry seeded; pausing 20s before the engine"; sleep 20; return 0
+  fi
+  printf '  waiting for the registry to publish its seed journeys'
+  while [ "$tries" -lt "$max" ]; do
+    body="$(curl -fsS -H "X-Registry-Token: $token" "$url" 2>/dev/null || true)"
+    case "$body" in
+      \[*journeyKey*) printf ' %sready%s\n' "$c_green" "$c_off"; return 0 ;;  # non-empty published set
+    esac
+    printf '.'; tries=$((tries + 1)); sleep 1
+  done
+  printf '\n'; warn "  registry has no published journey after ${max}s — the engine may fail closed (./run-services.sh logs journey-registry)"
+  return 0
+}
+
 start_all() {
   local no_build=0 journey_source="classpath"
   for a in "$@"; do
@@ -103,7 +127,8 @@ start_all() {
   if [ "$journey_source" = "classpath" ]; then
     info "Engine journey-source=${c_yellow}classpath${c_off} (bundled journeys; use --registry for the designer→engine seam)"
   else
-    warn "Engine journey-source=registry — it will FAIL CLOSED unless a journey is published (see docs/testing/REGISTRY_RUNBOOK.md §2)"
+    info "Engine journey-source=${c_green}registry${c_off} — the registry self-seeds the canonical journeys on the"
+    info "  local profile; the engine is held below until they are published so it never fails closed."
   fi
 
   for entry in "${SERVICES[@]}"; do
@@ -119,6 +144,12 @@ start_all() {
     if [ ! -f "$jar" ]; then
       err "  $name: jar not found ($jar). Run without --no-build."
       continue
+    fi
+
+    # Registry seam: hold the engine until the registry has published its seed
+    # journeys, so registry mode never races the fail-closed bootstrap.
+    if [ "$name" = "origination-journey" ] && [ "$journey_source" = "registry" ]; then
+      wait_for_registry_seeded
     fi
 
     # SERVER_PORT applies the (possibly overridden) port; the engine also reads
