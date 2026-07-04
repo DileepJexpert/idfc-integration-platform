@@ -2,8 +2,9 @@ package com.idfcfirstbank.integration.fullflow;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.idfcfirstbank.integration.demo.devicefinancing.DeviceFinancingDemoApplication;
-import com.idfcfirstbank.integration.demo.fusionhcm.FusionHcmDemoApplication;
+import com.idfcfirstbank.integration.capabilities.devicefinancing.DeviceFinancingApplication;
+import com.idfcfirstbank.integration.capabilities.fusionhcm.FusionHcmApplication;
+import com.idfcfirstbank.integration.edges.filebatch.FileBatchEdgeApplication;
 import com.idfcfirstbank.integration.orchestration.originationjourney.OriginationJourneyApplication;
 import com.sun.net.httpserver.HttpServer;
 import org.apache.kafka.clients.producer.KafkaProducer;
@@ -70,6 +71,7 @@ class LegacyPatternsDemoIT {
     private static ConfigurableApplicationContext engine;
     private static ConfigurableApplicationContext deviceCapability;
     private static ConfigurableApplicationContext fusionCapability;
+    private static ConfigurableApplicationContext fileBatchEdge;
     private static KafkaProducer<String, String> producer;
     private static RestClient ops;
 
@@ -120,20 +122,28 @@ class LegacyPatternsDemoIT {
                         "--idfc.ops.auth-token=" + OPS_TOKEN);
 
         deviceCapability = bootDeviceCapability(false);
-        fusionCapability = new SpringApplicationBuilder(FusionHcmDemoApplication.class)
+        // The fusion-hcm capability and the file-batch ingress edge are now two
+        // separate deployables (capabilities:fusion-hcm + edges:file-batch-edge).
+        fusionCapability = new SpringApplicationBuilder(FusionHcmApplication.class)
                 .run(
                         "--server.port=0",
                         "--spring.autoconfigure.exclude=org.springframework.boot"
                                 + ".autoconfigure.jdbc.DataSourceAutoConfiguration",
                         "--spring.kafka.bootstrap-servers=" + brokers,
                         // real HTTP to the vendor stub — only the DATA is mocked
-                        "--demo.fusion.base-url=" + vendorBase + "/vendor/fusion",
-                        "--demo.batch.enabled=true",
-                        "--demo.batch.inbox-dir=" + inbox.toAbsolutePath(),
-                        "--demo.batch.poll-ms=300",
-                        "--demo.batch.origination-topic=" + HR_TOPIC,
-                        "--demo.batch.type=EMPLOYEE_LWD_UPDATE",
-                        "--demo.batch.org-id=HR-DEMO");
+                        "--fusion.base-url=" + vendorBase + "/vendor/fusion");
+        fileBatchEdge = new SpringApplicationBuilder(FileBatchEdgeApplication.class)
+                .run(
+                        "--server.port=0",
+                        "--spring.autoconfigure.exclude=org.springframework.boot"
+                                + ".autoconfigure.jdbc.DataSourceAutoConfiguration",
+                        "--spring.kafka.bootstrap-servers=" + brokers,
+                        "--file-batch.enabled=true",
+                        "--file-batch.inbox-dir=" + inbox.toAbsolutePath(),
+                        "--file-batch.poll-ms=300",
+                        "--file-batch.origination-topic=" + HR_TOPIC,
+                        "--file-batch.type=EMPLOYEE_LWD_UPDATE",
+                        "--file-batch.org-id=HR-DEMO");
 
         Properties props = new Properties();
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, brokers);
@@ -161,33 +171,33 @@ class LegacyPatternsDemoIT {
                         + ".autoconfigure.jdbc.DataSourceAutoConfiguration",
                 "--spring.kafka.bootstrap-servers=" + brokers,
                 // real HTTP to the vendor stub + OAuth token endpoint
-                "--demo.device-financing.vendor-base-url=" + vendorBase + "/vendor/device-financing",
-                "--demo.device-financing.token-url=" + vendorBase + "/oauth/token",
-                "--demo.device-financing.brands.SAMSUNG.auth-type=OAUTH",
-                "--demo.device-financing.brands.SAMSUNG.validation-required=true",
-                "--demo.device-financing.brands.SAMSUNG.pass-path=respCode",
-                "--demo.device-financing.brands.SAMSUNG.pass-value=0",
-                "--demo.device-financing.brands.SAMSUNG.scope=device-financing.samsung",
-                "--demo.device-financing.brands.GODREJ.auth-type=NA",
-                "--demo.device-financing.brands.GODREJ.validation-required=false",
-                "--demo.device-financing.brands.GODREJ.pass-path=status",
-                "--demo.device-financing.brands.GODREJ.pass-value=OK",
-                "--demo.device-financing.brands.BOSCH.auth-type=BAUTH",
-                "--demo.device-financing.brands.BOSCH.validation-required=true",
-                "--demo.device-financing.brands.BOSCH.pass-path=result.code",
-                "--demo.device-financing.brands.BOSCH.pass-value=S",
-                "--demo.device-financing.brands.BOSCH.basic-user=bosch-demo",
-                "--demo.device-financing.brands.BOSCH.basic-password=bosch-secret"));
+                "--device-financing.vendor-base-url=" + vendorBase + "/vendor/device-financing",
+                "--device-financing.token-url=" + vendorBase + "/oauth/token",
+                "--device-financing.brands.SAMSUNG.auth-type=OAUTH",
+                "--device-financing.brands.SAMSUNG.validation-required=true",
+                "--device-financing.brands.SAMSUNG.pass-path=respCode",
+                "--device-financing.brands.SAMSUNG.pass-value=0",
+                "--device-financing.brands.SAMSUNG.scope=device-financing.samsung",
+                "--device-financing.brands.GODREJ.auth-type=NA",
+                "--device-financing.brands.GODREJ.validation-required=false",
+                "--device-financing.brands.GODREJ.pass-path=status",
+                "--device-financing.brands.GODREJ.pass-value=OK",
+                "--device-financing.brands.BOSCH.auth-type=BAUTH",
+                "--device-financing.brands.BOSCH.validation-required=true",
+                "--device-financing.brands.BOSCH.pass-path=result.code",
+                "--device-financing.brands.BOSCH.pass-value=S",
+                "--device-financing.brands.BOSCH.basic-user=bosch-demo",
+                "--device-financing.brands.BOSCH.basic-password=bosch-secret"));
         if (withHisense) {
             // THE "add a brand live" move: a config row (auth scheme + pass path).
             args.addAll(List.of(
-                    "--demo.device-financing.brands.HISENSE.auth-type=OAUTH",
-                    "--demo.device-financing.brands.HISENSE.validation-required=false",
-                    "--demo.device-financing.brands.HISENSE.pass-path=responseStatus",
-                    "--demo.device-financing.brands.HISENSE.pass-value=-4",
-                    "--demo.device-financing.brands.HISENSE.scope=device-financing.hisense"));
+                    "--device-financing.brands.HISENSE.auth-type=OAUTH",
+                    "--device-financing.brands.HISENSE.validation-required=false",
+                    "--device-financing.brands.HISENSE.pass-path=responseStatus",
+                    "--device-financing.brands.HISENSE.pass-value=-4",
+                    "--device-financing.brands.HISENSE.scope=device-financing.hisense"));
         }
-        return new SpringApplicationBuilder(DeviceFinancingDemoApplication.class)
+        return new SpringApplicationBuilder(DeviceFinancingApplication.class)
                 .run(args.toArray(String[]::new));
     }
 
@@ -269,7 +279,7 @@ class LegacyPatternsDemoIT {
     static void shutdown() {
         if (producer != null) producer.close();
         for (ConfigurableApplicationContext ctx :
-                List.of(fusionCapability, deviceCapability, engine)) {
+                List.of(fileBatchEdge, fusionCapability, deviceCapability, engine)) {
             if (ctx != null && ctx.isActive()) ctx.close();
         }
         if (vendorStub != null) vendorStub.stop(0);

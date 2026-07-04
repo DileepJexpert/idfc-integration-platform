@@ -1,0 +1,7 @@
+# LOCAL profile — run this capability on the host against the docker-compose
+# infra + mock vendors. Kafka is reached via the HOST listener (29092); the
+# WireMock Fusion vendor is the compose mock on 9107 (the base application.yml
+# default already points there for host bootRun).
+spring:
+  kafka:
+    bootstrap-servers: localhost:29092

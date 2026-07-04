@@ -1,0 +1,6 @@
+# LOCAL profile — run this edge on the host against the docker-compose infra.
+# Kafka is reached via the HOST listener (29092). The poller stays disabled
+# until you pass --file-batch.enabled=true (see demo/README.md, Demo 2).
+spring:
+  kafka:
+    bootstrap-servers: localhost:29092

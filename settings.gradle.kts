@@ -28,6 +28,7 @@ include("integration:sfdc-response")       // consolidated per-org SFDC egress (
 include("edges:sfdc-ingress-edge")     // *** Slice 1 — IMPLEMENTED FOR REAL ***
 include("edges:sfdc-egress-edge")      // stub (later slice)
 include("edges:digital-partner-edge")  // digital twin: partner REST -> SAME envelope/topic/engine
+include("edges:file-batch-edge")       // local-folder CSV ingress: one run per record (pre-SFTP scaffold)
 
 // capabilities/ — business capabilities (stubs in Slice 1)
 include("capabilities:kyc")
@@ -41,15 +42,11 @@ include("capabilities:echo")           // trivial reference capability — prove
 include("capabilities:mandate")        // e-mandate lifecycle — reference capability (BRD §3, step 2)
 include("capabilities:communications") // SENDSMS/OTP notification action — consumes the SFDC edge's SENDSMS route
 include("capabilities:verification")   // per-svcName verification (Karza/IMPS) — control-plane routed, DLQ-on-failure
+include("capabilities:device-financing") // brand-as-config capability (real HTTP; vendor mocked in dev)
+include("capabilities:fusion-hcm")       // per-record Fusion HCM update/read (real HTTP; vendor mocked in dev)
 
 // orchestration/ — long-running journeys (stubs in Slice 1)
 include("orchestration:origination-journey")
-
-// demo/ — DEMO SCAFFOLDING ONLY (legacy-patterns demo): mocked vendors, a
-// local-folder file edge. Explicitly NOT the census-gated migration target
-// (docs/legacy-analysis-review.md §6/§8) — never grow production code here.
-include("demo:device-financing-demo")   // brand-as-config capability (real HTTP → WireMock)
-include("demo:fusion-hcm-demo")         // Fusion capability (real HTTP → WireMock) + demo file edge
 
 // full-flow demo integration test (no main code). Wires the engine + all five
 // capability services to prove the end-to-end choreography (edge output ->

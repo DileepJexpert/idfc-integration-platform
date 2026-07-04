@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # DEMO 2 — file-batch: drop the sample CSV (5 records, EMP-004 crafted to
-# fail) into the demo inbox. The fusion-hcm-demo app (started with
-# --demo.batch.enabled=true) picks it up within ~2s and starts one engine run
+# fail) into the demo inbox. The file-batch-edge app (started with
+# --file-batch.enabled=true) picks it up within ~2s and starts one engine run
 # per record. Re-running this script re-drops the SAME content: the ledger —
 # and, ledger or not, the engine's dedup — refuse a re-run.
 set -euo pipefail

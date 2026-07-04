@@ -63,12 +63,13 @@ There is **no separate `demo` profile** — the two demo doors + journeys live i
 ./gradlew :orchestration:origination-journey:bootRun \
   --args='--spring.profiles.active=local --idfc.engine.journey-source=classpath --idfc.engine.state-store=in-memory'
 
-# the two demo capability apps
-./gradlew :demo:device-financing-demo:bootRun --args='--spring.profiles.active=local' &          # :8110
-./gradlew :demo:fusion-hcm-demo:bootRun --args='--spring.profiles.active=local --demo.batch.enabled=true' &   # :8111
+# the capabilities + the file-batch ingress edge
+./gradlew :capabilities:device-financing:bootRun --args='--spring.profiles.active=local' &          # :8110
+./gradlew :capabilities:fusion-hcm:bootRun --args='--spring.profiles.active=local' &                # :8111
+./gradlew :edges:file-batch-edge:bootRun --args='--spring.profiles.active=local --file-batch.enabled=true' &  # :8112
 ```
 
-Trigger the demos: `demo/run-demo1.sh` (fires SAMSUNG/GODREJ/BOSCH-decline/SAMSUNG-fail at `orig.demo.device.v1`) and `demo/run-demo2.sh` (drops the sample CSV into `demo/batch-inbox/`). Add a brand live with no rebuild by passing extra `--demo.device-financing.brands.<BRAND>.*` CLI rows (see the device-financing section).
+Trigger the demos: `demo/run-demo1.sh` (fires SAMSUNG/GODREJ/BOSCH-decline/SAMSUNG-fail at `orig.demo.device.v1`) and `demo/run-demo2.sh` (drops the sample CSV into `demo/batch-inbox/`). Add a brand live with no rebuild by passing extra `--device-financing.brands.<BRAND>.*` CLI rows (see the device-financing section).
 
 ---
 
@@ -84,7 +85,7 @@ Trigger the demos: `demo/run-demo1.sh` (fires SAMSUNG/GODREJ/BOSCH-decline/SAMSU
 | ops-query (in engine) | 8082 | `GET /ops/runs` · `GET /ops/runs/search?key=` · `GET /ops/runs/{runId}` | `X-Ops-Token` + `X-User-Id` |
 | journey-registry | 8104 | `…/api/v1/journeys…` (maker-checker lifecycle, 13 endpoints) | `X-Registry-Token` + `X-User-Id` (writes) |
 | customer-party / kyc / bureau / scoring / lending-origination | 8090 / 8091 / 8092 / 8093 / 8094 | health/metrics only; work over Kafka | — |
-| device-financing-demo / fusion-hcm-demo | 8110 / 8111 | health/metrics only; demo doors over Kafka | — |
+| device-financing / fusion-hcm / file-batch-edge | 8110 / 8111 / 8112 | capabilities + ingress edge; doors over Kafka | — |
 
 > **SFDC ingress is SOAP-only.** The only origination door is `POST /api/v1/sfdc/outbound-messages` consuming a raw SOAP Outbound Message (XML). (The JSON `POST /api/v1/sfdc/notifications` call in `demo.sh` is stale and does not exist in the current controller.) For manual testing it is almost always simpler to skip the SOAP edge and publish the `CanonicalEnvelope` JSON straight to an origination topic in Kafka UI.
 
@@ -4080,7 +4081,7 @@ I have everything I need. Here is the section.
 
 ## Demo: device-financing (brand-as-config, real HTTP -> WireMock)
 
-This journey is the local-profile demo door where **every per-brand difference is a config row, not code**: validate-or-not, auth scheme (OAUTH / BASIC / NA), and the "approved" pass-path/pass-value all come from `demo.device-financing.brands.*`. The capability (`device-financing`, ops `resolveBrand` / `validate` / `block`) makes a **real HTTP POST** to the WireMock vendor at `http://localhost:9106/vendor/device-financing/{validate|block}`; only the response DATA is mocked.
+This journey is the local-profile demo door where **every per-brand difference is a config row, not code**: validate-or-not, auth scheme (OAUTH / BASIC / NA), and the "approved" pass-path/pass-value all come from `device-financing.brands.*`. The capability (`device-financing`, ops `resolveBrand` / `validate` / `block`) makes a **real HTTP POST** to the WireMock vendor at `http://localhost:9106/vendor/device-financing/{validate|block}`; only the response DATA is mocked.
 
 ### Pinned journey facts (device-financing v1, classpath-loaded on the local profile)
 
@@ -4121,7 +4122,7 @@ deviceId levers (WireMock, `POST /vendor/device-financing/{validate|block}`):
 
 There is **no REST entry** for this journey — it is a **Kafka door**. Produce to topic **`orig.demo.device.v1`**, message **key = `correlationId`**, value = the CanonicalEnvelope. `type` MUST be `DEVICE_FINANCING`; `payload.brand` and `payload.deviceId` are the only business fields the capability reads. Engine instance id is `"ji-" + correlationId` (correlationId is the first non-null dedup key). Ops search keys for a run = its `correlationId`, `notificationId`, `sfdcRecordId`.
 
-Full-stack prereq: engine started via `./run-services.sh` (or `bootRun --spring.profiles.active=local --idfc.engine.journey-source=classpath`), the `device-financing-demo` app, and the WireMock mock-vendors server (`:9106`) all running (or just run `demo/run-demo1.sh` for the canned four-outcome set). Engine-only manual prereq: engine running; you hand-publish `cap.device-financing.response.v1` messages to steer each hop.
+Full-stack prereq: engine started via `./run-services.sh` (or `bootRun --spring.profiles.active=local --idfc.engine.journey-source=classpath`), the `device-financing` app, and the WireMock mock-vendors server (`:9106`) all running (or just run `demo/run-demo1.sh` for the canned four-outcome set). Engine-only manual prereq: engine running; you hand-publish `cap.device-financing.response.v1` messages to steer each hop.
 
 ---
 
@@ -4227,7 +4228,7 @@ Full-stack prereq: engine started via `./run-services.sh` (or `bootRun --spring.
 ```
 
 **Drive to outcome**
-- **Full-stack:** start the `device-financing-demo` app with the five CLI rows (no rebuild) so a HISENSE config row exists: `--demo.device-financing.brands.HISENSE.auth-type=OAUTH --demo.device-financing.brands.HISENSE.validation-required=false --demo.device-financing.brands.HISENSE.pass-path=responseStatus --demo.device-financing.brands.HISENSE.pass-value=-4` (the `stub-response.*` arg is vestigial — the pass DATA `{"responseStatus":"-4"}` actually comes from `hisense-pass.json`). Then produce the envelope above. `n_route` default → `n_block`; `hisense-pass.json` returns `{"responseStatus":"-4"}`, passPath `responseStatus` == pass-value `"-4"` → `approved=true`. **Contrast:** without the config row, HISENSE hits Permutation 8 (fail-closed FAILED).
+- **Full-stack:** start the `device-financing` app with the five CLI rows (no rebuild) so a HISENSE config row exists: `--device-financing.brands.HISENSE.auth-type=OAUTH --device-financing.brands.HISENSE.validation-required=false --device-financing.brands.HISENSE.pass-path=responseStatus --device-financing.brands.HISENSE.pass-value=-4` (the `stub-response.*` arg is vestigial — the pass DATA `{"responseStatus":"-4"}` actually comes from `hisense-pass.json`). Then produce the envelope above. `n_route` default → `n_block`; `hisense-pass.json` returns `{"responseStatus":"-4"}`, passPath `responseStatus` == pass-value `"-4"` → `approved=true`. **Contrast:** without the config row, HISENSE hits Permutation 8 (fail-closed FAILED).
 - **Engine-only:** identical to Permutation 2 with `brand:"HISENSE"`, `validationRequired:false`, `authType:"OAUTH"`, and `n_block` result `{"brand":"HISENSE","approved":true,"authType":"OAUTH","vendor":{"responseStatus":"-4"}}`.
 
 **Expected result** — ops status **`COMPLETED_APPROVED`**, terminal `n_approve`, APPROVED. This is the headline "add a brand with 5 config lines, zero code" case. **Verify:** `GET /ops/runs/search?key=corr-df-approve-hisense` → `COMPLETED_APPROVED`.
@@ -4391,7 +4392,7 @@ This is the "unknown enum / fail-closed" case for this journey: `rowOf(brand)` t
 ```
 
 **Drive to outcome**
-- **Full-stack:** brand `NOKIA` (no `demo.device-financing.brands.NOKIA` row). `resolveBrand` → `rowOf` → `CapabilityException(PERMANENT, "no config row for brand=NOKIA (fail closed)")` at **`n_brand`** (no HTTP call made). Also produced by a blank/missing `payload.brand` (`"missing brand"`, PERMANENT).
+- **Full-stack:** brand `NOKIA` (no `device-financing.brands.NOKIA` row). `resolveBrand` → `rowOf` → `CapabilityException(PERMANENT, "no config row for brand=NOKIA (fail closed)")` at **`n_brand`** (no HTTP call made). Also produced by a blank/missing `payload.brand` (`"missing brand"`, PERMANENT).
 - **Engine-only** (instance `ji-corr-df-unknown-brand`): fail the very first node:
   ```json
   { "journeyInstanceId": "ji-corr-df-unknown-brand", "correlationId": "corr-df-unknown-brand", "nodeId": "n_brand", "capabilityKey": "device-financing", "status": "ERROR", "result": {}, "errorClass": "PERMANENT" }
@@ -4605,7 +4606,7 @@ This journey is the **file-batch** demo: a local-folder CSV edge (`FolderBatchPo
 
 **Prerequisites (all permutations):**
 - Engine (`origination-journey`) started via `./run-services.sh` (or `bootRun --spring.profiles.active=local --idfc.engine.journey-source=classpath`). The **`local` profile** (`application-local.yml`) loads `journeys/employee-lwd-update.journey.json`, adds the door topic `orig.demo.hr.v1` to `idfc.engine.origination-topics`, and merges the `type-to-journey` row `EMPLOYEE_LWD_UPDATE → employee-lwd-update` — **there is no separate `demo` profile** (`run-services.sh` sets `IDFC_ENGINE_JOURNEY_SOURCE=classpath`; a bare `--spring.profiles.active=local` defaults to `registry` and needs the `journey-source=classpath` override to load the classpath journeys).
-- Full-stack mode additionally needs the `fusion-hcm-demo` app running (capability `fusion-hcm`, listening on `cap.fusion-hcm.request.v1`) plus the WireMock fusion server on `http://localhost:9107` and `demo.batch.enabled=true` (poller scans `demo/batch-inbox/` every 2000 ms).
+- Full-stack mode additionally needs the `fusion-hcm` capability running (listening on `cap.fusion-hcm.request.v1`) and the `file-batch-edge` started with `--file-batch.enabled=true` (poller scans `demo/batch-inbox/` every 2000 ms), plus the WireMock fusion server on `http://localhost:9107`.
 - Ops API: `http://localhost:8082/ops`, headers `X-Ops-Token: dev-ops-token` + `X-User-Id: ops.analyst@bank`.
 
 **Journey definition (pinned facts used below):**
@@ -4813,7 +4814,7 @@ Because `n_update` declares **no `retrySpec`**, a TRANSIENT ERROR does **not** r
 
 **Drive to outcome — full-stack:** you must cause a transport failure, not a body value:
 - **5xx:** add a WireMock stub for `POST /vendor/fusion/employees/.*` returning HTTP 500 (higher precedence than `00-update-ok`, e.g. `priority:0`) → client maps 5xx → **TRANSIENT**.
-- **Unreachable:** stop the mock-vendors fusion server (or point `demo.fusion.base-url` at a dead port) → connection refused/IO → **TRANSIENT**.
+- **Unreachable:** stop the mock-vendors fusion server (or point `fusion.base-url` at a dead port) → connection refused/IO → **TRANSIENT**.
 
 **Drive to outcome — engine-only:** publish to `cap.fusion-hcm.response.v1`:
 
@@ -4839,7 +4840,7 @@ Because `n_update` declares **no `retrySpec`**, a TRANSIENT ERROR does **not** r
 
 **Entry:** as P2, e.g. `correlationId="batch-manual-006-r1"`, `notificationId="batch-manual-006"`, valid date.
 
-**Drive to outcome — full-stack:** add a WireMock stub for `POST /vendor/fusion/employees/.*` with `fixedDelay` greater than `demo.fusion.read-timeout-ms` (default **10000 ms**), e.g. `12000`. The client's `SocketTimeoutException` → `causedBy(SocketTimeoutException)` → **AMBIGUOUS**.
+**Drive to outcome — full-stack:** add a WireMock stub for `POST /vendor/fusion/employees/.*` with `fixedDelay` greater than `fusion.read-timeout-ms` (default **10000 ms**), e.g. `12000`. The client's `SocketTimeoutException` → `causedBy(SocketTimeoutException)` → **AMBIGUOUS**.
 
 **Drive to outcome — engine-only:** publish to `cap.fusion-hcm.response.v1` with `errorClass:"AMBIGUOUS"`:
 

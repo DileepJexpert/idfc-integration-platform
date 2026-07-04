@@ -51,8 +51,9 @@ SERVICES=(
   "bureau|capabilities/bureau|8092"
   "scoring|capabilities/scoring|8093"
   "lending-origination|capabilities/lending-origination|8094"
-  "device-financing-demo|demo/device-financing-demo|8110"
-  "fusion-hcm-demo|demo/fusion-hcm-demo|8111"
+  "device-financing|capabilities/device-financing|8110"
+  "fusion-hcm|capabilities/fusion-hcm|8111"
+  "file-batch-edge|edges/file-batch-edge|8112"
 )
 
 c_green=$'\e[32m'; c_red=$'\e[31m'; c_yellow=$'\e[33m'; c_dim=$'\e[2m'; c_off=$'\e[0m'

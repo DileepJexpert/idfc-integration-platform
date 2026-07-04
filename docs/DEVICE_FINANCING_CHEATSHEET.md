@@ -16,7 +16,7 @@ docker compose -f docker-compose.infra.yml up -d          # infra + mock-devicef
   --args='--spring.profiles.active=local --idfc.engine.journey-source=classpath --idfc.engine.state-store=in-memory'
 
 # the demo capability app (real HTTP to :9106)
-./gradlew :demo:device-financing-demo:bootRun --args='--spring.profiles.active=local'   # :8110
+./gradlew :capabilities:device-financing:bootRun --args='--spring.profiles.active=local'   # :8110
 ```
 > NOTE: the one-click `./run-services.sh` starts the engine on `local` with `IDFC_ENGINE_JOURNEY_SOURCE=classpath`, so the `orig.demo.device.v1` door + journey ARE active — that is the simplest path. The `bootRun` above does the same thing explicitly (there is no separate `demo` profile any more).
 
@@ -152,11 +152,11 @@ Example (n_block transient on GODREJ):
 
 Start the capability app with 4 extra CLI rows — no rebuild:
 ```bash
-./gradlew :demo:device-financing-demo:bootRun --args='--spring.profiles.active=local \
-  --demo.device-financing.brands.HISENSE.auth-type=OAUTH \
-  --demo.device-financing.brands.HISENSE.validation-required=false \
-  --demo.device-financing.brands.HISENSE.pass-path=responseStatus \
-  --demo.device-financing.brands.HISENSE.pass-value=-4'
+./gradlew :capabilities:device-financing:bootRun --args='--spring.profiles.active=local \
+  --device-financing.brands.HISENSE.auth-type=OAUTH \
+  --device-financing.brands.HISENSE.validation-required=false \
+  --device-financing.brands.HISENSE.pass-path=responseStatus \
+  --device-financing.brands.HISENSE.pass-value=-4'
 ```
 Then send permutation 3. Without these rows, HISENSE hits the fail-closed path (#8).
 
@@ -181,7 +181,7 @@ Detail fields to check: `status`, `terminalNodeId` (`n_approve`/`n_reject`/faili
 
 ## 9. Fastest smoke test
 
-1. Infra up + engine on `local` (classpath) + `device-financing-demo` app — or just `./run-services.sh`.
+1. Infra up + engine on `local` (classpath) + `device-financing` app — or just `./run-services.sh`.
 2. Kafka UI → topic `orig.demo.device.v1` → Produce: key `corr-df-approve-samsung`, value = §2 template
    with `CORR=corr-df-approve-samsung`, `BRAND=SAMSUNG`, `DEVICE=DEV-1`.
 3. `GET /ops/runs/search?key=corr-df-approve-samsung` → expect `COMPLETED_APPROVED`.
