@@ -82,7 +82,7 @@ class FileBatchScaffoldTest {
     private static FolderBatchPoller poller(RecordingPublisher publisher) {
         return new FolderBatchPoller(
                 new BatchInboxProperties(true, "unused", 1000,
-                        "orig.demo.hr.v1", "EMPLOYEE_LWD_UPDATE", "HR-DEMO"),
+                        "orig.employee-lwd-update.v1", "EMPLOYEE_LWD_UPDATE", "HR-DEMO"),
                 publisher, new ObjectMapper());
     }
 

@@ -59,7 +59,7 @@ Use this to hand-drive a run node-by-node: you publish the starting envelope AND
 There is **no separate `demo` profile** — the two demo doors + journeys live in the engine's `local` profile (`application-local.yml`), loaded via classpath. Mode C is just Mode A/B **plus** the two demo capability apps that make real HTTP calls to `mock-devicefin` (9106) / `mock-fusion` (9107). The one-click `./run-services.sh` already starts all of this; the explicit commands are:
 
 ```bash
-# engine with the demo rows (adds topics orig.demo.device.v1 / orig.demo.hr.v1 and 2 demo journeys)
+# engine with the demo rows (adds topics orig.device-financing.v1 / orig.employee-lwd-update.v1 and 2 demo journeys)
 ./gradlew :orchestration:origination-journey:bootRun \
   --args='--spring.profiles.active=local --idfc.engine.journey-source=classpath --idfc.engine.state-store=in-memory'
 
@@ -69,7 +69,7 @@ There is **no separate `demo` profile** — the two demo doors + journeys live i
 ./gradlew :edges:file-batch-edge:bootRun --args='--spring.profiles.active=local --file-batch.enabled=true' &  # :8112
 ```
 
-Trigger the demos: `demo/run-demo1.sh` (fires SAMSUNG/GODREJ/BOSCH-decline/SAMSUNG-fail at `orig.demo.device.v1`) and `demo/run-demo2.sh` (drops the sample CSV into `demo/batch-inbox/`). Add a brand live with no rebuild by passing extra `--device-financing.brands.<BRAND>.*` CLI rows (see the device-financing section).
+Trigger the demos: `demo/run-demo1.sh` (fires SAMSUNG/GODREJ/BOSCH-decline/SAMSUNG-fail at `orig.device-financing.v1`) and `demo/run-demo2.sh` (drops the sample CSV into `demo/batch-inbox/`). Add a brand live with no rebuild by passing extra `--device-financing.brands.<BRAND>.*` CLI rows (see the device-financing section).
 
 ---
 
@@ -105,7 +105,7 @@ Trigger the demos: `demo/run-demo1.sh` (fires SAMSUNG/GODREJ/BOSCH-decline/SAMSU
 | Purpose | Topic(s) | Message key | Value |
 |---|---|---|---|
 | **Start a run** (origination) | `orig.sfdc.pl.v1`, `orig.sfdc.lap.v1`, `orig.sfdc.bl.v1`, `orig.sfdc.commercial.v1` | `notificationId` | `CanonicalEnvelope` JSON |
-| Demo doors (Mode C) | `orig.demo.device.v1`, `orig.demo.hr.v1` | `correlationId` | `CanonicalEnvelope` JSON |
+| Demo doors (Mode C) | `orig.device-financing.v1`, `orig.employee-lwd-update.v1` | `correlationId` | `CanonicalEnvelope` JSON |
 | Capability **request** (engine→cap) | `cap.<key>.request.v1` | `journeyInstanceId` | `CapabilityRequest` JSON |
 | Capability **response** (cap→engine) | `cap.<key>.response.v1` | `journeyInstanceId` | `CapabilityResponse` JSON |
 | Journey **decision** (terminal) | `orig.decision.v1` | `applicationRef` | `JourneyDecision` JSON |
@@ -4106,7 +4106,7 @@ deviceId levers (WireMock, `POST /vendor/device-financing/{validate|block}`):
 
 ### Entry (identical shape for every permutation)
 
-There is **no REST entry** for this journey — it is a **Kafka door**. Produce to topic **`orig.demo.device.v1`**, message **key = `correlationId`**, value = the CanonicalEnvelope. `type` MUST be `DEVICE_FINANCING`; `payload.brand` and `payload.deviceId` are the only business fields the capability reads. Engine instance id is `"ji-" + correlationId` (correlationId is the first non-null dedup key). Ops search keys for a run = its `correlationId`, `notificationId`, `sfdcRecordId`.
+There is **no REST entry** for this journey — it is a **Kafka door**. Produce to topic **`orig.device-financing.v1`**, message **key = `correlationId`**, value = the CanonicalEnvelope. `type` MUST be `DEVICE_FINANCING`; `payload.brand` and `payload.deviceId` are the only business fields the capability reads. Engine instance id is `"ji-" + correlationId` (correlationId is the first non-null dedup key). Ops search keys for a run = its `correlationId`, `notificationId`, `sfdcRecordId`.
 
 Full-stack prereq: engine started via `./run-services.sh` (or `bootRun --spring.profiles.active=local --idfc.engine.journey-source=classpath`), the `device-financing` app, and the WireMock mock-vendors server (`:9106`) all running (or just run `demo/run-demo1.sh` for the canned four-outcome set). Engine-only manual prereq: engine running; you hand-publish `cap.device-financing.response.v1` messages to steer each hop.
 
@@ -4114,7 +4114,7 @@ Full-stack prereq: engine started via `./run-services.sh` (or `bootRun --spring.
 
 ### Permutation 1 — APPROVED, validation-required brand (SAMSUNG, validate + block both pass)
 
-**Entry** — (Kafka) topic `orig.demo.device.v1`, key `corr-df-approve-samsung`:
+**Entry** — (Kafka) topic `orig.device-financing.v1`, key `corr-df-approve-samsung`:
 
 ```json
 {
@@ -4155,7 +4155,7 @@ Full-stack prereq: engine started via `./run-services.sh` (or `bootRun --spring.
 
 ### Permutation 2 — APPROVED, block-only brand (GODREJ, validate skipped)
 
-**Entry** — topic `orig.demo.device.v1`, key `corr-df-approve-godrej`:
+**Entry** — topic `orig.device-financing.v1`, key `corr-df-approve-godrej`:
 
 ```json
 {
@@ -4193,7 +4193,7 @@ Full-stack prereq: engine started via `./run-services.sh` (or `bootRun --spring.
 
 ### Permutation 3 — APPROVED, brand added at runtime (HISENSE, block-only, brand-as-config proof)
 
-**Entry** — topic `orig.demo.device.v1`, key `corr-df-approve-hisense`:
+**Entry** — topic `orig.device-financing.v1`, key `corr-df-approve-hisense`:
 
 ```json
 {
@@ -4221,7 +4221,7 @@ Full-stack prereq: engine started via `./run-services.sh` (or `bootRun --spring.
 
 ### Permutation 4 — DECLINED at validate (validation-required brand, `validation.approved=false`)
 
-**Entry** — topic `orig.demo.device.v1`, key `corr-df-decline-validate`:
+**Entry** — topic `orig.device-financing.v1`, key `corr-df-decline-validate`:
 
 ```json
 {
@@ -4252,7 +4252,7 @@ Full-stack prereq: engine started via `./run-services.sh` (or `bootRun --spring.
 
 ### Permutation 5 — DECLINED at block (block-only brand, `block.approved=false`)
 
-**Entry** — topic `orig.demo.device.v1`, key `corr-df-decline-block`:
+**Entry** — topic `orig.device-financing.v1`, key `corr-df-decline-block`:
 
 ```json
 {
@@ -4285,7 +4285,7 @@ Full-stack prereq: engine started via `./run-services.sh` (or `bootRun --spring.
 
 This arm — validate `approved=true` but block `approved=false` → `n_decide` default → `n_reject` — has **no full-stack lever** (the default WireMock stubs decline both endpoints for `DEV-DECLINE` and 422 both for `DEV-FAIL`; there is no per-endpoint device lever). It is reachable **only in engine-only manual mode**.
 
-**Entry** — topic `orig.demo.device.v1`, key `corr-df-block-only-decline`:
+**Entry** — topic `orig.device-financing.v1`, key `corr-df-block-only-decline`:
 
 ```json
 {
@@ -4324,7 +4324,7 @@ n_block **declines**:
 
 ### Permutation 7 — FAILED, PERMANENT via vendor 4xx (`DEV-FAIL`)
 
-**Entry** — topic `orig.demo.device.v1`, key `corr-df-fail-permanent`:
+**Entry** — topic `orig.device-financing.v1`, key `corr-df-fail-permanent`:
 
 ```json
 {
@@ -4357,7 +4357,7 @@ n_block **declines**:
 
 This is the "unknown enum / fail-closed" case for this journey: `rowOf(brand)` throws `PERMANENT` when the brand has no config row (the deliberate counter to legacy fail-open orgId).
 
-**Entry** — topic `orig.demo.device.v1`, key `corr-df-unknown-brand`:
+**Entry** — topic `orig.device-financing.v1`, key `corr-df-unknown-brand`:
 
 ```json
 {
@@ -4388,7 +4388,7 @@ This is the "unknown enum / fail-closed" case for this journey: `rowOf(brand)` t
 
 ### Permutation 9 — FAILED, TRANSIENT via vendor unreachable / 5xx
 
-**Entry** — topic `orig.demo.device.v1`, key `corr-df-fail-transient`:
+**Entry** — topic `orig.device-financing.v1`, key `corr-df-fail-transient`:
 
 ```json
 {
@@ -4419,7 +4419,7 @@ This is the "unknown enum / fail-closed" case for this journey: `rowOf(brand)` t
 
 ### Permutation 10 — FAILED, AMBIGUOUS via read timeout
 
-**Entry** — topic `orig.demo.device.v1`, key `corr-df-fail-ambiguous`:
+**Entry** — topic `orig.device-financing.v1`, key `corr-df-fail-ambiguous`:
 
 ```json
 {
@@ -4454,7 +4454,7 @@ No node in `device-financing` declares a circuit-breaker policy, and the respons
 
 ### Permutation 12 — Idempotency / duplicate resend (same correlationId)
 
-**Entry** — re-produce the **exact** Permutation 1 envelope (same `correlationId:"corr-df-approve-samsung"`) to `orig.demo.device.v1`, key `corr-df-approve-samsung`, a second time (after the first run started/completed):
+**Entry** — re-produce the **exact** Permutation 1 envelope (same `correlationId:"corr-df-approve-samsung"`) to `orig.device-financing.v1`, key `corr-df-approve-samsung`, a second time (after the first run started/completed):
 
 ```json
 {
@@ -4480,7 +4480,7 @@ No node in `device-financing` declares a circuit-breaker policy, and the respons
 
 ### Permutation 13 — Unknown-type fail-closed (poison → DLQ)
 
-**Entry** — topic `orig.demo.device.v1`, key `corr-df-badtype`, with a `type` that has no `type-to-journey` row:
+**Entry** — topic `orig.device-financing.v1`, key `corr-df-badtype`, with a `type` that has no `type-to-journey` row:
 
 ```json
 {
@@ -4502,11 +4502,11 @@ No node in `device-financing` declares a circuit-breaker policy, and the respons
 
 **Drive to outcome** — no levers. `type:"DEVICE_FINANCE"` (typo; the only mapped value is `DEVICE_FINANCING`) → `JourneyOrchestrator` → `registry.resolveForType` → `UnroutableTypeException` → `OriginationConsumer` treats it as a `PoisonMessageException`. Fail-closed A2: **never** a default journey. Engine-only: same — this fails at ingest, before any node dispatch.
 
-**Expected result** — **no run is started** (nothing in the ops store). The message is dead-lettered to **`orig.demo.device.v1.dlq`** (source topic + `.dlq` suffix). **Verify:** `GET /ops/runs/search?key=corr-df-badtype` → **empty list** (`[]`); confirm the poison landed on `orig.demo.device.v1.dlq` via Kafka UI.
+**Expected result** — **no run is started** (nothing in the ops store). The message is dead-lettered to **`orig.device-financing.v1.dlq`** (source topic + `.dlq` suffix). **Verify:** `GET /ops/runs/search?key=corr-df-badtype` → **empty list** (`[]`); confirm the poison landed on `orig.device-financing.v1.dlq` via Kafka UI.
 
 ### Permutation 14 — Stuck run → liveness sweeper force-fail
 
-**Entry** — topic `orig.demo.device.v1`, key `corr-df-stuck`:
+**Entry** — topic `orig.device-financing.v1`, key `corr-df-stuck`:
 
 ```json
 {
@@ -4588,10 +4588,10 @@ The device-financing journey is loaded from **classpath** on the local profile (
 
 ## Demo: employee-lwd-update file-batch
 
-This journey is the **file-batch** demo: a local-folder CSV edge (`FolderBatchPoller`) turns each CSV row into **one engine run**, publishing a canonical envelope per record to `orig.demo.hr.v1`. The journey graph is **linear with no branch** — one task node `n_update` → one terminal `n_done`. There is therefore exactly **one business outcome** (`COMPLETED_APPROVED`) and a family of **failure** outcomes driven purely by the Fusion HCM HTTP status → `ErrorClass` mapping.
+This journey is the **file-batch** demo: a local-folder CSV edge (`FolderBatchPoller`) turns each CSV row into **one engine run**, publishing a canonical envelope per record to `orig.employee-lwd-update.v1`. The journey graph is **linear with no branch** — one task node `n_update` → one terminal `n_done`. There is therefore exactly **one business outcome** (`COMPLETED_APPROVED`) and a family of **failure** outcomes driven purely by the Fusion HCM HTTP status → `ErrorClass` mapping.
 
 **Prerequisites (all permutations):**
-- Engine (`origination-journey`) started via `./run-services.sh` (or `bootRun --spring.profiles.active=local --idfc.engine.journey-source=classpath`). The **`local` profile** (`application-local.yml`) loads `journeys/employee-lwd-update.journey.json`, adds the door topic `orig.demo.hr.v1` to `idfc.engine.origination-topics`, and merges the `type-to-journey` row `EMPLOYEE_LWD_UPDATE → employee-lwd-update` — **there is no separate `demo` profile** (`run-services.sh` sets `IDFC_ENGINE_JOURNEY_SOURCE=classpath`; a bare `--spring.profiles.active=local` defaults to `registry` and needs the `journey-source=classpath` override to load the classpath journeys).
+- Engine (`origination-journey`) started via `./run-services.sh` (or `bootRun --spring.profiles.active=local --idfc.engine.journey-source=classpath`). The **`local` profile** (`application-local.yml`) loads `journeys/employee-lwd-update.journey.json`, adds the door topic `orig.employee-lwd-update.v1` to `idfc.engine.origination-topics`, and merges the `type-to-journey` row `EMPLOYEE_LWD_UPDATE → employee-lwd-update` — **there is no separate `demo` profile** (`run-services.sh` sets `IDFC_ENGINE_JOURNEY_SOURCE=classpath`; a bare `--spring.profiles.active=local` defaults to `registry` and needs the `journey-source=classpath` override to load the classpath journeys).
 - Full-stack mode additionally needs the `fusion-hcm` capability running (listening on `cap.fusion-hcm.request.v1`) and the `file-batch-edge` started with `--file-batch.enabled=true` (poller scans `demo/batch-inbox/` every 2000 ms), plus the WireMock fusion server on `http://localhost:9107`.
 - Ops API: `http://localhost:8082/ops`, headers `X-Ops-Token: dev-ops-token` + `X-User-Id: ops.analyst@bank`.
 
@@ -4621,7 +4621,7 @@ This journey is the **file-batch** demo: a local-folder CSV edge (`FolderBatchPo
 
 So in full-stack mode the **only lever is the `lastWorkingDay` value**: a `YYYY-MM-DD` date → 200 → COMPLETED; anything else → 400 → PERMANENT → FAILED. TRANSIENT/AMBIGUOUS require transport-level manipulation (see P5/P6).
 
-Throughout, replace the placeholder `batch-abc123def456` with the **real** batchId — read it from the engine log line `batch.dispatched batchId=… records=5 topic=orig.demo.hr.v1`, or from `GET /ops/runs?journeyKey=employee-lwd-update`.
+Throughout, replace the placeholder `batch-abc123def456` with the **real** batchId — read it from the engine log line `batch.dispatched batchId=… records=5 topic=orig.employee-lwd-update.v1`, or from `GET /ops/runs?journeyKey=employee-lwd-update`.
 
 ---
 
@@ -4638,7 +4638,7 @@ EMP-004,not-a-date
 EMP-005,2026-09-01
 ```
 
-The poller emits **five** envelopes to `orig.demo.hr.v1` (keys `batch-abc123def456-r1 … -r5`). Row 4 (`EMP-004,not-a-date`) is the intentional failure. The `00-update-ok` regex passes for the four real dates (→ 200 UPDATED) and fails for `not-a-date`, which falls through to `99-bad-date` (→ HTTP 400 → PERMANENT).
+The poller emits **five** envelopes to `orig.employee-lwd-update.v1` (keys `batch-abc123def456-r1 … -r5`). Row 4 (`EMP-004,not-a-date`) is the intentional failure. The `00-update-ok` regex passes for the four real dates (→ 200 UPDATED) and fails for `not-a-date`, which falls through to `99-bad-date` (→ HTTP 400 → PERMANENT).
 
 **Drive to outcome — full-stack:** nothing further; the `lastWorkingDay` value on each row is the lever. Rows 1/2/3/5 → COMPLETED; row 4 → FAILED (PERMANENT).
 
@@ -4692,7 +4692,7 @@ employeeId,lastWorkingDay
 EMP-100,2026-12-31
 ```
 
-**Entry (Kafka manual — direct produce, bypassing the file edge):** topic **`orig.demo.hr.v1`**, key **`batch-manual-001-r1`**, value:
+**Entry (Kafka manual — direct produce, bypassing the file edge):** topic **`orig.employee-lwd-update.v1`**, key **`batch-manual-001-r1`**, value:
 
 ```json
 {
@@ -4745,7 +4745,7 @@ employeeId,lastWorkingDay
 EMP-200,not-a-date
 ```
 
-**Entry (Kafka manual):** topic `orig.demo.hr.v1`, key `batch-manual-002-r1`, value as P2 but `sfdcRecordId`/`payload.employeeId="EMP-200"`, `correlationId="batch-manual-002-r1"`, `notificationId="batch-manual-002"`, `payload.lastWorkingDay="not-a-date"`.
+**Entry (Kafka manual):** topic `orig.employee-lwd-update.v1`, key `batch-manual-002-r1`, value as P2 but `sfdcRecordId`/`payload.employeeId="EMP-200"`, `correlationId="batch-manual-002-r1"`, `notificationId="batch-manual-002"`, `payload.lastWorkingDay="not-a-date"`.
 
 **Drive to outcome — full-stack:** `lastWorkingDay="not-a-date"` fails the `00-update-ok` regex → falls through to `99-bad-date` → HTTP 400 → client maps 4xx → **PERMANENT**.
 
@@ -4780,7 +4780,7 @@ employeeId,lastWorkingDay
 ,2026-07-31
 ```
 
-**Entry (Kafka manual):** topic `orig.demo.hr.v1`, key `batch-manual-003-r1`, value as P2 with `payload.employeeId=""` (blank), `sfdcRecordId=""`, `correlationId="batch-manual-003-r1"`, `notificationId="batch-manual-003"`.
+**Entry (Kafka manual):** topic `orig.employee-lwd-update.v1`, key `batch-manual-003-r1`, value as P2 with `payload.employeeId=""` (blank), `sfdcRecordId=""`, `correlationId="batch-manual-003-r1"`, `notificationId="batch-manual-003"`.
 
 **Drive to outcome — full-stack:** the blank `employeeId` short-circuits inside `updateEmployee` → ERROR/PERMANENT (no Fusion call, WireMock never hit).
 
@@ -4870,7 +4870,7 @@ Note: a null/missing `errorClass` is also treated as AMBIGUOUS by the engine, so
 
 ### P9 — Idempotency: duplicate Kafka resend (same correlationId)
 
-**Entry (Kafka manual):** produce the **exact P2 message a second time** to `orig.demo.hr.v1` — same key `batch-manual-001-r1`, same body (same `correlationId`).
+**Entry (Kafka manual):** produce the **exact P2 message a second time** to `orig.employee-lwd-update.v1` — same key `batch-manual-001-r1`, same body (same `correlationId`).
 
 **Drive to outcome:** none. `instanceId=ji-batch-manual-001-r1` already exists → `store.insertIfAbsent` loses → engine logs `journey.start.duplicate` and drops. No second dispatch to `cap.fusion-hcm.request.v1`.
 
@@ -4880,7 +4880,7 @@ Note: a null/missing `errorClass` is also treated as AMBIGUOUS by the engine, so
 
 ### P10 — Unknown / unmapped `type` → fail-closed to DLQ
 
-**Entry (Kafka manual):** topic `orig.demo.hr.v1`, key `lwd-badtype-1`, value as P2 but with an unmapped `type`:
+**Entry (Kafka manual):** topic `orig.employee-lwd-update.v1`, key `lwd-badtype-1`, value as P2 but with an unmapped `type`:
 
 ```json
 {
@@ -4902,13 +4902,13 @@ Note: a null/missing `errorClass` is also treated as AMBIGUOUS by the engine, so
 
 **Drive to outcome:** none — `type="EMPLOYEE_LWD_BOGUS"` has no `type-to-journey` row. `JourneyRegistry.resolveForType` throws `UnroutableTypeException` (fail-closed A2, never a default journey).
 
-**Expected result:** message is treated as poison and dead-lettered to **`orig.demo.hr.v1.dlq`** (source topic + `.dlq` suffix). **No run is started** — `GET /ops/runs/search?key=lwd-badtype-1` returns an empty list. Consume `orig.demo.hr.v1.dlq` in Kafka UI to confirm the poisoned envelope landed.
+**Expected result:** message is treated as poison and dead-lettered to **`orig.employee-lwd-update.v1.dlq`** (source topic + `.dlq` suffix). **No run is started** — `GET /ops/runs/search?key=lwd-badtype-1` returns an empty list. Consume `orig.employee-lwd-update.v1.dlq` in Kafka UI to confirm the poisoned envelope landed.
 
 ---
 
 ### P11 — Undeserializable message → poison → DLQ
 
-**Entry (Kafka manual):** topic `orig.demo.hr.v1`, key `lwd-poison-1`, value = a body the consumer cannot deserialize into `Map<String,Object>`, e.g. non-JSON:
+**Entry (Kafka manual):** topic `orig.employee-lwd-update.v1`, key `lwd-poison-1`, value = a body the consumer cannot deserialize into `Map<String,Object>`, e.g. non-JSON:
 
 ```
 not-a-json-envelope
@@ -4916,7 +4916,7 @@ not-a-json-envelope
 
 **Drive to outcome:** none — `OriginationConsumer` fails to deserialize → `PoisonMessageException`.
 
-**Expected result:** dead-lettered to **`orig.demo.hr.v1.dlq`**; no run started; `GET /ops/runs/search?key=lwd-poison-1` empty. Verify via the DLQ topic.
+**Expected result:** dead-lettered to **`orig.employee-lwd-update.v1.dlq`**; no run started; `GET /ops/runs/search?key=lwd-poison-1` empty. Verify via the DLQ topic.
 
 ---
 
@@ -4960,7 +4960,7 @@ employeeId,lastWorkingDay
 
 **Entry (full-stack):** drop a valid single-record file (as P2) **with the `fusion-hcm` capability stopped** so nothing consumes `cap.fusion-hcm.request.v1`, e.g. `correlationId="batch-stuck-1-r1"`, `notificationId="batch-stuck-1"`.
 
-**Drive to outcome — engine-only:** publish the P2 origination envelope to `orig.demo.hr.v1` and then **publish nothing** to `cap.fusion-hcm.response.v1`. The run dispatches `n_update` and waits with no response.
+**Drive to outcome — engine-only:** publish the P2 origination envelope to `orig.employee-lwd-update.v1` and then **publish nothing** to `cap.fusion-hcm.response.v1`. The run dispatches `n_update` and waits with no response.
 
 **Expected result — two observable phases:**
 1. **Stuck window (~840 s to 900 s):** store state stays `RUNNING` → ops status **`RUNNING`**, but `stuck:true` (RUNNING and `startedAt ≤ now − 840s`) and `sweepDeadline = startedAt + 900s`. Surfaced by the `stuckOnly` filter / `stuckCount`.

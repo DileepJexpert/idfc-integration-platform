@@ -58,8 +58,8 @@ import static org.awaitility.Awaitility.await;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class LegacyPatternsDemoIT {
 
-    private static final String DEVICE_TOPIC = "orig.demo.device.v1";
-    private static final String HR_TOPIC = "orig.demo.hr.v1";
+    private static final String DEVICE_TOPIC = "orig.device-financing.v1";
+    private static final String HR_TOPIC = "orig.employee-lwd-update.v1";
     private static final String OPS_TOKEN = "demo-ops-token";
 
     private static final ObjectMapper JSON = new ObjectMapper();

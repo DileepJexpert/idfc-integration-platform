@@ -20,7 +20,7 @@ public record BatchInboxProperties(
         inboxDir = (inboxDir == null || inboxDir.isBlank()) ? "demo/batch-inbox" : inboxDir;
         pollMs = pollMs <= 0 ? 2000 : pollMs;
         originationTopic = (originationTopic == null || originationTopic.isBlank())
-                ? "orig.demo.hr.v1" : originationTopic;
+                ? "orig.employee-lwd-update.v1" : originationTopic;
         type = (type == null || type.isBlank()) ? "EMPLOYEE_LWD_UPDATE" : type;
         orgId = (orgId == null || orgId.isBlank()) ? "HR-DEMO" : orgId;
     }

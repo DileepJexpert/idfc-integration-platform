@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # DEMO 1 — brand-as-config: fire one device-financing message per brand at the
-# engine's demo door (orig.demo.device.v1). The producer runs INSIDE the kafka
+# engine's demo door (orig.device-financing.v1). The producer runs INSIDE the kafka
 # container (docker exec), so it talks to the in-container INTERNAL listener
 # localhost:9092 — the apache/kafka image only ships the .sh-suffixed CLI under
 # /opt/kafka/bin. Usage: run-demo1.sh [BRAND [DEVICE]] — no args fires the full
 # four-outcome set.
 set -euo pipefail
 BROKER="${KAFKA_BROKER:-localhost:9092}"
-TOPIC="orig.demo.device.v1"
+TOPIC="orig.device-financing.v1"
 
 send() { # $1 correlationId  $2 brand  $3 deviceId
   local corr="$1" brand="$2" device="$3"

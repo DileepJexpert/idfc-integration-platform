@@ -11,14 +11,14 @@ Copy-paste companion for the `device-financing` demo journey. Full detail lives 
 ```bash
 docker compose -f docker-compose.infra.yml up -d          # infra + mock-devicefin :9106 + Kafka UI :8085
 
-# engine on local (classpath) — application-local.yml carries the orig.demo.device.v1 door + journey
+# engine on local (classpath) — application-local.yml carries the orig.device-financing.v1 door + journey
 ./gradlew :orchestration:origination-journey:bootRun \
   --args='--spring.profiles.active=local --idfc.engine.journey-source=classpath --idfc.engine.state-store=in-memory'
 
 # the demo capability app (real HTTP to :9106)
 ./gradlew :capabilities:device-financing:bootRun --args='--spring.profiles.active=local'   # :8110
 ```
-> NOTE: the one-click `./run-services.sh` starts the engine on `local` with `IDFC_ENGINE_JOURNEY_SOURCE=classpath`, so the `orig.demo.device.v1` door + journey ARE active — that is the simplest path. The `bootRun` above does the same thing explicitly (there is no separate `demo` profile any more).
+> NOTE: the one-click `./run-services.sh` starts the engine on `local` with `IDFC_ENGINE_JOURNEY_SOURCE=classpath`, so the `orig.device-financing.v1` door + journey ARE active — that is the simplest path. The `bootRun` above does the same thing explicitly (there is no separate `demo` profile any more).
 
 **Engine-only (no capability app; you hand-publish every hop):** start just the engine (same command,
 capability app not needed). You publish the start envelope AND each `cap.device-financing.response.v1`.
@@ -29,7 +29,7 @@ capability app not needed). You publish the start envelope AND each `cap.device-
 
 | | |
 |---|---|
-| **Start topic** | `orig.demo.device.v1` |
+| **Start topic** | `orig.device-financing.v1` |
 | **Message key** | the `correlationId` |
 | **Value** | the CanonicalEnvelope below |
 | **Instance id** | `"ji-" + correlationId` (used as the key for `cap.device-financing.response.v1`) |
@@ -102,7 +102,7 @@ Set key = correlationId. Expected = ops `status`.
 | 9 | `corr-df-fail-transient` | GODREJ | DEV-5 | `FAILED_SFDC_NOTIFIED` / TRANSIENT — stop :9106 or stub 5xx |
 | 10 | `corr-df-fail-ambiguous` | GODREJ | DEV-6 | `FAILED_SFDC_NOTIFIED` / AMBIGUOUS — stub `fixedDelay > 10000ms` |
 | 12 | `corr-df-approve-samsung` (resend) | SAMSUNG | DEV-1 | dedup → still ONE run |
-| 13 | `corr-df-badtype` | SAMSUNG | DEV-1 | **no run**; poison → `orig.demo.device.v1.dlq` (set `type:"DEVICE_FINANCE"`) |
+| 13 | `corr-df-badtype` | SAMSUNG | DEV-1 | **no run**; poison → `orig.device-financing.v1.dlq` (set `type:"DEVICE_FINANCE"`) |
 | 14 | `corr-df-stuck` | SAMSUNG | DEV-1 | `RUNNING`→(900s)→`FAILED_SFDC_NOTIFIED` `__timeout__` — engine-only, publish no response |
 
 (#11 BREAKER_OPEN is **not reachable** in this journey — no breaker configured.)
@@ -182,6 +182,6 @@ Detail fields to check: `status`, `terminalNodeId` (`n_approve`/`n_reject`/faili
 ## 9. Fastest smoke test
 
 1. Infra up + engine on `local` (classpath) + `device-financing` app — or just `./run-services.sh`.
-2. Kafka UI → topic `orig.demo.device.v1` → Produce: key `corr-df-approve-samsung`, value = §2 template
+2. Kafka UI → topic `orig.device-financing.v1` → Produce: key `corr-df-approve-samsung`, value = §2 template
    with `CORR=corr-df-approve-samsung`, `BRAND=SAMSUNG`, `DEVICE=DEV-1`.
 3. `GET /ops/runs/search?key=corr-df-approve-samsung` → expect `COMPLETED_APPROVED`.

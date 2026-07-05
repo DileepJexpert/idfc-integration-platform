@@ -16,7 +16,7 @@ file-batch:
   enabled: ${FILE_BATCH_ENABLED:false}
   inbox-dir: ${FILE_BATCH_INBOX:demo/batch-inbox}
   poll-ms: 2000
-  origination-topic: orig.demo.hr.v1
+  origination-topic: orig.employee-lwd-update.v1
   type: EMPLOYEE_LWD_UPDATE
   org-id: HR-DEMO
 
