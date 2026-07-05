@@ -48,7 +48,10 @@ docker compose -f docker-compose.infra.yml up -d        # Kafka + Aerospike + mo
 # 2. the capabilities + the file-batch ingress edge
 ./gradlew :capabilities:device-financing:bootRun --args='--spring.profiles.active=local' &
 ./gradlew :capabilities:fusion-hcm:bootRun --args='--spring.profiles.active=local' &
-./gradlew :edges:file-batch-edge:bootRun --args='--spring.profiles.active=local --file-batch.enabled=true' &
+#    (bootRun's working dir is the MODULE dir, so pass the inbox absolutely —
+#     otherwise the poller watches edges/file-batch-edge/demo/batch-inbox and
+#     silently never sees the dropped CSV; run this from the repo root)
+./gradlew :edges:file-batch-edge:bootRun --args="--spring.profiles.active=local --file-batch.enabled=true --file-batch.inbox-dir=$PWD/demo/batch-inbox" &
 
 # 3. the ops view (designer repo) against the engine — LIVE by default now
 #    (apps/journey_ops_view: flutter run -d chrome --dart-define=OPS_API_BASE_URL=http://localhost:8082 ...)
@@ -64,7 +67,7 @@ Open the ops view: four runs — SAMSUNG approved THROUGH `n_validate`, GODREJ
 approved WITHOUT it (its row says block-only), the BOSCH device declined
 (teal completion, never red), the failed device red with `PERMANENT`.
 
-**Add HISENSE live** (the payoff): restart `device-financing` with five
+**Add HISENSE live** (the payoff): restart `device-financing` with four
 extra CLI rows — no rebuild, no new service:
 
 ```bash
