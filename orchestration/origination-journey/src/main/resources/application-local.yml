@@ -28,10 +28,15 @@ idfc:
       - journeys/loan-origination.journey.json
       - journeys/device-financing.journey.json
       - journeys/employee-lwd-update.journey.json
+      - journeys/vehicle-rc-verification.journey.json
     origination-topics: ${IDFC_ENGINE_ORIGINATION_TOPICS:orig.sfdc.pl.v1,orig.sfdc.lap.v1,orig.sfdc.bl.v1,orig.sfdc.commercial.v1,orig.demo.device.v1,orig.demo.hr.v1}
     type-to-journey:
       DEVICE_FINANCING: device-financing
       EMPLOYEE_LWD_UPDATE: employee-lwd-update
+      # Karza VAHAN-RC verification journey. Routing lives here (config), not in
+      # the registry — the journey is seeded/loadable but stays unroutable until
+      # a type maps to it, so publish origination envelopes with type=VEHICLE_RC.
+      VEHICLE_RC: vehicle-rc-verification
 
   # DEV ONLY ops-window token (the base profile fails closed without one).
   ops:
