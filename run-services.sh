@@ -12,6 +12,8 @@
 #
 # Then, from IntelliJ (or any terminal):
 #     ./run-services.sh            # build jars + start every service in background
+#     ./run-services.sh --clean    # clean build (clean bootJar) — use when a change
+#                                  # isn't reflecting from an incremental build
 #     ./run-services.sh --no-build # skip the build, just (re)start from existing jars
 #     ./run-services.sh --registry # use the journey-registry seam (needs a published
 #                                  # journey) instead of the classpath fallback
@@ -109,10 +111,11 @@ wait_for_registry_seeded() {
 }
 
 start_all() {
-  local no_build=0 journey_source="classpath"
+  local no_build=0 clean_build=0 journey_source="classpath"
   for a in "$@"; do
     case "$a" in
       --no-build) no_build=1 ;;
+      --clean)    clean_build=1 ;;
       --registry) journey_source="registry" ;;
     esac
   done
@@ -120,9 +123,18 @@ start_all() {
   check_infra
   mkdir -p "$LOG_DIR" "$PID_DIR"
 
+  # A clean build deletes build/libs/*.jar; a running `java -jar` holds its jar
+  # open (locked on Windows/Git Bash), so stop everything before cleaning.
+  if [ "$clean_build" -eq 1 ] && [ "$no_build" -eq 0 ]; then
+    info "Clean build: stopping any running services first (they lock their jars)…"
+    stop_all
+  fi
+
   if [ "$no_build" -eq 0 ]; then
-    info "Building boot jars (./gradlew bootJar)…"
-    ( cd "$ROOT" && ./gradlew bootJar --console=plain -q )
+    local tasks="bootJar"
+    [ "$clean_build" -eq 1 ] && tasks="clean bootJar"
+    info "Building boot jars (./gradlew $tasks)…"
+    ( cd "$ROOT" && ./gradlew $tasks --console=plain -q )
   fi
 
   if [ "$journey_source" = "classpath" ]; then
@@ -210,7 +222,7 @@ logs_one() {
 
 case "${1:-start}" in
   start|"")   shift || true; start_all "$@" ;;
-  --no-build|--registry) start_all "$@" ;;
+  --no-build|--clean|--registry) start_all "$@" ;;
   stop)       stop_all ;;
   restart)    shift || true; stop_all; sleep 1; start_all "$@" ;;
   status)     status_all ;;
