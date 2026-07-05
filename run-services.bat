@@ -14,6 +14,7 @@ REM  retry their Kafka/Aerospike connections until infra appears.
 REM
 REM  Usage:
 REM      run-services.bat                 (double-click) build jars + start all
+REM      run-services.bat --clean         clean build (clean bootJar) when a change won't reflect
 REM      run-services.bat --no-build      skip build, restart from existing jars
 REM      run-services.bat --registry      use the journey-registry seam
 REM      run-services.bat status          what's up, on which port/PID

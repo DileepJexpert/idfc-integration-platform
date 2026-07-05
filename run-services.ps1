@@ -12,6 +12,8 @@
 #
 # Then, from IntelliJ (or any PowerShell terminal):
 #     .\run-services.ps1              # build jars + start every service in background
+#     .\run-services.ps1 -Clean       # clean build (clean bootJar) - use when a change
+#                                     # isn't reflecting from an incremental build
 #     .\run-services.ps1 -NoBuild     # skip the build, just (re)start from existing jars
 #     .\run-services.ps1 -Registry    # use the journey-registry seam (needs a published
 #                                     # journey) instead of the classpath fallback
@@ -36,6 +38,7 @@ param(
     [string[]] $Rest,
 
     [switch] $NoBuild,
+    [switch] $Clean,
     [switch] $Registry
 )
 
@@ -129,16 +132,24 @@ function Test-PidAlive($processId) {
 }
 
 function Start-All {
-    param([bool]$SkipBuild, [string]$JourneySource)
+    param([bool]$SkipBuild, [bool]$CleanBuild, [string]$JourneySource)
 
     Test-Infra
     New-Item -ItemType Directory -Force -Path $LogDir, $PidDir | Out-Null
 
+    # A clean build must delete build\libs\*.jar, but a running `java -jar` holds
+    # its jar open on Windows so the delete fails. Stop everything first.
+    if ($CleanBuild -and -not $SkipBuild) {
+        Info 'Clean build: stopping any running services first (they lock their jars)...'
+        Stop-All
+    }
+
     if (-not $SkipBuild) {
-        Info 'Building boot jars (.\gradlew.bat bootJar)...'
+        [string[]] $tasks = if ($CleanBuild) { 'clean', 'bootJar' } else { 'bootJar' }
+        Info ("Building boot jars (.\gradlew.bat {0})..." -f ($tasks -join ' '))
         Push-Location $Root
         try {
-            & (Join-Path $Root 'gradlew.bat') bootJar --console=plain -q
+            & (Join-Path $Root 'gradlew.bat') @tasks --console=plain -q
             if ($LASTEXITCODE -ne 0) { Err "gradle build failed (exit $LASTEXITCODE)"; exit 1 }
         } finally {
             Pop-Location
@@ -241,6 +252,7 @@ function Get-LogsOne($name) {
 if ($Command -like '--*') {
     switch ($Command) {
         '--no-build' { $NoBuild = $true }
+        '--clean'    { $Clean = $true }
         '--registry' { $Registry = $true }
     }
     $Command = 'start'
@@ -248,15 +260,16 @@ if ($Command -like '--*') {
 # Also accept bash-style flags mixed into the remaining args.
 if ($Rest) {
     if ($Rest -contains '--no-build') { $NoBuild = $true }
+    if ($Rest -contains '--clean')    { $Clean = $true }
     if ($Rest -contains '--registry') { $Registry = $true }
 }
 
 $journeySource = if ($Registry) { 'registry' } else { 'classpath' }
 
 switch ($Command) {
-    { $_ -in 'start', '' }   { Start-All -SkipBuild:$NoBuild -JourneySource $journeySource }
+    { $_ -in 'start', '' }   { Start-All -SkipBuild:$NoBuild -CleanBuild:$Clean -JourneySource $journeySource }
     'stop'                   { Stop-All }
-    'restart'                { Stop-All; Start-Sleep -Seconds 1; Start-All -SkipBuild:$NoBuild -JourneySource $journeySource }
+    'restart'                { Stop-All; Start-Sleep -Seconds 1; Start-All -SkipBuild:$NoBuild -CleanBuild:$Clean -JourneySource $journeySource }
     'status'                 { Get-StatusAll }
     'logs'                   { Get-LogsOne ($Rest | Select-Object -First 1) }
     default {
