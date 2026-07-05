@@ -292,8 +292,6 @@ Expected: `200` `{ "applicationId":"DIG-CRED-APP-HIGH-1", "status":"ACK_PROCESSE
 
 <a id="sec-sfdc-edge"></a>
 
-I have everything needed. Here is the section.
-
 ---
 
 ## SFDC Ingress Edge (REST + Kafka)
@@ -1682,8 +1680,6 @@ Registry base `http://localhost:8104/api/v1`; header `X-Registry-Token: dev-regi
 
 <a id="sec-vehicle-rc"></a>
 
-I now have every load-bearing fact confirmed from source. Writing the section.
-
 ---
 
 ## Journey: vehicle-rc-verification
@@ -1949,7 +1945,7 @@ Same decline terminal via the **first status clause** instead of the blacklist c
   ```
   (One message suffices — `n_vehicleRc` has no `retrySpec`, so the engine does not re‑request; it fails the node immediately.)
 
-**Expected result** — terminal `n_rcError`, outcome **ERROR**, emit `VehicleRcError`. Decision on `orig.decision.v1`: `outcome:"ERROR"`, `terminalNodeId:"n_rcError"`. Ops status: **full‑stack** `FAILED_SFDC_NOTIFIED` (capability sent the notify); **engine‑only** `FAILED_NOTIFY_PENDING` (no capability ran, so `sfdc.response.notify.v1` was never produced). DLQ `cap.verification.dlq.v1` present in full‑stack only. **Verify:** `GET /ops/runs/search?key=corr-rc-err-tr-01`; `GET /ops/runs/{runId}` → `terminalNodeId:"n_rcError"`, `terminalOutcome:"ERROR"`, `nodeStats[].failureClass:"TRANSIENT"`, `dlqTopicRef` set for the FAILED status, `sfdcNotified:"SENT"` (full‑stack) or `"PENDING"` (engine‑only).
+**Expected result** — terminal `n_rcError`, outcome **ERROR**, emit `VehicleRcError`. Decision on `orig.decision.v1`: `outcome:"ERROR"`, `terminalNodeId:"n_rcError"`. Ops status: **`FAILED_SFDC_NOTIFIED` in BOTH full-stack and engine-only.** `OpsRun.status()` derives it as `sfdcNotified==SENT ? FAILED_SFDC_NOTIFIED : FAILED_NOTIFY_PENDING`; `sfdcNotified` is flipped to `SENT` by the **engine's own decision publish** — on reaching `n_rcError` the engine emits the ERROR decision to `orig.decision.v1` and, on the confirmed-send ack, calls `clearPendingPublishes()`→`markSfdcNotified()` (the persist-before-publish hop in `JourneyOrchestrator.dispatch`). This is identical whether the failing response came from the real capability (full-stack) or was hand-published to `cap.verification.response.v1` (engine-only) — it is NOT driven by the capability's `sfdc.response.notify.v1` (whose consumer never touches run notify-state). `FAILED_NOTIFY_PENDING` (`sfdcNotified` PENDING/NONE) arises only if the `orig.decision.v1` publish itself cannot be confirmed (e.g. broker down). The DLQ `cap.verification.dlq.v1` and `sfdc.response.notify.v1` are full-stack only (produced inside the capability); `failureClass` never affects this status split. **Verify:** `GET /ops/runs/search?key=corr-rc-err-tr-01`; `GET /ops/runs/{runId}` → `terminalNodeId:"n_rcError"`, `terminalOutcome:"ERROR"`, `nodeStats[].failureClass:"TRANSIENT"`, `dlqTopicRef` set for the FAILED status, `sfdcNotified:"SENT"` in both modes once the decision publish confirms.
 
 ---
 
@@ -1972,7 +1968,7 @@ Same decline terminal via the **first status clause** instead of the blacklist c
   }
   ```
 
-**Expected result** — identical engine‑side outcome to Permutation 3 (`n_rcError`, ERROR, `VehicleRcError`); only `nodeStats[].failureClass:"PERMANENT"` differs, and full‑stack DLQ reason contains `PERMANENT`. Ops status `FAILED_SFDC_NOTIFIED` (full‑stack) / `FAILED_NOTIFY_PENDING` (engine‑only). **Verify:** search `key=corr-rc-err-pm-01`; detail `failureClass:"PERMANENT"`.
+**Expected result** — identical engine-side outcome to Permutation 3 (`n_rcError`, ERROR, `VehicleRcError`); only `nodeStats[].failureClass:"PERMANENT"` differs, and the full-stack DLQ reason contains `PERMANENT`. Ops status `FAILED_SFDC_NOTIFIED` in both modes (see Permutation 3 — the SENT/PENDING split is driven by the `orig.decision.v1` publish confirming, not by full-stack vs engine-only). **Verify:** search `key=corr-rc-err-pm-01`; detail `failureClass:"PERMANENT"`.
 
 ---
 
@@ -1995,7 +1991,7 @@ Same decline terminal via the **first status clause** instead of the blacklist c
   }
   ```
 
-**Expected result** — `n_rcError`, ERROR, `VehicleRcError`; `nodeStats[].failureClass:"AMBIGUOUS"`. Ops status `FAILED_SFDC_NOTIFIED` (full‑stack) / `FAILED_NOTIFY_PENDING` (engine‑only). **Verify:** search `key=corr-rc-err-am-01`; detail `failureClass:"AMBIGUOUS"`.
+**Expected result** — `n_rcError`, ERROR, `VehicleRcError`; `nodeStats[].failureClass:"AMBIGUOUS"`. Ops status `FAILED_SFDC_NOTIFIED` in both modes (see Permutation 3 — the SENT/PENDING split is driven by the `orig.decision.v1` publish confirming, not by full-stack vs engine-only). **Verify:** search `key=corr-rc-err-am-01`; detail `failureClass:"AMBIGUOUS"`.
 
 ---
 
@@ -2133,7 +2129,7 @@ Auth negatives: missing/bad `X-Ops-Token` → `401 {"error":"UNAUTHENTICATED","m
 | ACTIVE+CLEAR | any ≠ `XX00YY0000` | OK, inner `rcStatus:ACTIVE`+`blackListStatus:CLEAR` | `n_proceed` | `COMPLETED_APPROVED` |
 | Blacklisted | `XX00YY0000` | OK, `blackListStatus:BLACKLIST` | `n_decline` | `COMPLETED_DECLINED` |
 | Status not ACTIVE | (not producible by WireMock) | OK, `rcStatus:SUSPENDED` | `n_decline` | `COMPLETED_DECLINED` |
-| TRANSIENT | 5xx / connection refused | ERROR `errorClass:TRANSIENT` | `n_rcError` | `FAILED_SFDC_NOTIFIED` (full) / `FAILED_NOTIFY_PENDING` (engine‑only) |
+| TRANSIENT | 5xx / connection refused | ERROR `errorClass:TRANSIENT` | `n_rcError` | `FAILED_SFDC_NOTIFIED` (both modes; `FAILED_NOTIFY_PENDING` only if the `orig.decision.v1` publish is unconfirmed) |
 | PERMANENT | 4xx / 404 no‑stub / empty body | ERROR `errorClass:PERMANENT` | `n_rcError` | as above |
 | AMBIGUOUS | delayed stub > 20s read timeout | ERROR `errorClass:AMBIGUOUS` | `n_rcError` | as above |
 | BREAKER_OPEN | not reachable | (behaves like other errors) | `n_rcError` | as above |
@@ -2145,8 +2141,6 @@ Auth negatives: missing/bad `X-Ops-Token` → `401 {"error":"UNAUTHENTICATED","m
 ---
 
 <a id="sec-negative-area"></a>
-
-I now have every load-bearing fact confirmed from source. Here is the section.
 
 ---
 
@@ -2616,8 +2610,6 @@ Per-run detail cross-checks for this journey: PASS → `status:COMPLETED_APPROVE
 
 <a id="sec-domain-check"></a>
 
-I have everything I need. The key structural fact I confirmed: `domain-check-verification` is **not** in the engine's default `type-to-journey` map or `journey-resources` list (both only carry `loan-origination`), so reaching it requires an explicit config/registry step — which is exactly why the maker-checker publish lifecycle is in-scope for this section. Here is the section.
-
 ## Journey: domain-check-verification
 
 Karza email/domain-legitimacy check (`svcName = KARZA_DOMAIN_CHECK`, capability `verification`). Single verification hop, then a business branch.
@@ -2943,8 +2935,6 @@ Base `http://localhost:8082/ops`. Every call: `X-Ops-Token: dev-ops-token` and `
 ---
 
 <a id="sec-payment-execution"></a>
-
-Facts confirmed against source. Key realities verified: no `payment-execution.journey.json` exists (only 8 real journey files); the provisional config lives only in `docs/DEMO_PAYMENTS_CONFIG_SHOWCASE.md` (lines 27-45) and is schema-invalid; `PaymentsApplication.java` is a stub with no `Capability` bean; `JourneyEngine.chooseArm` (line 375-380) throws `IllegalStateException` when no arm matches and no `default` exists; real schemaVersion-2 branch shape uses `when`/`default` (confirmed from `emandate-cancel.journey.json`). Here is the section.
 
 ---
 
@@ -3657,8 +3647,6 @@ Base `http://localhost:8082/ops`. Both headers required on **every** call: `X-Op
 
 <a id="sec-emandate-cancel"></a>
 
-All facts confirmed against source. Here is the section.
-
 ---
 
 ## Journey: emandate-cancel (found / not-found)
@@ -4074,8 +4062,6 @@ H='-H X-Ops-Token:dev-ops-token -H X-User-Id:ops.analyst@bank'
 ---
 
 <a id="sec-device-financing"></a>
-
-I have everything I need. Here is the section.
 
 ---
 
