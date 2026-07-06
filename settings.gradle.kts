@@ -10,6 +10,7 @@ rootProject.name = "idfc-integration-platform"
 include("shared:shared-domain")        // canonical envelope + common value objects (NO framework imports)
 include("shared:shared-observability") // otel/micrometer wiring helpers
 include("shared:shared-capability")    // THE homogeneous capability framework (engine-invokable shell)
+include("shared:shared-sync")          // digital-lending SYNC lane contracts (in-thread invoke; NOT the engine)
 
 // platform/ — horizontal platform services (future homes for extracted code)
 include("platform:platform-idempotency") // later extraction target for the Aerospike store
@@ -45,6 +46,7 @@ include("capabilities:verification")   // per-svcName verification (Karza/IMPS) 
 include("capabilities:device-validation") // brand-as-config capability (real HTTP; vendor mocked in dev)
 include("capabilities:fusion-hcm")       // per-record Fusion HCM update/read (real HTTP; vendor mocked in dev)
 include("capabilities:imps-disbursal")   // digital-lending SYNC lane: IMPS fund transfer (caller waits; not the engine)
+include("capabilities:lms-utilities")    // digital-lending SYNC lane: LMS utilities (requestCode dispatch; house envelope)
 
 // orchestration/ — long-running journeys (stubs in Slice 1)
 include("orchestration:origination-journey")

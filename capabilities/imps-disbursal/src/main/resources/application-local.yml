@@ -1,9 +1,0 @@
-# LOCAL profile — run the imps-disbursal sync lane on the host against the
-# compose WireMock (mock-imps on 9110). The base application.yml default already
-# points the vendor at localhost:9110 for host bootRun.
-imps-disbursal:
-  auth:
-    # DEV ONLY accepted Bearer token (the base profile fails closed without one).
-    # Send it as `Authorization: Bearer dev-imps-token`. Production uses real
-    # Ory/Hydra introspection instead of an allow-list.
-    accepted-tokens: ${IMPS_EDGE_ACCEPTED_TOKENS:dev-imps-token}

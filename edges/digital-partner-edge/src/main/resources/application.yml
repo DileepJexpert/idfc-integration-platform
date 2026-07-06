@@ -47,6 +47,33 @@ idfc:
       notification-set: idem
       application-set: idem_app
       ttl-seconds: ${IDEMPOTENCY_TTL_SECONDS:2592000}
+  # --- digital-lending SYNC lane (this edge also hosts the synchronous doors) ---
+  # FAIL CLOSED: no compiled-in default. A missing SYNC_EDGE_ACCEPTED_TOKENS accepts
+  # nothing. Comma-separated Ory/Hydra tokens; local dev sets a dev value. Production
+  # swaps the allow-list for real Kong/Hydra token introspection.
+  sync-edge:
+    auth:
+      accepted-tokens: ${SYNC_EDGE_ACCEPTED_TOKENS:}
+
+# The SYNC capabilities the edge invokes in-thread. Vendor hosts + auth are config
+# (real IMPS/LMS backends later = host swaps); timeouts are mandatory (the caller
+# blocks). In dev the vendors are the compose WireMocks (mock-imps :9110 / mock-lms
+# :9111) — only their DATA is mocked.
+imps-disbursal:
+  vendor-base-url: ${IMPS_VENDOR_URL:http://localhost:9110}
+  vendor-auth-token: ${IMPS_VENDOR_TOKEN:}
+  connect-timeout-ms: 3000
+  read-timeout-ms: 10000
+
+lms-utilities:
+  vendor-base-url: ${LMS_VENDOR_URL:http://localhost:9111}
+  vendor-auth-token: ${LMS_VENDOR_TOKEN:}
+  connect-timeout-ms: 3000
+  read-timeout-ms: 10000
+  # requestCode dispatch is config: adding OFFER_CHECK's siblings (balance,
+  # foreclosure, schedule, …) is a row here + a stub — NOT code. Unknown -> fail closed.
+  known-request-codes:
+    - OFFER_CHECK
 
 management:
   endpoints:

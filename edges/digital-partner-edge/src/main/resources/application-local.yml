@@ -23,3 +23,8 @@ idfc:
       - code: GROWW
         token: ${GROWW_TOKEN:groww-dev-token}
         callback-url: ${GROWW_CALLBACK:http://localhost:9203/groww/callback}
+  # DEV ONLY accepted Bearer for the sync lane (base fails closed without one).
+  # Call impsFT / callLmsUtilities with `Authorization: Bearer dev-sync-token`.
+  sync-edge:
+    auth:
+      accepted-tokens: ${SYNC_EDGE_ACCEPTED_TOKENS:dev-sync-token}

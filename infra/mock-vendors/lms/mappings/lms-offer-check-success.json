@@ -1,0 +1,30 @@
+{
+  "priority": 5,
+  "request": {
+    "method": "POST",
+    "urlPath": "/api/v1/callLmsUtilities",
+    "bodyPatterns": [ { "matchesJsonPath": "$[?(@.requestCode == 'OFFER_CHECK')]" } ]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "transformers": ["response-template"],
+    "jsonBody": {
+      "metadata": {
+        "status": "SUCCESS",
+        "message": "OFFER_CHECK processed successfully",
+        "version": "v1",
+        "time": "2026-07-06T10:21:06"
+      },
+      "resource_data": [
+        {
+          "EXPIRED_DATE": "2030-10-03T06:57:03",
+          "LOAN_AMOUNT": "500000",
+          "REQID": "{{jsonPath request.body '$.crnNo'}}",
+          "RISK_SEGMENT": "LOW RISK",
+          "ROI": "14"
+        }
+      ]
+    }
+  }
+}

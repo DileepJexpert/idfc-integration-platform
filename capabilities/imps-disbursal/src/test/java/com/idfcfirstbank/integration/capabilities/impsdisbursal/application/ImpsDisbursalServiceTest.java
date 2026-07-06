@@ -1,10 +1,10 @@
 package com.idfcfirstbank.integration.capabilities.impsdisbursal.application;
 
 import com.idfcfirstbank.integration.capabilities.impsdisbursal.adapter.out.idempotency.InMemoryImpsIdempotencyStore;
-import com.idfcfirstbank.integration.capabilities.impsdisbursal.domain.error.SyncTechnicalException;
+import com.idfcfirstbank.integration.shared.sync.SyncTechnicalException;
 import com.idfcfirstbank.integration.capabilities.impsdisbursal.domain.model.ImpsFtRequest;
 import com.idfcfirstbank.integration.capabilities.impsdisbursal.domain.model.ImpsFtResult;
-import com.idfcfirstbank.integration.capabilities.impsdisbursal.domain.model.SyncRequestContext;
+import com.idfcfirstbank.integration.shared.sync.SyncRequestContext;
 import com.idfcfirstbank.integration.capabilities.impsdisbursal.domain.port.out.ImpsFtPort;
 import com.idfcfirstbank.integration.shared.domain.capability.ErrorClass;
 import org.junit.jupiter.api.Test;

@@ -1,0 +1,21 @@
+{
+  "priority": 1,
+  "request": {
+    "method": "POST",
+    "urlPath": "/api/v1/callLmsUtilities",
+    "bodyPatterns": [ { "matchesJsonPath": "$[?(@.crnNo == 'NO-OFFER-CRN')]" } ]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "metadata": {
+        "status": "SUCCESS",
+        "message": "no offer available",
+        "version": "v1",
+        "time": "2026-07-06T10:21:06"
+      },
+      "resource_data": []
+    }
+  }
+}

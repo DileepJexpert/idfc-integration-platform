@@ -1,4 +1,4 @@
-package com.idfcfirstbank.integration.capabilities.impsdisbursal.adapter.in.rest;
+package com.idfcfirstbank.integration.shared.sync;
 
 /**
  * The UNIFORM error body returned to the caller when a sync call cannot produce a

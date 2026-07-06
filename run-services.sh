@@ -56,8 +56,11 @@ SERVICES=(
   "device-validation|capabilities/device-validation|8110"
   "fusion-hcm|capabilities/fusion-hcm|8111"
   "file-batch-edge|edges/file-batch-edge|8112"
-  "imps-disbursal|capabilities/imps-disbursal|8113"
 )
+# NOTE: the digital-lending SYNC capabilities (imps-disbursal, lms-utilities) are
+# LIBRARIES invoked in-thread by digital-partner-edge (8081) — they are not
+# standalone services. The sync doors POST /api/v1/impsFT and /api/v1/callLmsUtilities
+# are served by the edge above.
 
 c_green=$'\e[32m'; c_red=$'\e[31m'; c_yellow=$'\e[33m'; c_dim=$'\e[2m'; c_off=$'\e[0m'
 info()  { printf '%s\n' "$*"; }

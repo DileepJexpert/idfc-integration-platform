@@ -9,7 +9,7 @@ import com.idfcfirstbank.integration.capabilities.impsdisbursal.domain.model.Imp
  * fail fast, not hang the HTTP thread). A 200 body — success OR a business decline
  * — is returned as an {@link ImpsFtResult}; a transport failure (timeout, 5xx,
  * unreachable) throws
- * {@link com.idfcfirstbank.integration.capabilities.impsdisbursal.domain.error.SyncTechnicalException}.
+ * {@link com.idfcfirstbank.integration.shared.sync.SyncTechnicalException}.
  */
 public interface ImpsFtPort {
 

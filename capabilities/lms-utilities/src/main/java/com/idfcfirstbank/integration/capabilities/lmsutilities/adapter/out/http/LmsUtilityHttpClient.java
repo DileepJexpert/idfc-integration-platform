@@ -1,11 +1,9 @@
-package com.idfcfirstbank.integration.capabilities.impsdisbursal.adapter.out.http;
+package com.idfcfirstbank.integration.capabilities.lmsutilities.adapter.out.http;
 
-import com.idfcfirstbank.integration.capabilities.impsdisbursal.config.ImpsDisbursalProperties;
-import com.idfcfirstbank.integration.shared.sync.SyncTechnicalException;
-import com.idfcfirstbank.integration.capabilities.impsdisbursal.domain.model.ImpsFtRequest;
-import com.idfcfirstbank.integration.capabilities.impsdisbursal.domain.model.ImpsFtResult;
-import com.idfcfirstbank.integration.capabilities.impsdisbursal.domain.port.out.ImpsFtPort;
+import com.idfcfirstbank.integration.capabilities.lmsutilities.config.LmsUtilitiesProperties;
+import com.idfcfirstbank.integration.capabilities.lmsutilities.domain.port.out.LmsUtilityPort;
 import com.idfcfirstbank.integration.shared.domain.capability.ErrorClass;
+import com.idfcfirstbank.integration.shared.sync.SyncTechnicalException;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
@@ -19,23 +17,23 @@ import java.net.URI;
 import java.util.Map;
 
 /**
- * REAL outbound HTTP to the IMPS/FT backend (the mock-imps WireMock in dev — only
+ * REAL outbound HTTP to the LMS-utilities backend (the WireMock vendor in dev — only
  * the response DATA is mocked). Mandatory connect/read timeouts: the partner is
  * BLOCKING on the response, so a hung downstream must fail fast, not pin the HTTP
- * thread. A 200 body (success OR a business decline) is returned as an
- * {@link ImpsFtResult}; any transport failure throws {@link SyncTechnicalException}
- * with a class — crucially a read timeout on a money movement is AMBIGUOUS (the
- * transfer may have gone through), never a fake success.
+ * thread. A 200 body — the IDFC house envelope, whether it carries offer rows or an
+ * empty {@code resource_data} — is returned RAW (the service maps it); any transport
+ * failure throws {@link SyncTechnicalException} with a class so the caller/ops can
+ * tell a definitely-not-processed apart from a maybe-processed or a retryable.
  */
 @Component
-public class ImpsFtHttpClient implements ImpsFtPort {
+public class LmsUtilityHttpClient implements LmsUtilityPort {
 
-    private static final String PATH = "/api/v1/impsFT";
+    private static final String PATH = "/api/v1/callLmsUtilities";
 
-    private final ImpsDisbursalProperties props;
+    private final LmsUtilitiesProperties props;
     private final RestClient http;
 
-    public ImpsFtHttpClient(ImpsDisbursalProperties props) {
+    public LmsUtilityHttpClient(LmsUtilitiesProperties props) {
         this.props = props;
         SimpleClientHttpRequestFactory rf = new SimpleClientHttpRequestFactory();
         rf.setConnectTimeout(props.connectTimeoutMs());
@@ -45,10 +43,10 @@ public class ImpsFtHttpClient implements ImpsFtPort {
 
     @Override
     @SuppressWarnings("unchecked")
-    public ImpsFtResult transfer(ImpsFtRequest request) {
+    public Map<String, Object> call(Map<String, Object> requestBody) {
         if (props.vendorBaseUrl() == null) {
             throw new SyncTechnicalException(ErrorClass.PERMANENT, "NOT_CONFIGURED",
-                    "imps-disbursal.vendor-base-url not configured");
+                    "lms-utilities.vendor-base-url not configured");
         }
         try {
             RestClient.RequestBodySpec spec = http.post()
@@ -57,24 +55,24 @@ public class ImpsFtHttpClient implements ImpsFtPort {
             if (props.vendorAuthToken() != null) {
                 spec = spec.header("Authorization", "Bearer " + props.vendorAuthToken());
             }
-            Map<String, Object> body = spec.body(request.toVendorBody()).retrieve().body(Map.class);
+            Map<String, Object> body = spec.body(requestBody).retrieve().body(Map.class);
             if (body == null) {
                 throw new SyncTechnicalException(ErrorClass.PERMANENT, "EMPTY_RESPONSE",
-                        "IMPS backend returned an empty body");
+                        "LMS backend returned an empty body");
             }
-            return ImpsFtResult.fromVendorBody(body);
+            return body;   // the RAW house envelope — the service normalizes it, not this adapter
         } catch (RestClientResponseException e) {
             ErrorClass ec = e.getStatusCode().is4xxClientError() ? ErrorClass.PERMANENT : ErrorClass.TRANSIENT;
-            throw new SyncTechnicalException(ec, "HTTP_" + e.getStatusCode().value(), "IMPS backend http error");
+            throw new SyncTechnicalException(ec, "HTTP_" + e.getStatusCode().value(), "LMS backend http error");
         } catch (RestClientException e) {
             if (causedBy(e, SocketTimeoutException.class)) {
-                // A read timeout on a fund transfer is AMBIGUOUS — the money MAY have moved.
-                throw new SyncTechnicalException(ErrorClass.AMBIGUOUS, "READ_TIMEOUT", "IMPS backend read timeout");
+                // A read timeout is AMBIGUOUS on the sync lane — the request may have been processed.
+                throw new SyncTechnicalException(ErrorClass.AMBIGUOUS, "READ_TIMEOUT", "LMS backend read timeout");
             }
             if (causedBy(e, IOException.class)) {
-                throw new SyncTechnicalException(ErrorClass.TRANSIENT, "IO", "IMPS backend unreachable");
+                throw new SyncTechnicalException(ErrorClass.TRANSIENT, "IO", "LMS backend unreachable");
             }
-            throw new SyncTechnicalException(ErrorClass.PERMANENT, "RESPONSE", "IMPS backend response error");
+            throw new SyncTechnicalException(ErrorClass.PERMANENT, "RESPONSE", "LMS backend response error");
         }
     }
 

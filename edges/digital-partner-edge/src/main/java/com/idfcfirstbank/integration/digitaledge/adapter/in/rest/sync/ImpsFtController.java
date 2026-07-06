@@ -1,9 +1,10 @@
-package com.idfcfirstbank.integration.capabilities.impsdisbursal.adapter.in.rest;
+package com.idfcfirstbank.integration.digitaledge.adapter.in.rest.sync;
 
-import com.idfcfirstbank.integration.capabilities.impsdisbursal.application.ImpsDisbursalService;
-import com.idfcfirstbank.integration.capabilities.impsdisbursal.application.SyncCapabilityInvoker;
-import com.idfcfirstbank.integration.capabilities.impsdisbursal.domain.error.SyncTechnicalException;
-import com.idfcfirstbank.integration.capabilities.impsdisbursal.domain.model.SyncRequestContext;
+import com.idfcfirstbank.integration.shared.sync.BearerTokenValidator;
+import com.idfcfirstbank.integration.shared.sync.SyncCapabilityInvoker;
+import com.idfcfirstbank.integration.shared.sync.SyncErrorResponse;
+import com.idfcfirstbank.integration.shared.sync.SyncRequestContext;
+import com.idfcfirstbank.integration.shared.sync.SyncTechnicalException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -17,17 +18,21 @@ import java.util.Map;
 
 /**
  * The SYNCHRONOUS IMPS fund-transfer door — the real INDMONEY {@code POST
- * /api/v1/impsFT} path. The caller BLOCKS for the result on this same call: NO
- * journey engine, NO Kafka, NO journeyInstanceId. Fail-closed Bearer auth →
- * structural check → in-thread invoke → the mapped IMPS result. A business "no"
- * (status ≠ S) comes back as a normal 200 envelope; a downstream technical failure
- * is a uniform 502 (never a fake success). {@code source} (INDMONEY) is recorded
- * for trace only — it does not fork the code path.
+ * /api/v1/impsFT} path, hosted on the digital edge. The caller BLOCKS for the
+ * result on this same call: the edge invokes the imps-disbursal capability
+ * IN-THREAD (NO journey engine, NO Kafka, NO journeyInstanceId). Fail-closed Bearer
+ * auth → structural check → invoke → the mapped IMPS result. A business "no"
+ * (status ≠ S) is a normal 200 envelope; a downstream technical failure is a
+ * uniform 502 (never a fake success). {@code source} (INDMONEY) is recorded for
+ * trace only — it does not fork the code path.
  */
 @RestController
 public class ImpsFtController {
 
     private static final Logger log = LoggerFactory.getLogger(ImpsFtController.class);
+
+    private static final String CAPABILITY = "imps-disbursal";
+    private static final String OPERATION = "transfer";
 
     private final SyncCapabilityInvoker invoker;
     private final BearerTokenValidator bearer;
@@ -60,8 +65,7 @@ public class ImpsFtController {
 
         SyncRequestContext context = SyncRequestContext.of(correlationId, transactionId, source);
         try {
-            Map<String, Object> result = invoker.invoke(
-                    ImpsDisbursalService.KEY, ImpsDisbursalService.OP_TRANSFER, body, context);
+            Map<String, Object> result = invoker.invoke(CAPABILITY, OPERATION, body, context);
             // Success AND business decline both return 200 + the envelope; the caller
             // reads `status` (S = moved, else the errCode/errMessage "no").
             return ResponseEntity.ok(result);

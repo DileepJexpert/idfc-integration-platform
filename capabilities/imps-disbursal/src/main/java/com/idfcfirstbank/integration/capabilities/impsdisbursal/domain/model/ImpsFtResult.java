@@ -9,7 +9,7 @@ import java.util.Map;
  * {@code errCode}/{@code errMessage} populated) is a BUSINESS "no" — a real
  * outcome to return to the caller, NOT a technical exception. A transport failure
  * (timeout/5xx) never produces one of these — it throws
- * {@link com.idfcfirstbank.integration.capabilities.impsdisbursal.domain.error.SyncTechnicalException}.
+ * {@link com.idfcfirstbank.integration.shared.sync.SyncTechnicalException}.
  */
 public record ImpsFtResult(
         String reqId,

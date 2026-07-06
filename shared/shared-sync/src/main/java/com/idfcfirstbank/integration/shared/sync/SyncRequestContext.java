@@ -1,4 +1,4 @@
-package com.idfcfirstbank.integration.capabilities.impsdisbursal.domain.model;
+package com.idfcfirstbank.integration.shared.sync;
 
 /**
  * The trace/authz context carried alongside a SYNC request — recorded exactly as

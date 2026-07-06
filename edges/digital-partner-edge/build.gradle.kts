@@ -13,6 +13,13 @@ dependencies {
     implementation(project(":shared:shared-domain"))
     implementation(project(":platform:platform-messaging"))
 
+    // The digital-lending SYNC lane: this edge also hosts the synchronous doors
+    // (impsFT / callLmsUtilities), invoking the capabilities in-thread — NOT via
+    // the engine. shared-sync is the contract; the capabilities are libraries.
+    implementation(project(":shared:shared-sync"))
+    implementation(project(":capabilities:imps-disbursal"))
+    implementation(project(":capabilities:lms-utilities"))
+
     implementation("org.springframework.kafka:spring-kafka:${property("springKafkaVersion")}")
     // SAME idempotency store as the platform (Aerospike) — partner resends dedupe too.
     implementation("com.aerospike:aerospike-client-jdk21:${property("aerospikeClientVersion")}")

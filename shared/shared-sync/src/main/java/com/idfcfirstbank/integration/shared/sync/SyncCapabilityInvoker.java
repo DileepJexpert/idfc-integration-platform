@@ -1,11 +1,8 @@
-package com.idfcfirstbank.integration.capabilities.impsdisbursal.application;
+package com.idfcfirstbank.integration.shared.sync;
 
-import com.idfcfirstbank.integration.capabilities.impsdisbursal.domain.error.SyncTechnicalException;
-import com.idfcfirstbank.integration.capabilities.impsdisbursal.domain.model.SyncRequestContext;
 import com.idfcfirstbank.integration.shared.domain.capability.ErrorClass;
-import org.springframework.stereotype.Component;
 
-import java.util.List;
+import java.util.Collection;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -19,14 +16,14 @@ import java.util.stream.Collectors;
  *
  * <p>Dispatch is by capabilityKey only. The partner ({@code source}) is carried on
  * the context for trace/authz but never selects a capability — one lane, one code
- * path, per the digital-lending contract.
+ * path, per the digital-lending contract. A plain POJO: the sync ingress app wires
+ * it from the registered {@link SyncInvocable} beans.
  */
-@Component
 public class SyncCapabilityInvoker {
 
     private final Map<String, SyncInvocable> byKey;
 
-    public SyncCapabilityInvoker(List<SyncInvocable> invocables) {
+    public SyncCapabilityInvoker(Collection<SyncInvocable> invocables) {
         this.byKey = invocables.stream()
                 .collect(Collectors.toUnmodifiableMap(SyncInvocable::capabilityKey, Function.identity()));
     }
