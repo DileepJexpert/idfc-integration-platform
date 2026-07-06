@@ -54,22 +54,22 @@ Use this to hand-drive a run node-by-node: you publish the starting envelope AND
 
 `state-store=in-memory` means an engine restart clears all runs (clean slate between test cases). `journey-source=classpath` loads only `loan-origination.journey.json` by default — see the troubleshooting table for how to make the verification / e-mandate journeys reachable.
 
-### Mode C — Demo features (device-financing + fusion-hcm file batch)
+### Mode C — Demo features (device-validation + fusion-hcm file batch)
 
-There is **no separate `demo` profile** — the two demo doors + journeys live in the engine's `local` profile (`application-local.yml`), loaded via classpath. Mode C is just Mode A/B **plus** the two demo capability apps that make real HTTP calls to `mock-devicefin` (9106) / `mock-fusion` (9107). The one-click `./run-services.sh` already starts all of this; the explicit commands are:
+There is **no separate `demo` profile** — the two demo doors + journeys live in the engine's `local` profile (`application-local.yml`), loaded via classpath. Mode C is just Mode A/B **plus** the two demo capability apps that make real HTTP calls to `mock-devicevalidation` (9106) / `mock-fusion` (9107). The one-click `./run-services.sh` already starts all of this; the explicit commands are:
 
 ```bash
-# engine with the demo rows (adds topics orig.device-financing.v1 / orig.employee-lwd-update.v1 and 2 demo journeys)
+# engine with the demo rows (adds topics orig.device-validation.v1 / orig.employee-lwd-update.v1 and 2 demo journeys)
 ./gradlew :orchestration:origination-journey:bootRun \
   --args='--spring.profiles.active=local --idfc.engine.journey-source=classpath --idfc.engine.state-store=in-memory'
 
 # the capabilities + the file-batch ingress edge
-./gradlew :capabilities:device-financing:bootRun --args='--spring.profiles.active=local' &          # :8110
+./gradlew :capabilities:device-validation:bootRun --args='--spring.profiles.active=local' &          # :8110
 ./gradlew :capabilities:fusion-hcm:bootRun --args='--spring.profiles.active=local' &                # :8111
 ./gradlew :edges:file-batch-edge:bootRun --args='--spring.profiles.active=local --file-batch.enabled=true' &  # :8112
 ```
 
-Trigger the demos: `demo/run-demo1.sh` (fires SAMSUNG/GODREJ/BOSCH-decline/SAMSUNG-fail at `orig.device-financing.v1`) and `demo/run-demo2.sh` (drops the sample CSV into `demo/batch-inbox/`). Add a brand live with no rebuild by passing extra `--device-financing.brands.<BRAND>.*` CLI rows (see the device-financing section).
+Trigger the demos: `demo/run-demo1.sh` (fires SAMSUNG/GODREJ/BOSCH-decline/SAMSUNG-fail at `orig.device-validation.v1`) and `demo/run-demo2.sh` (drops the sample CSV into `demo/batch-inbox/`). Add a brand live with no rebuild by passing extra `--device-validation.brands.<BRAND>.*` CLI rows (see the device-validation section).
 
 ---
 
@@ -85,7 +85,7 @@ Trigger the demos: `demo/run-demo1.sh` (fires SAMSUNG/GODREJ/BOSCH-decline/SAMSU
 | ops-query (in engine) | 8082 | `GET /ops/runs` · `GET /ops/runs/search?key=` · `GET /ops/runs/{runId}` | `X-Ops-Token` + `X-User-Id` |
 | journey-registry | 8104 | `…/api/v1/journeys…` (maker-checker lifecycle, 13 endpoints) | `X-Registry-Token` + `X-User-Id` (writes) |
 | customer-party / kyc / bureau / scoring / lending-origination | 8090 / 8091 / 8092 / 8093 / 8094 | health/metrics only; work over Kafka | — |
-| device-financing / fusion-hcm / file-batch-edge | 8110 / 8111 / 8112 | capabilities + ingress edge; doors over Kafka | — |
+| device-validation / fusion-hcm / file-batch-edge | 8110 / 8111 / 8112 | capabilities + ingress edge; doors over Kafka | — |
 
 > **SFDC ingress is SOAP-only.** The only origination door is `POST /api/v1/sfdc/outbound-messages` consuming a raw SOAP Outbound Message (XML). (The JSON `POST /api/v1/sfdc/notifications` call in `demo.sh` is stale and does not exist in the current controller.) For manual testing it is almost always simpler to skip the SOAP edge and publish the `CanonicalEnvelope` JSON straight to an origination topic in Kafka UI.
 
@@ -98,14 +98,14 @@ Trigger the demos: `demo/run-demo1.sh` (fires SAMSUNG/GODREJ/BOSCH-decline/SAMSU
 | Aerospike | `localhost:3000` | run-dedup + idempotency store (when `state-store=aerospike`) |
 | CloudBeaver (FinnOne/Oracle SQL) | http://localhost:8978 | host=`mock-finnone` port 1521 service `XEPDB1` user/pass `finnone` |
 | mock-posidex / cibil / fico / nsdl / karza | 9101 / 9102 / 9103 / 9104 / 9105 | WireMock vendor stubs (loan + verification) |
-| mock-devicefin / mock-fusion | 9106 / 9107 | demo vendor stubs |
+| mock-devicevalidation / mock-fusion | 9106 / 9107 | demo vendor stubs |
 
 ### Topics
 
 | Purpose | Topic(s) | Message key | Value |
 |---|---|---|---|
 | **Start a run** (origination) | `orig.sfdc.pl.v1`, `orig.sfdc.lap.v1`, `orig.sfdc.bl.v1`, `orig.sfdc.commercial.v1` | `notificationId` | `CanonicalEnvelope` JSON |
-| Demo doors (Mode C) | `orig.device-financing.v1`, `orig.employee-lwd-update.v1` | `correlationId` | `CanonicalEnvelope` JSON |
+| Demo doors (Mode C) | `orig.device-validation.v1`, `orig.employee-lwd-update.v1` | `correlationId` | `CanonicalEnvelope` JSON |
 | Capability **request** (engine→cap) | `cap.<key>.request.v1` | `journeyInstanceId` | `CapabilityRequest` JSON |
 | Capability **response** (cap→engine) | `cap.<key>.response.v1` | `journeyInstanceId` | `CapabilityResponse` JSON |
 | Journey **decision** (terminal) | `orig.decision.v1` | `applicationRef` | `JourneyDecision` JSON |
@@ -282,7 +282,7 @@ Expected: `200` `{ "applicationId":"DIG-CRED-APP-HIGH-1", "status":"ACK_PROCESSE
 7. [Journey: payment-execution (IMPS / UPI_MANDATE / BILL_PAY / unsupported)](#sec-payment-execution)
 8. [Journey: emandate-autopay-setup](#sec-emandate-autopay)
 9. [Journey: emandate-cancel (found / not-found)](#sec-emandate-cancel)
-10. [Journey: device-financing (SFDC real entry + brand-as-config demo door)](#sec-device-financing)
+10. [Journey: device-validation (SFDC real entry + brand-as-config demo door)](#sec-device-validation)
 11. [Demo: employee-lwd-update file-batch](#sec-employee-lwd)
 12. [Control plane: journey-registry maker-checker (Postman)](#sec-registry)
 13. [Control plane: ops read window /ops (Postman)](#sec-ops)
@@ -4061,68 +4061,75 @@ H='-H X-Ops-Token:dev-ops-token -H X-User-Id:ops.analyst@bank'
 
 ---
 
-<a id="sec-device-financing"></a>
+<a id="sec-device-validation"></a>
 
 ---
 
-## Journey: device-financing (brand-as-config, real HTTP -> WireMock)
+## Journey: device-validation (brand-as-config, real HTTP -> WireMock)
 
-**Two entry doors, ONE journey.** The REAL production front door is an **SFDC Outbound Messaging SOAP call** — `SVCNAME__c = Post_Disbursal_Apple` (Apple post-disbursal device financing) — which the SFDC ingress edge normalizes and routes here; the payload has **no brand field** (brand=**APPLE** is implicit in the svcName) and the device id is `imei` (see *Permutation 0* below + `docs/DEVICE_FINANCING_SFDC_ENTRY.md`). The **demo Kafka door** (`type:"DEVICE_FINANCING"`, `payload.brand`/`payload.deviceId`) is the secondary, journey-only path used by `demo/run-demo1.sh` for the four-outcome set (Permutations 1+).
+**Two entry doors, ONE journey.** The REAL production front door is an **SFDC Outbound Messaging SOAP call** — `SVCNAME__c = Post_Disbursal_Apple` (Apple post-disbursal device validation) — which the SFDC ingress edge normalizes and routes here; the payload has **no brand field** (brand=**APPLE** is implicit in the svcName) and the device id is `imei` (see *Permutation 0* below + `docs/DEVICE_VALIDATION_SFDC_ENTRY.md`). The **demo Kafka door** (`type:"DEVICE_VALIDATION"`, `payload.brand`/`payload.imei`/`payload.serial`) is the secondary, journey-only path used by `demo/run-demo1.sh` for the four-outcome set (Permutations 1+).
 
-Either way it is ONE journey where **every per-brand difference is a config row, not code**: validate-or-not, auth scheme (OAUTH / BASIC / NA), and the "approved" pass-path/pass-value all come from `device-financing.brands.*`. The capability (`device-financing`, ops `resolveBrand` / `validate` / `block`) makes a **real HTTP POST** to the WireMock vendor at `http://localhost:9106/vendor/device-financing/{validate|block}`; only the response DATA is mocked.
+Either way it is ONE journey that runs up to **three config-gated activities — `validate`, `block`, `unblock`** — where **every per-brand difference is a config row, not code**: which activities the brand supports, how the device is identified (`validate-by: imei | serial`), the auth scheme (OAUTH / BASIC / NA), and the "valid" pass-path/pass-value all come from `device-validation.brands.*`. Each activity runs only on the **INTERSECTION** of (the request asks for it, via its `status`) AND (the brand supports it, via its flag). The capability (`device-validation`, ops `decideActivities` / `validate` / `block` / `unblock`) makes a **real HTTP POST** to the WireMock vendor at `http://localhost:9106/vendor/device-validation/{validate|block|unblock}`; only the response DATA is mocked.
 
-### Pinned journey facts (device-financing v1, classpath-loaded on the local profile)
+**Request `status` selects activities** (config `device-validation.status-activities`): `status "1"` = **validate + block** (disbursal); `status "2"` = **unblock** (closure). An absent/blank status **defaults to "1"**. `decideActivities` then intersects the status-selected set with the brand's per-activity flags to produce the run plan (`runValidate` / `runBlock` / `runUnblock`).
 
-Nodes (start `n_brand`):
+### Pinned journey facts (device-validation v1, classpath-loaded on the local profile)
+
+Nodes (start `n_decide`):
 
 | id | type | op / condition | output | true-arm → | default → |
 |---|---|---|---|---|---|
-| `n_brand` | task | `resolveBrand`, input `{ brand: context.brand, type: context.type }` | `context.brandConfig` = `{brand, validationRequired, authType}` | — | `n_route` |
-| `n_route` | branch | `context.brandConfig.validationRequired == true` | — | `n_validate` | `n_block` |
-| `n_validate` | task | `validate`, input `{ brand, type, deviceId, imei }` | `context.validation` = `{brand, approved, authType, vendor}` | — | `n_vroute` |
-| `n_vroute` | branch | `context.validation.approved == true` | — | `n_block` | `n_reject` |
-| `n_block` | task | `block`, input `{ brand, type, deviceId, imei }` | `context.block` = `{brand, approved, authType, vendor}` | — | `n_decide` |
-| `n_decide` | branch | `context.block.approved == true` | — | `n_approve` | `n_reject` |
-| `n_approve` | terminal | `status:"completed"`, `emit:["DeviceFinancingApproved"]` | → outcome **APPROVED** | — | — |
-| `n_reject` | terminal | `status:"rejected"`, `emit:["DeviceFinancingDeclined"]` | → outcome **REJECTED** | — | — |
+| `n_decide` | task | `decideActivities`, input `{ brand, type, status }` | `context.plan` = `{brand, validateBy, authType, runValidate, runBlock, runUnblock}` | — | `n_gate_validate` |
+| `n_gate_validate` | branch | `context.plan.runValidate == true` | — | `n_validate` | `n_gate_block` |
+| `n_validate` | task | `validate`, input `{ brand, type, deviceId, imei, serial }` | `context.validateResult` = `{brand, valid, authType, vendor}` | — | `n_after_validate` |
+| `n_after_validate` | branch | `context.validateResult.valid == true` | — | `n_gate_block` | `n_invalid` |
+| `n_gate_block` | branch | `context.plan.runBlock == true` | — | `n_block` | `n_gate_unblock` |
+| `n_block` | task | `block`, input `{ brand, type, deviceId, imei, serial }` | `context.blockResult` = `{brand, valid, authType, vendor}` | — | `n_after_block` |
+| `n_after_block` | branch | `context.blockResult.valid == true` | — | `n_gate_unblock` | `n_invalid` |
+| `n_gate_unblock` | branch | `context.plan.runUnblock == true` | — | `n_unblock` | `n_valid` |
+| `n_unblock` | task | `unblock`, input `{ brand, type, deviceId, imei, serial }` | `context.unblockResult` = `{brand, valid, authType, vendor}` | — | `n_after_unblock` |
+| `n_after_unblock` | branch | `context.unblockResult.valid == true` | — | `n_valid` | `n_invalid` |
+| `n_valid` | terminal | `status:"completed"`, `emit:["DeviceValidationValid"]` | → outcome **APPROVED** | — | — |
+| `n_invalid` | terminal | `status:"rejected"`, `emit:["DeviceValidationInvalid"]` | → outcome **REJECTED** | — | — |
 
 Key derived facts (all confirmed in code):
-- `==` is a **string compare**; the booleans stringify (`true`→`"true"`). Branch drivers: `brandConfig.validationRequired`, `validation.approved`, `block.approved`.
-- **Brand + device-id resolution:** the capability reads `payload.brand` if present (demo Kafka door); otherwise it derives the brand from the svcName (`type`) via the brand row's `svc-name` (real SFDC door — e.g. `Post_Disbursal_Apple → APPLE`). The device id is `payload.deviceId` if present, else `payload.imei`. Neither yields a brand → PERMANENT (fail closed, "missing brand").
-- A validation-required brand (SAMSUNG, BOSCH) must pass **BOTH** `validate` and `block` to reach APPROVED. A block-only brand (GODREJ, HISENSE) runs `n_block` only.
+- `==` is a **string compare**; the booleans stringify (`true`→`"true"`). Branch drivers: `plan.runValidate`, `validateResult.valid`, `plan.runBlock`, `blockResult.valid`, `plan.runUnblock`, `unblockResult.valid`.
+- **Each `n_gate_*` skips its activity when the matching `run*` flag is false** (its default arm hops straight to the next gate). Any activity that **runs** and returns `valid:false` routes to `n_invalid`. Reaching the end with every run-activity valid (or with **nothing to run**) routes to `n_valid`.
+- The run plan is the **intersection** of status and brand flags: a `status "1"` request runs `validate`/`block` **only for the brands whose `validate`/`block` flag is true**; a `status "2"` request runs `unblock` only if the brand's `unblock` flag is true. A brand with a false flag simply skips that activity's gate.
+- **Brand + device-id resolution:** the capability reads `payload.brand` if present (demo Kafka door); otherwise it derives the brand from the svcName (`type`) via the brand row's `svc-name` (real SFDC door — e.g. `Post_Disbursal_Apple → APPLE`). The device id comes from the field named by the brand's **`validate-by`**: an `imei` brand reads `payload.imei`, a `serial` brand reads `payload.serial`; a generic `payload.deviceId` still works as a **fallback** on the Kafka door. Neither a brand nor a device id → PERMANENT (fail closed, "missing brand").
 - **No node has a `retrySpec`, `onFailure`, or breaker policy.** Any capability `status:ERROR` fails the node on the first response and fails the run — TRANSIENT and AMBIGUOUS are **not retried** here (they die exactly like PERMANENT); only the recorded `failureClass` differs. There is **no compensation** (no completed compensable node). **`BREAKER_OPEN` is unreachable** in this journey (no circuit-breaker configured, and `ErrorClass` only has TRANSIENT/PERMANENT/AMBIGUOUS — see the N/A permutation below).
-- HTTP→ErrorClass map (`DeviceFinancingVendorClient`): **4xx → PERMANENT**, **5xx → TRANSIENT**, **read-timeout(>10000ms) → AMBIGUOUS**, **connect/IO refused → TRANSIENT**, empty body → PERMANENT, unknown/missing brand → PERMANENT (fail-closed).
+- HTTP→ErrorClass map (`DeviceValidationVendorClient`): **4xx → PERMANENT**, **5xx → TRANSIENT**, **read-timeout(>10000ms) → AMBIGUOUS**, **connect/IO refused → TRANSIENT**, empty body → PERMANENT, unknown/missing brand → PERMANENT (fail-closed).
 
 ### Config levers (local profile, `application-local.yml`)
 
-| Brand | `auth-type` | `validation-required` | `pass-path` | `pass-value` | vendor pass body |
-|---|---|---|---|---|---|
-| SAMSUNG | OAUTH | true | `respCode` | `"0"` | `{"respCode":"0"}` |
-| GODREJ | NA | false | `status` | `"OK"` | `{"status":"OK"}` |
-| BOSCH | BAUTH | true | `result.code` | `"S"` | `{"result":{"code":"S"}}` |
-| HISENSE | OAUTH | false | `responseStatus` | `"-4"` | `{"responseStatus":"-4"}` (added at runtime, no rebuild) |
-| APPLE | OAUTH | false | `respCode` | `"0"` | `{"respCode":"0"}` (real SFDC door; row also declares `svc-name: Post_Disbursal_Apple`) |
+| Brand | `auth-type` | `validate` | `block` | `unblock` | `validate-by` | `pass-path` | `pass-value` | vendor pass body |
+|---|---|---|---|---|---|---|---|---|
+| SAMSUNG | OAUTH | true | true | true | `imei` | `respCode` | `"0"` | `{"respCode":"0"}` |
+| GODREJ | NA | false | true | false | `serial` | `status` | `"OK"` | `{"status":"OK"}` |
+| BOSCH | BAUTH | true | true | true | `serial` | `result.code` | `"S"` | `{"result":{"code":"S"}}` |
+| HISENSE | OAUTH | false | true | false | `imei` | `responseStatus` | `"-4"` | `{"responseStatus":"-4"}` (added at runtime, no rebuild) |
+| APPLE | OAUTH | false | true | false | `imei` | `respCode` | `"0"` | `{"respCode":"0"}` (real SFDC door; row also declares `svc-name: Post_Disbursal_Apple`) |
 
-deviceId levers (WireMock, `POST /vendor/device-financing/{validate|block}`):
+deviceId levers (WireMock, `POST /vendor/device-validation/{validate|block|unblock}` — the same vendor call backs all three activities):
 - **`DEV-FAIL`** → `00-fail.json` (priority 1) returns **HTTP 422** for ANY brand → PERMANENT → FAILED.
-- **`DEV-DECLINE`** → per-brand decline body at **HTTP 200** (`{"respCode":"1"}` / `{"status":"DECLINED"}` / `{"result":{"code":"F"}}`) → `approved=false` → business decline (teal).
-- any other deviceId → per-brand pass body at HTTP 200 → `approved=true`.
+- **`DEV-DECLINE`** → per-brand decline body at **HTTP 200** (`{"respCode":"1"}` / `{"status":"DECLINED"}` / `{"result":{"code":"F"}}`) → `valid=false` → business **invalid** (teal, `COMPLETED_DECLINED`).
+- any other device id → per-brand pass body at HTTP 200 → `valid=true`.
 
 ### Entry — two doors
 
-**Real SFDC SOAP door (production — Permutation 0):** an SFDC Outbound Message `POST /api/v1/sfdc/outbound-messages` (edge `:8080`, header `X-Auth-Token: dev-token`) with `SVCNAME__c = Post_Disbursal_Apple`. The edge normalizes it (svcName → `type`, `Request__c` CDATA → inline `payload`) and publishes to `orig.device-financing.v1`; the engine's `type-to-journey.Post_Disbursal_Apple` routes it here. The payload has **no brand field** (brand=APPLE from the svcName) and carries `imei` + `paymentInfo`. The correlationId is **edge-generated** (NOT the `correlationid` header), so the run's ops search key is its **`notificationId`** (`Notification/Id`) or **`sfdcRecordId`** (`sf1:Id`). Full curl + reference envelope: `docs/DEVICE_FINANCING_SFDC_ENTRY.md`; fixture `full-flow-it/src/test/resources/sfdc-outbound-apple-postdisbursal.xml`.
+**Real SFDC SOAP door (production — Permutation 0):** an SFDC Outbound Message `POST /api/v1/sfdc/outbound-messages` (edge `:8080`, header `X-Auth-Token: dev-token`) with `SVCNAME__c = Post_Disbursal_Apple`. The edge normalizes it (svcName → `type`, `Request__c` CDATA → inline `payload`) and publishes to `orig.device-validation.v1`; the engine's `type-to-journey.Post_Disbursal_Apple` routes it here. The payload has **no brand field** (brand=APPLE from the svcName) and carries `imei` + `paymentInfo`. The correlationId is **edge-generated** (NOT the `correlationid` header), so the run's ops search key is its **`notificationId`** (`Notification/Id`) or **`sfdcRecordId`** (`sf1:Id`). Full curl + reference envelope: `docs/DEVICE_VALIDATION_SFDC_ENTRY.md`; fixture `full-flow-it/src/test/resources/sfdc-outbound-apple-postdisbursal.xml`.
 
-**Demo Kafka door (secondary — Permutations 1+):** produce to topic **`orig.device-financing.v1`**, **key = `correlationId`**, value = the CanonicalEnvelope with `type:"DEVICE_FINANCING"` and `payload.brand`/`payload.deviceId` (the business fields the capability reads on this door). Engine instance id `"ji-" + correlationId` (correlationId is the first non-null dedup key). Ops search keys = `correlationId` / `notificationId` / `sfdcRecordId`.
+**Demo Kafka door (secondary — Permutations 1+):** produce to topic **`orig.device-validation.v1`**, **key = `correlationId`**, value = the CanonicalEnvelope with `type:"DEVICE_VALIDATION"`, `payload.brand`, `payload.status` (`"1"`/`"2"`, defaults to `"1"`), and the device id in `payload.imei`/`payload.serial` per the brand's `validate-by` (generic `payload.deviceId` works as a fallback) — the business fields the capability reads on this door. Engine instance id `"ji-" + correlationId` (correlationId is the first non-null dedup key). Ops search keys = `correlationId` / `notificationId` / `sfdcRecordId`.
 
-Full-stack prereq: engine started via `./run-services.sh` (or `bootRun --spring.profiles.active=local --idfc.engine.journey-source=classpath`), the `device-financing` app, and the WireMock mock-vendors server (`:9106`) all running (or just run `demo/run-demo1.sh` for the canned four-outcome set). Engine-only manual prereq: engine running; you hand-publish `cap.device-financing.response.v1` messages to steer each hop.
+Full-stack prereq: engine started via `./run-services.sh` (or `bootRun --spring.profiles.active=local --idfc.engine.journey-source=classpath`), the `device-validation` app, and the WireMock mock-vendors server (`:9106`) all running (or just run `demo/run-demo1.sh` for the canned four-outcome set). Engine-only manual prereq: engine running; you hand-publish `cap.device-validation.response.v1` messages to steer each hop.
 
 ---
 
-### Permutation 0 — REAL SFDC SOAP entry (Post_Disbursal_Apple → APPROVED)
+### Permutation 0 — REAL SFDC SOAP entry (Post_Disbursal_Apple → VALID / APPROVED)
 
-The production path. `SVCNAME__c = Post_Disbursal_Apple`, **no brand in the body** (brand=APPLE derived from the svcName), device id = `imei`. APPLE is `validation-required:false`, so it is a single `n_block` confirmation call — no `n_validate` (structurally like GODREJ).
+The production path. `SVCNAME__c = Post_Disbursal_Apple`, **no brand in the body** (brand=APPLE derived from the svcName), device id = `imei`, status defaults to `"1"`. APPLE supports **block only** (`validate:false`, `block:true`, `unblock:false`), so at status "1" the plan is `runBlock:true` (others false) — a single `n_block` confirmation call, no `n_validate` (structurally like GODREJ).
 
-**Entry** — SOAP POST to the LOCAL edge (`docs/DEVICE_FINANCING_SFDC_ENTRY.md` has the full envelope inline):
+**Entry** — SOAP POST to the LOCAL edge (`docs/DEVICE_VALIDATION_SFDC_ENTRY.md` has the full envelope inline):
 ```bash
 curl -sS -X POST http://localhost:8080/api/v1/sfdc/outbound-messages \
   -H "X-Auth-Token: dev-token" -H "Content-Type: text/xml" \
@@ -4131,23 +4138,23 @@ curl -sS -X POST http://localhost:8080/api/v1/sfdc/outbound-messages \
 ```
 
 **Drive to outcome**
-- **Full-stack:** `apple-pass.json` matches `brand=APPLE` and returns `{"respCode":"0"}` → `approved=true`. (Apple is OAUTH → the client fetches a bearer token from `oauth-token.json` first.)
-- **Engine-only:** the instanceId is **edge-generated** — read it from the engine `journey.start instanceId=...` log or `GET /ops/runs/search?key=<notificationId>`. Then publish to `cap.device-financing.response.v1`: `n_brand` result `{"brand":"APPLE","validationRequired":false,"authType":"OAUTH"}`, then `n_block` result `{"brand":"APPLE","approved":true,"authType":"OAUTH","vendor":{"respCode":"0"}}`.
+- **Full-stack:** `apple-pass.json` matches `brand=APPLE` and returns `{"respCode":"0"}` → `valid=true`. (Apple is OAUTH → the client fetches a bearer token from `oauth-token.json` first.)
+- **Engine-only:** the instanceId is **edge-generated** — read it from the engine `journey.start instanceId=...` log or `GET /ops/runs/search?key=<notificationId>`. Then publish to `cap.device-validation.response.v1`: `n_decide` result `{"brand":"APPLE","validateBy":"imei","authType":"OAUTH","runValidate":false,"runBlock":true,"runUnblock":false}`, then `n_block` result `{"brand":"APPLE","valid":true,"authType":"OAUTH","vendor":{"respCode":"0"}}`.
 
-**Expected result** — ops status **`COMPLETED_APPROVED`**, terminalNodeId `n_approve`, transitions `n_brand → n_block` (no `n_validate`). Emit `DeviceFinancingApproved`. **Verify:** `GET /ops/runs/search?key=04l7200000Daq5RAbR` (the `notificationId`) — one run, `journeyKey:"device-financing"`. Decline/technical-fail variants behave exactly as the decline/fail permutations below (a non-pass vendor body → `COMPLETED_DECLINED` at `n_reject`; a 4xx/5xx/timeout → `FAILED_*` at `n_block`, failureClass PERMANENT/TRANSIENT/AMBIGUOUS).
+**Expected result** — ops status **`COMPLETED_APPROVED`**, terminalNodeId `n_valid`, transitions `n_decide → n_block` (no `n_validate`/`n_unblock`). Emit `DeviceValidationValid`. **Verify:** `GET /ops/runs/search?key=04l7200000Daq5RAbR` (the `notificationId`) — one run, `journeyKey:"device-validation"`. Invalid/technical-fail variants behave exactly as the invalid/fail permutations below (a non-pass vendor body → `COMPLETED_DECLINED` at `n_invalid`; a 4xx/5xx/timeout → `FAILED_*` at `n_block`, failureClass PERMANENT/TRANSIENT/AMBIGUOUS).
 
 ---
 
-### Permutation 1 — APPROVED, validation-required brand (SAMSUNG, validate + block both pass)
+### Permutation 1 — VALID, validate+block brand (SAMSUNG, status "1", validate + block both pass)
 
-**Entry** — (Kafka) topic `orig.device-financing.v1`, key `corr-df-approve-samsung`:
+**Entry** — (Kafka) topic `orig.device-validation.v1`, key `corr-df-approve-samsung`:
 
 ```json
 {
   "transactionId": "corr-df-approve-samsung-t",
   "schemaVersion": "demo.v1",
   "source": "FILE_DEMO",
-  "type": "DEVICE_FINANCING",
+  "type": "DEVICE_VALIDATION",
   "notificationId": "corr-df-approve-samsung-n",
   "orgId": "DEMO-ORG",
   "sfdcRecordId": "DEV-1",
@@ -4156,39 +4163,39 @@ curl -sS -X POST http://localhost:8080/api/v1/sfdc/outbound-messages \
   "originalCorrelationId": "corr-df-approve-samsung",
   "payloadContentType": "application/json",
   "occurredAt": "2026-07-03T10:00:00Z",
-  "payload": { "brand": "SAMSUNG", "deviceId": "DEV-1" }
+  "payload": { "brand": "SAMSUNG", "status": "1", "imei": "DEV-1" }
 }
 ```
 
 **Drive to outcome**
-- **Full-stack:** brand `SAMSUNG` (OAUTH, `validationRequired=true`, passPath `respCode`, passValue `"0"`) + any deviceId that is not `DEV-FAIL`/`DEV-DECLINE` (here `DEV-1`). Client fetches a bearer token from `oauth-token.json`, then `samsung-pass.json` returns `{"respCode":"0"}` for both `validate` and `block` → `approved=true` at both.
-- **Engine-only manual mode** (instance `ji-corr-df-approve-samsung`), publish to `cap.device-financing.response.v1` in this order:
+- **Full-stack:** brand `SAMSUNG` (OAUTH, `validate:true`/`block:true`/`unblock:true`, `validate-by:imei`, passPath `respCode`, passValue `"0"`) at `status "1"` → plan `runValidate:true, runBlock:true, runUnblock:false`. Any device id that is not `DEV-FAIL`/`DEV-DECLINE` (here `imei=DEV-1`). Client fetches a bearer token from `oauth-token.json`, then `samsung-pass.json` returns `{"respCode":"0"}` for both `validate` and `block` → `valid=true` at both.
+- **Engine-only manual mode** (instance `ji-corr-df-approve-samsung`), publish to `cap.device-validation.response.v1` in this order:
 
-  n_brand:
+  n_decide:
   ```json
-  { "journeyInstanceId": "ji-corr-df-approve-samsung", "correlationId": "corr-df-approve-samsung", "nodeId": "n_brand", "capabilityKey": "device-financing", "status": "OK", "result": { "brand": "SAMSUNG", "validationRequired": true, "authType": "OAUTH" }, "errorClass": null }
+  { "journeyInstanceId": "ji-corr-df-approve-samsung", "correlationId": "corr-df-approve-samsung", "nodeId": "n_decide", "capabilityKey": "device-validation", "status": "OK", "result": { "brand": "SAMSUNG", "validateBy": "imei", "authType": "OAUTH", "runValidate": true, "runBlock": true, "runUnblock": false }, "errorClass": null }
   ```
   n_validate:
   ```json
-  { "journeyInstanceId": "ji-corr-df-approve-samsung", "correlationId": "corr-df-approve-samsung", "nodeId": "n_validate", "capabilityKey": "device-financing", "status": "OK", "result": { "brand": "SAMSUNG", "approved": true, "authType": "OAUTH", "vendor": { "respCode": "0" } }, "errorClass": null }
+  { "journeyInstanceId": "ji-corr-df-approve-samsung", "correlationId": "corr-df-approve-samsung", "nodeId": "n_validate", "capabilityKey": "device-validation", "status": "OK", "result": { "brand": "SAMSUNG", "valid": true, "authType": "OAUTH", "vendor": { "respCode": "0" } }, "errorClass": null }
   ```
   n_block:
   ```json
-  { "journeyInstanceId": "ji-corr-df-approve-samsung", "correlationId": "corr-df-approve-samsung", "nodeId": "n_block", "capabilityKey": "device-financing", "status": "OK", "result": { "brand": "SAMSUNG", "approved": true, "authType": "OAUTH", "vendor": { "respCode": "0" } }, "errorClass": null }
+  { "journeyInstanceId": "ji-corr-df-approve-samsung", "correlationId": "corr-df-approve-samsung", "nodeId": "n_block", "capabilityKey": "device-validation", "status": "OK", "result": { "brand": "SAMSUNG", "valid": true, "authType": "OAUTH", "vendor": { "respCode": "0" } }, "errorClass": null }
   ```
 
-**Expected result** — ops status **`COMPLETED_APPROVED`**; terminal node **`n_approve`**, terminalOutcome **APPROVED**. Transitions: `n_brand`→`n_validate`→`n_block` all `COMPLETED` (branch nodes `n_route`/`n_vroute`/`n_decide` evaluated inline). Decision on `orig.decision.v1` (key = applicationRef `corr-df-approve-samsung-app`): `outcome:"APPROVED"`, `terminalNodeId:"n_approve"`, `loanId:null`, `emitted:["DeviceFinancingApproved"]`. No DLQ. **Verify:** `GET /ops/runs/search?key=corr-df-approve-samsung` → one summary, `status:"COMPLETED_APPROVED"`, then `GET /ops/runs/{runId}` → `terminalNodeId:"n_approve"`, `terminalOutcome:"APPROVED"`, `sfdcNotified:"SENT"`, `dlqTopicRef:null`.
+**Expected result** — ops status **`COMPLETED_APPROVED`**; terminal node **`n_valid`**, terminalOutcome **APPROVED**. Transitions: `n_decide`→`n_validate`→`n_block` all `COMPLETED` (branch nodes `n_gate_validate`/`n_after_validate`/`n_gate_block`/`n_after_block`/`n_gate_unblock` evaluated inline; `runUnblock:false` so `n_gate_unblock` hops straight to `n_valid`). Decision on `orig.decision.v1` (key = applicationRef `corr-df-approve-samsung-app`): `outcome:"APPROVED"`, `terminalNodeId:"n_valid"`, `loanId:null`, `emitted:["DeviceValidationValid"]`. No DLQ. **Verify:** `GET /ops/runs/search?key=corr-df-approve-samsung` → one summary, `status:"COMPLETED_APPROVED"`, then `GET /ops/runs/{runId}` → `terminalNodeId:"n_valid"`, `terminalOutcome:"APPROVED"`, `sfdcNotified:"SENT"`, `dlqTopicRef:null`.
 
-### Permutation 2 — APPROVED, block-only brand (GODREJ, validate skipped)
+### Permutation 2 — VALID, block-only brand (GODREJ, status "1", validate skipped)
 
-**Entry** — topic `orig.device-financing.v1`, key `corr-df-approve-godrej`:
+**Entry** — topic `orig.device-validation.v1`, key `corr-df-approve-godrej`:
 
 ```json
 {
   "transactionId": "corr-df-approve-godrej-t",
   "schemaVersion": "demo.v1",
   "source": "FILE_DEMO",
-  "type": "DEVICE_FINANCING",
+  "type": "DEVICE_VALIDATION",
   "notificationId": "corr-df-approve-godrej-n",
   "orgId": "DEMO-ORG",
   "sfdcRecordId": "DEV-2",
@@ -4197,36 +4204,36 @@ curl -sS -X POST http://localhost:8080/api/v1/sfdc/outbound-messages \
   "originalCorrelationId": "corr-df-approve-godrej",
   "payloadContentType": "application/json",
   "occurredAt": "2026-07-03T10:00:00Z",
-  "payload": { "brand": "GODREJ", "deviceId": "DEV-2" }
+  "payload": { "brand": "GODREJ", "status": "1", "serial": "DEV-2" }
 }
 ```
 
 **Drive to outcome**
-- **Full-stack:** brand `GODREJ` (`authType=NA` → no `Authorization` header, `validationRequired=false`). `n_route` takes the **default** arm → `n_block` (no `n_validate`). `godrej-pass.json` returns `{"status":"OK"}`, passPath `status` == `"OK"` → `approved=true`.
+- **Full-stack:** brand `GODREJ` (`authType=NA` → no `Authorization` header; `validate:false`/`block:true`/`unblock:false`, `validate-by:serial`). At `status "1"` the plan is `runValidate:false, runBlock:true, runUnblock:false`, so `n_gate_validate` takes the **default** arm → `n_gate_block` → `n_block` (no `n_validate`). `godrej-pass.json` returns `{"status":"OK"}`, passPath `status` == `"OK"` → `valid=true`.
 - **Engine-only** (instance `ji-corr-df-approve-godrej`):
 
-  n_brand (validationRequired **false** → routes straight to n_block):
+  n_decide (`runValidate:false` → routes past validate straight to the block gate):
   ```json
-  { "journeyInstanceId": "ji-corr-df-approve-godrej", "correlationId": "corr-df-approve-godrej", "nodeId": "n_brand", "capabilityKey": "device-financing", "status": "OK", "result": { "brand": "GODREJ", "validationRequired": false, "authType": "NA" }, "errorClass": null }
+  { "journeyInstanceId": "ji-corr-df-approve-godrej", "correlationId": "corr-df-approve-godrej", "nodeId": "n_decide", "capabilityKey": "device-validation", "status": "OK", "result": { "brand": "GODREJ", "validateBy": "serial", "authType": "NA", "runValidate": false, "runBlock": true, "runUnblock": false }, "errorClass": null }
   ```
   n_block:
   ```json
-  { "journeyInstanceId": "ji-corr-df-approve-godrej", "correlationId": "corr-df-approve-godrej", "nodeId": "n_block", "capabilityKey": "device-financing", "status": "OK", "result": { "brand": "GODREJ", "approved": true, "authType": "NA", "vendor": { "status": "OK" } }, "errorClass": null }
+  { "journeyInstanceId": "ji-corr-df-approve-godrej", "correlationId": "corr-df-approve-godrej", "nodeId": "n_block", "capabilityKey": "device-validation", "status": "OK", "result": { "brand": "GODREJ", "valid": true, "authType": "NA", "vendor": { "status": "OK" } }, "errorClass": null }
   ```
-  (Do **not** publish an `n_validate` response — it is never dispatched.)
+  (Do **not** publish an `n_validate` or `n_unblock` response — neither is dispatched.)
 
-**Expected result** — ops status **`COMPLETED_APPROVED`**; terminal `n_approve`, APPROVED, `emitted:["DeviceFinancingApproved"]`. Transitions: `n_brand`→`n_block` COMPLETED (no `n_validate` transition — proving the block-only path). **Verify:** `GET /ops/runs/search?key=DEV-2` (sfdcRecordId works as a search key) → `status:"COMPLETED_APPROVED"`; detail shows only `n_brand` and `n_block` in `transitions`.
+**Expected result** — ops status **`COMPLETED_APPROVED`**; terminal `n_valid`, APPROVED, `emitted:["DeviceValidationValid"]`. Transitions: `n_decide`→`n_block` COMPLETED (no `n_validate`/`n_unblock` transition — proving the block-only path). **Verify:** `GET /ops/runs/search?key=DEV-2` (sfdcRecordId works as a search key) → `status:"COMPLETED_APPROVED"`; detail shows only `n_decide` and `n_block` in `transitions`.
 
-### Permutation 3 — APPROVED, brand added at runtime (HISENSE, block-only, brand-as-config proof)
+### Permutation 3 — VALID, brand added at runtime (HISENSE, block-only, brand-as-config proof)
 
-**Entry** — topic `orig.device-financing.v1`, key `corr-df-approve-hisense`:
+**Entry** — topic `orig.device-validation.v1`, key `corr-df-approve-hisense`:
 
 ```json
 {
   "transactionId": "corr-df-approve-hisense-t",
   "schemaVersion": "demo.v1",
   "source": "FILE_DEMO",
-  "type": "DEVICE_FINANCING",
+  "type": "DEVICE_VALIDATION",
   "notificationId": "corr-df-approve-hisense-n",
   "orgId": "DEMO-ORG",
   "sfdcRecordId": "DEV-9",
@@ -4235,26 +4242,76 @@ curl -sS -X POST http://localhost:8080/api/v1/sfdc/outbound-messages \
   "originalCorrelationId": "corr-df-approve-hisense",
   "payloadContentType": "application/json",
   "occurredAt": "2026-07-03T10:00:00Z",
-  "payload": { "brand": "HISENSE", "deviceId": "DEV-9" }
+  "payload": { "brand": "HISENSE", "status": "1", "imei": "DEV-9" }
 }
 ```
 
 **Drive to outcome**
-- **Full-stack:** start the `device-financing` app with the five CLI rows (no rebuild) so a HISENSE config row exists: `--device-financing.brands.HISENSE.auth-type=OAUTH --device-financing.brands.HISENSE.validation-required=false --device-financing.brands.HISENSE.pass-path=responseStatus --device-financing.brands.HISENSE.pass-value=-4` (the `stub-response.*` arg is vestigial — the pass DATA `{"responseStatus":"-4"}` actually comes from `hisense-pass.json`). Then produce the envelope above. `n_route` default → `n_block`; `hisense-pass.json` returns `{"responseStatus":"-4"}`, passPath `responseStatus` == pass-value `"-4"` → `approved=true`. **Contrast:** without the config row, HISENSE hits Permutation 8 (fail-closed FAILED).
-- **Engine-only:** identical to Permutation 2 with `brand:"HISENSE"`, `validationRequired:false`, `authType:"OAUTH"`, and `n_block` result `{"brand":"HISENSE","approved":true,"authType":"OAUTH","vendor":{"responseStatus":"-4"}}`.
+- **Full-stack:** start the `device-validation` app with the seven CLI rows (no rebuild) so a HISENSE config row exists:
+  ```
+  --device-validation.brands.HISENSE.validate=false \
+  --device-validation.brands.HISENSE.block=true \
+  --device-validation.brands.HISENSE.unblock=false \
+  --device-validation.brands.HISENSE.validate-by=imei \
+  --device-validation.brands.HISENSE.auth-type=OAUTH \
+  --device-validation.brands.HISENSE.pass-path=responseStatus \
+  --device-validation.brands.HISENSE.pass-value=-4
+  ```
+  (the pass DATA `{"responseStatus":"-4"}` comes from `hisense-pass.json`). Then produce the envelope above. At `status "1"` the plan is block-only (`validate:false`), so `n_gate_validate` default → `n_gate_block` → `n_block`; `hisense-pass.json` returns `{"responseStatus":"-4"}`, passPath `responseStatus` == pass-value `"-4"` → `valid=true`. **Contrast:** without the config row, HISENSE hits Permutation 8 (fail-closed FAILED).
+- **Engine-only:** identical to Permutation 2 with `brand:"HISENSE"`, `validateBy:"imei"`, `authType:"OAUTH"`, `runValidate:false, runBlock:true, runUnblock:false`, and `n_block` result `{"brand":"HISENSE","valid":true,"authType":"OAUTH","vendor":{"responseStatus":"-4"}}`.
 
-**Expected result** — ops status **`COMPLETED_APPROVED`**, terminal `n_approve`, APPROVED. This is the headline "add a brand with 5 config lines, zero code" case. **Verify:** `GET /ops/runs/search?key=corr-df-approve-hisense` → `COMPLETED_APPROVED`.
+**Expected result** — ops status **`COMPLETED_APPROVED`**, terminal `n_valid`, APPROVED. This is the headline "add a brand with 7 config lines, zero code" case. **Verify:** `GET /ops/runs/search?key=corr-df-approve-hisense` → `COMPLETED_APPROVED`.
 
-### Permutation 4 — DECLINED at validate (validation-required brand, `validation.approved=false`)
+### Permutation 3b — VALID, status-2 unblock (SAMSUNG, only `n_unblock` runs)
 
-**Entry** — topic `orig.device-financing.v1`, key `corr-df-decline-validate`:
+The **closure** path. `status "2"` selects `unblock` only; intersected with SAMSUNG's flags (`unblock:true`) the plan is `runValidate:false, runBlock:false, runUnblock:true`. This proves that `status` — not the brand alone — decides which activities run: the same SAMSUNG row that ran validate+block at `status "1"` (Permutation 1) now runs **only** `unblock`.
+
+**Entry** — topic `orig.device-validation.v1`, key `corr-df-unblock-samsung`:
+
+```json
+{
+  "transactionId": "corr-df-unblock-samsung-t",
+  "schemaVersion": "demo.v1",
+  "source": "FILE_DEMO",
+  "type": "DEVICE_VALIDATION",
+  "notificationId": "corr-df-unblock-samsung-n",
+  "orgId": "DEMO-ORG",
+  "sfdcRecordId": "DEV-10",
+  "applicationRef": "corr-df-unblock-samsung-app",
+  "correlationId": "corr-df-unblock-samsung",
+  "originalCorrelationId": "corr-df-unblock-samsung",
+  "payloadContentType": "application/json",
+  "occurredAt": "2026-07-03T10:00:00Z",
+  "payload": { "brand": "SAMSUNG", "status": "2", "imei": "DEV-10" }
+}
+```
+
+**Drive to outcome**
+- **Full-stack:** brand `SAMSUNG` (OAUTH, `unblock:true`, `validate-by:imei`) + `status "2"` → plan `runValidate:false, runBlock:false, runUnblock:true`. `n_gate_validate` default → `n_gate_block` default → `n_gate_unblock` true → `n_unblock`. `samsung-pass.json` returns `{"respCode":"0"}` for the `unblock` call → `valid=true`.
+- **Engine-only** (instance `ji-corr-df-unblock-samsung`):
+
+  n_decide (`runUnblock:true`, others false):
+  ```json
+  { "journeyInstanceId": "ji-corr-df-unblock-samsung", "correlationId": "corr-df-unblock-samsung", "nodeId": "n_decide", "capabilityKey": "device-validation", "status": "OK", "result": { "brand": "SAMSUNG", "validateBy": "imei", "authType": "OAUTH", "runValidate": false, "runBlock": false, "runUnblock": true }, "errorClass": null }
+  ```
+  n_unblock:
+  ```json
+  { "journeyInstanceId": "ji-corr-df-unblock-samsung", "correlationId": "corr-df-unblock-samsung", "nodeId": "n_unblock", "capabilityKey": "device-validation", "status": "OK", "result": { "brand": "SAMSUNG", "valid": true, "authType": "OAUTH", "vendor": { "respCode": "0" } }, "errorClass": null }
+  ```
+  (Do **not** publish `n_validate` or `n_block` — neither is dispatched at `status "2"`.)
+
+**Expected result** — ops status **`COMPLETED_APPROVED`**; terminal `n_valid`, APPROVED, `emitted:["DeviceValidationValid"]`. Transitions: `n_decide`→`n_unblock` COMPLETED (no `n_validate`/`n_block` — proving `status "2"` runs only `unblock`). **Verify:** `GET /ops/runs/search?key=corr-df-unblock-samsung` → `status:"COMPLETED_APPROVED"`; detail shows only `n_decide` and `n_unblock` in `transitions`.
+
+### Permutation 4 — INVALID at validate (validate+block brand, `validateResult.valid=false`)
+
+**Entry** — topic `orig.device-validation.v1`, key `corr-df-decline-validate`:
 
 ```json
 {
   "transactionId": "corr-df-decline-validate-t",
   "schemaVersion": "demo.v1",
   "source": "FILE_DEMO",
-  "type": "DEVICE_FINANCING",
+  "type": "DEVICE_VALIDATION",
   "notificationId": "corr-df-decline-validate-n",
   "orgId": "DEMO-ORG",
   "sfdcRecordId": "DEV-DECLINE",
@@ -4263,29 +4320,29 @@ curl -sS -X POST http://localhost:8080/api/v1/sfdc/outbound-messages \
   "originalCorrelationId": "corr-df-decline-validate",
   "payloadContentType": "application/json",
   "occurredAt": "2026-07-03T10:00:00Z",
-  "payload": { "brand": "SAMSUNG", "deviceId": "DEV-DECLINE" }
+  "payload": { "brand": "SAMSUNG", "status": "1", "imei": "DEV-DECLINE" }
 }
 ```
 
 **Drive to outcome**
-- **Full-stack:** brand `SAMSUNG` (validation-required) + deviceId `DEV-DECLINE`. `samsung-decline.json` returns HTTP **200** `{"respCode":"1"}` → passPath `respCode` != `"0"` → `approved=false` at `n_validate` → `n_vroute` default → `n_reject`. (`n_block` never runs — SAMSUNG declines at validate.) Same shape for BOSCH/`DEV-DECLINE` (`{"result":{"code":"F"}}`).
-- **Engine-only** (instance `ji-corr-df-decline-validate`): n_brand OK `{...,"validationRequired":true,...}`, then n_validate declined:
+- **Full-stack:** brand `SAMSUNG` (`validate:true`) at `status "1"` + `imei=DEV-DECLINE`. `samsung-decline.json` returns HTTP **200** `{"respCode":"1"}` → passPath `respCode` != `"0"` → `valid=false` at `n_validate` → `n_after_validate` default → `n_invalid`. (`n_block` never runs — SAMSUNG is invalid at validate.) Same shape for BOSCH/`DEV-DECLINE` (`{"result":{"code":"F"}}`, `serial=DEV-DECLINE`).
+- **Engine-only** (instance `ji-corr-df-decline-validate`): n_decide OK `{...,"runValidate":true,"runBlock":true,"runUnblock":false}`, then n_validate invalid:
   ```json
-  { "journeyInstanceId": "ji-corr-df-decline-validate", "correlationId": "corr-df-decline-validate", "nodeId": "n_validate", "capabilityKey": "device-financing", "status": "OK", "result": { "brand": "SAMSUNG", "approved": false, "authType": "OAUTH", "vendor": { "respCode": "1" } }, "errorClass": null }
+  { "journeyInstanceId": "ji-corr-df-decline-validate", "correlationId": "corr-df-decline-validate", "nodeId": "n_validate", "capabilityKey": "device-validation", "status": "OK", "result": { "brand": "SAMSUNG", "valid": false, "authType": "OAUTH", "vendor": { "respCode": "1" } }, "errorClass": null }
   ```
 
-**Expected result** — ops status **`COMPLETED_DECLINED`** (a clean business decline — teal, **not** red, no error class); terminal node **`n_reject`**, terminalOutcome **REJECTED**, `emitted:["DeviceFinancingDeclined"]`. Decision on `orig.decision.v1`: `outcome:"REJECTED"`, `terminalNodeId:"n_reject"`. No DLQ, `dlqTopicRef:null`. **Verify:** `GET /ops/runs/search?key=corr-df-decline-validate` → `status:"COMPLETED_DECLINED"`; detail `transitions` show `n_brand`, `n_validate` COMPLETED (no `n_block`).
+**Expected result** — ops status **`COMPLETED_DECLINED`** (a clean business decline — teal, **not** red, no error class); terminal node **`n_invalid`**, terminalOutcome **REJECTED**, `emitted:["DeviceValidationInvalid"]`. Decision on `orig.decision.v1`: `outcome:"REJECTED"`, `terminalNodeId:"n_invalid"`. No DLQ, `dlqTopicRef:null`. **Verify:** `GET /ops/runs/search?key=corr-df-decline-validate` → `status:"COMPLETED_DECLINED"`; detail `transitions` show `n_decide`, `n_validate` COMPLETED (no `n_block`).
 
-### Permutation 5 — DECLINED at block (block-only brand, `block.approved=false`)
+### Permutation 5 — INVALID at block (block-only brand, `blockResult.valid=false`)
 
-**Entry** — topic `orig.device-financing.v1`, key `corr-df-decline-block`:
+**Entry** — topic `orig.device-validation.v1`, key `corr-df-decline-block`:
 
 ```json
 {
   "transactionId": "corr-df-decline-block-t",
   "schemaVersion": "demo.v1",
   "source": "FILE_DEMO",
-  "type": "DEVICE_FINANCING",
+  "type": "DEVICE_VALIDATION",
   "notificationId": "corr-df-decline-block-n",
   "orgId": "DEMO-ORG",
   "sfdcRecordId": "DEV-DECLINE",
@@ -4294,31 +4351,31 @@ curl -sS -X POST http://localhost:8080/api/v1/sfdc/outbound-messages \
   "originalCorrelationId": "corr-df-decline-block",
   "payloadContentType": "application/json",
   "occurredAt": "2026-07-03T10:00:00Z",
-  "payload": { "brand": "GODREJ", "deviceId": "DEV-DECLINE" }
+  "payload": { "brand": "GODREJ", "status": "1", "serial": "DEV-DECLINE" }
 }
 ```
 
 **Drive to outcome**
-- **Full-stack:** brand `GODREJ` (block-only) + `DEV-DECLINE`. `n_route` default → `n_block`; `godrej-decline.json` returns 200 `{"status":"DECLINED"}` → passPath `status` != `"OK"` → `approved=false` → `n_decide` default → `n_reject`.
-- **Engine-only** (instance `ji-corr-df-decline-block`): n_brand OK `{...,"validationRequired":false,"authType":"NA"}`, then n_block declined:
+- **Full-stack:** brand `GODREJ` (block-only) + `serial=DEV-DECLINE`. Plan `runBlock:true` (validate/unblock false) → `n_gate_validate` default → `n_gate_block` → `n_block`; `godrej-decline.json` returns 200 `{"status":"DECLINED"}` → passPath `status` != `"OK"` → `valid=false` → `n_after_block` default → `n_invalid`.
+- **Engine-only** (instance `ji-corr-df-decline-block`): n_decide OK `{...,"runValidate":false,"runBlock":true,"runUnblock":false,"authType":"NA"}`, then n_block invalid:
   ```json
-  { "journeyInstanceId": "ji-corr-df-decline-block", "correlationId": "corr-df-decline-block", "nodeId": "n_block", "capabilityKey": "device-financing", "status": "OK", "result": { "brand": "GODREJ", "approved": false, "authType": "NA", "vendor": { "status": "DECLINED" } }, "errorClass": null }
+  { "journeyInstanceId": "ji-corr-df-decline-block", "correlationId": "corr-df-decline-block", "nodeId": "n_block", "capabilityKey": "device-validation", "status": "OK", "result": { "brand": "GODREJ", "valid": false, "authType": "NA", "vendor": { "status": "DECLINED" } }, "errorClass": null }
   ```
 
-**Expected result** — ops status **`COMPLETED_DECLINED`**, terminal `n_reject`, REJECTED, `emitted:["DeviceFinancingDeclined"]`. **Verify:** `GET /ops/runs/search?key=corr-df-decline-block` → `COMPLETED_DECLINED`.
+**Expected result** — ops status **`COMPLETED_DECLINED`**, terminal `n_invalid`, REJECTED, `emitted:["DeviceValidationInvalid"]`. **Verify:** `GET /ops/runs/search?key=corr-df-decline-block` → `COMPLETED_DECLINED`.
 
-### Permutation 6 — DECLINED at block AFTER validate passed (validation-required brand, engine-only)
+### Permutation 6 — INVALID at block AFTER validate passed (validate+block brand, engine-only)
 
-This arm — validate `approved=true` but block `approved=false` → `n_decide` default → `n_reject` — has **no full-stack lever** (the default WireMock stubs decline both endpoints for `DEV-DECLINE` and 422 both for `DEV-FAIL`; there is no per-endpoint device lever). It is reachable **only in engine-only manual mode**.
+This arm — validate `valid=true` but block `valid=false` → `n_after_block` default → `n_invalid` — has **no full-stack lever** (the default WireMock stubs decline every endpoint for `DEV-DECLINE` and 422 every one for `DEV-FAIL`; there is no per-activity device lever). It is reachable **only in engine-only manual mode**.
 
-**Entry** — topic `orig.device-financing.v1`, key `corr-df-block-only-decline`:
+**Entry** — topic `orig.device-validation.v1`, key `corr-df-block-only-decline`:
 
 ```json
 {
   "transactionId": "corr-df-block-only-decline-t",
   "schemaVersion": "demo.v1",
   "source": "FILE_DEMO",
-  "type": "DEVICE_FINANCING",
+  "type": "DEVICE_VALIDATION",
   "notificationId": "corr-df-block-only-decline-n",
   "orgId": "DEMO-ORG",
   "sfdcRecordId": "DEV-3",
@@ -4327,37 +4384,37 @@ This arm — validate `approved=true` but block `approved=false` → `n_decide` 
   "originalCorrelationId": "corr-df-block-only-decline",
   "payloadContentType": "application/json",
   "occurredAt": "2026-07-03T10:00:00Z",
-  "payload": { "brand": "BOSCH", "deviceId": "DEV-3" }
+  "payload": { "brand": "BOSCH", "status": "1", "serial": "DEV-3" }
 }
 ```
 
 **Drive to outcome** — engine-only (instance `ji-corr-df-block-only-decline`), publish in order:
 
-n_brand (validate required):
+n_decide (validate + block both run):
 ```json
-{ "journeyInstanceId": "ji-corr-df-block-only-decline", "correlationId": "corr-df-block-only-decline", "nodeId": "n_brand", "capabilityKey": "device-financing", "status": "OK", "result": { "brand": "BOSCH", "validationRequired": true, "authType": "BAUTH" }, "errorClass": null }
+{ "journeyInstanceId": "ji-corr-df-block-only-decline", "correlationId": "corr-df-block-only-decline", "nodeId": "n_decide", "capabilityKey": "device-validation", "status": "OK", "result": { "brand": "BOSCH", "validateBy": "serial", "authType": "BAUTH", "runValidate": true, "runBlock": true, "runUnblock": false }, "errorClass": null }
 ```
 n_validate **passes**:
 ```json
-{ "journeyInstanceId": "ji-corr-df-block-only-decline", "correlationId": "corr-df-block-only-decline", "nodeId": "n_validate", "capabilityKey": "device-financing", "status": "OK", "result": { "brand": "BOSCH", "approved": true, "authType": "BAUTH", "vendor": { "result": { "code": "S" } } }, "errorClass": null }
+{ "journeyInstanceId": "ji-corr-df-block-only-decline", "correlationId": "corr-df-block-only-decline", "nodeId": "n_validate", "capabilityKey": "device-validation", "status": "OK", "result": { "brand": "BOSCH", "valid": true, "authType": "BAUTH", "vendor": { "result": { "code": "S" } } }, "errorClass": null }
 ```
-n_block **declines**:
+n_block **is invalid**:
 ```json
-{ "journeyInstanceId": "ji-corr-df-block-only-decline", "correlationId": "corr-df-block-only-decline", "nodeId": "n_block", "capabilityKey": "device-financing", "status": "OK", "result": { "brand": "BOSCH", "approved": false, "authType": "BAUTH", "vendor": { "result": { "code": "F" } } }, "errorClass": null }
+{ "journeyInstanceId": "ji-corr-df-block-only-decline", "correlationId": "corr-df-block-only-decline", "nodeId": "n_block", "capabilityKey": "device-validation", "status": "OK", "result": { "brand": "BOSCH", "valid": false, "authType": "BAUTH", "vendor": { "result": { "code": "F" } } }, "errorClass": null }
 ```
 
-**Expected result** — ops status **`COMPLETED_DECLINED`**, terminal `n_reject`, REJECTED. Transitions: `n_brand`→`n_validate`→`n_block` all COMPLETED, then `n_reject` (the decline happened at the second gate). **Verify:** `GET /ops/runs/search?key=corr-df-block-only-decline` → `COMPLETED_DECLINED`; detail confirms `n_validate` COMPLETED yet outcome REJECTED.
+**Expected result** — ops status **`COMPLETED_DECLINED`**, terminal `n_invalid`, REJECTED. Transitions: `n_decide`→`n_validate`→`n_block` all COMPLETED, then `n_invalid` (the invalid happened at the second activity). **Verify:** `GET /ops/runs/search?key=corr-df-block-only-decline` → `COMPLETED_DECLINED`; detail confirms `n_validate` COMPLETED yet outcome REJECTED.
 
 ### Permutation 7 — FAILED, PERMANENT via vendor 4xx (`DEV-FAIL`)
 
-**Entry** — topic `orig.device-financing.v1`, key `corr-df-fail-permanent`:
+**Entry** — topic `orig.device-validation.v1`, key `corr-df-fail-permanent`:
 
 ```json
 {
   "transactionId": "corr-df-fail-permanent-t",
   "schemaVersion": "demo.v1",
   "source": "FILE_DEMO",
-  "type": "DEVICE_FINANCING",
+  "type": "DEVICE_VALIDATION",
   "notificationId": "corr-df-fail-permanent-n",
   "orgId": "DEMO-ORG",
   "sfdcRecordId": "DEV-FAIL",
@@ -4366,31 +4423,31 @@ n_block **declines**:
   "originalCorrelationId": "corr-df-fail-permanent",
   "payloadContentType": "application/json",
   "occurredAt": "2026-07-03T10:00:00Z",
-  "payload": { "brand": "SAMSUNG", "deviceId": "DEV-FAIL" }
+  "payload": { "brand": "SAMSUNG", "status": "1", "imei": "DEV-FAIL" }
 }
 ```
 
 **Drive to outcome**
-- **Full-stack:** deviceId `DEV-FAIL` → `00-fail.json` (priority 1) returns **HTTP 422** for any brand. Client maps 4xx → `CapabilityException(PERMANENT)`. For SAMSUNG (validation-required) the first vendor call is `n_validate`, so `n_validate` fails. (For a block-only brand the 422 lands on `n_block`.) No retry (no retrySpec) → run fails immediately.
-- **Engine-only** (instance `ji-corr-df-fail-permanent`): n_brand OK (validationRequired true), then n_validate ERROR:
+- **Full-stack:** device id `DEV-FAIL` → `00-fail.json` (priority 1) returns **HTTP 422** for any brand. Client maps 4xx → `CapabilityException(PERMANENT)`. For SAMSUNG at `status "1"` the first vendor call is `n_validate`, so `n_validate` fails. (For a block-only brand the 422 lands on `n_block`.) No retry (no retrySpec) → run fails immediately.
+- **Engine-only** (instance `ji-corr-df-fail-permanent`): n_decide OK (`runValidate:true`), then n_validate ERROR:
   ```json
-  { "journeyInstanceId": "ji-corr-df-fail-permanent", "correlationId": "corr-df-fail-permanent", "nodeId": "n_validate", "capabilityKey": "device-financing", "status": "ERROR", "result": {}, "errorClass": "PERMANENT" }
+  { "journeyInstanceId": "ji-corr-df-fail-permanent", "correlationId": "corr-df-fail-permanent", "nodeId": "n_validate", "capabilityKey": "device-validation", "status": "ERROR", "result": {}, "errorClass": "PERMANENT" }
   ```
 
 **Expected result** — ops status **`FAILED_SFDC_NOTIFIED`** (the engine emits the ERROR JourneyDecision to the channel first, then marks failed); terminal node **`n_validate`**, terminalOutcome **ERROR**. `RunDetail.sfdcNotified:"SENT"`, `nodeStats` includes `{nodeId:"n_validate", failureClass:"PERMANENT"}`, `dlqTopicRef` non-null (pointer). Decision on `orig.decision.v1`: `outcome:"ERROR"`, `terminalNodeId:"n_validate"`, `loanId:null`. There is **no Kafka dead-letter** for this (the run fails in place; `dlqTopicRef` is only a detail-view pointer). **Verify:** `GET /ops/runs/search?key=corr-df-fail-permanent` → `status:"FAILED_SFDC_NOTIFIED"`; detail `nodeStats[].failureClass == "PERMANENT"`.
 
-### Permutation 8 — FAILED, PERMANENT via unknown brand (fail-closed at `n_brand`)
+### Permutation 8 — FAILED, PERMANENT via unknown brand (fail-closed at `n_decide`)
 
 This is the "unknown enum / fail-closed" case for this journey: `rowOf(brand)` throws `PERMANENT` when the brand has no config row (the deliberate counter to legacy fail-open orgId).
 
-**Entry** — topic `orig.device-financing.v1`, key `corr-df-unknown-brand`:
+**Entry** — topic `orig.device-validation.v1`, key `corr-df-unknown-brand`:
 
 ```json
 {
   "transactionId": "corr-df-unknown-brand-t",
   "schemaVersion": "demo.v1",
   "source": "FILE_DEMO",
-  "type": "DEVICE_FINANCING",
+  "type": "DEVICE_VALIDATION",
   "notificationId": "corr-df-unknown-brand-n",
   "orgId": "DEMO-ORG",
   "sfdcRecordId": "DEV-7",
@@ -4399,29 +4456,29 @@ This is the "unknown enum / fail-closed" case for this journey: `rowOf(brand)` t
   "originalCorrelationId": "corr-df-unknown-brand",
   "payloadContentType": "application/json",
   "occurredAt": "2026-07-03T10:00:00Z",
-  "payload": { "brand": "NOKIA", "deviceId": "DEV-7" }
+  "payload": { "brand": "NOKIA", "status": "1", "deviceId": "DEV-7" }
 }
 ```
 
 **Drive to outcome**
-- **Full-stack:** brand `NOKIA` (no `device-financing.brands.NOKIA` row). `resolveBrand` → `rowOf` → `CapabilityException(PERMANENT, "no config row for brand=NOKIA (fail closed)")` at **`n_brand`** (no HTTP call made). Also produced by a blank/missing `payload.brand` (`"missing brand"`, PERMANENT).
+- **Full-stack:** brand `NOKIA` (no `device-validation.brands.NOKIA` row). `decideActivities` → `rowOf` → `CapabilityException(PERMANENT, "no config row for brand=NOKIA (fail closed)")` at **`n_decide`** (no HTTP call made). Also produced by a blank/missing `payload.brand` (`"missing brand"`, PERMANENT).
 - **Engine-only** (instance `ji-corr-df-unknown-brand`): fail the very first node:
   ```json
-  { "journeyInstanceId": "ji-corr-df-unknown-brand", "correlationId": "corr-df-unknown-brand", "nodeId": "n_brand", "capabilityKey": "device-financing", "status": "ERROR", "result": {}, "errorClass": "PERMANENT" }
+  { "journeyInstanceId": "ji-corr-df-unknown-brand", "correlationId": "corr-df-unknown-brand", "nodeId": "n_decide", "capabilityKey": "device-validation", "status": "ERROR", "result": {}, "errorClass": "PERMANENT" }
   ```
 
-**Expected result** — ops status **`FAILED_SFDC_NOTIFIED`**, terminal node **`n_brand`**, terminalOutcome **ERROR**, `nodeStats[].failureClass:"PERMANENT"`. **Verify:** `GET /ops/runs/search?key=corr-df-unknown-brand` → `FAILED_SFDC_NOTIFIED`; detail `terminalNodeId:"n_brand"` (no vendor node ran).
+**Expected result** — ops status **`FAILED_SFDC_NOTIFIED`**, terminal node **`n_decide`**, terminalOutcome **ERROR**, `nodeStats[].failureClass:"PERMANENT"`. **Verify:** `GET /ops/runs/search?key=corr-df-unknown-brand` → `FAILED_SFDC_NOTIFIED`; detail `terminalNodeId:"n_decide"` (no vendor node ran).
 
 ### Permutation 9 — FAILED, TRANSIENT via vendor unreachable / 5xx
 
-**Entry** — topic `orig.device-financing.v1`, key `corr-df-fail-transient`:
+**Entry** — topic `orig.device-validation.v1`, key `corr-df-fail-transient`:
 
 ```json
 {
   "transactionId": "corr-df-fail-transient-t",
   "schemaVersion": "demo.v1",
   "source": "FILE_DEMO",
-  "type": "DEVICE_FINANCING",
+  "type": "DEVICE_VALIDATION",
   "notificationId": "corr-df-fail-transient-n",
   "orgId": "DEMO-ORG",
   "sfdcRecordId": "DEV-5",
@@ -4430,29 +4487,29 @@ This is the "unknown enum / fail-closed" case for this journey: `rowOf(brand)` t
   "originalCorrelationId": "corr-df-fail-transient",
   "payloadContentType": "application/json",
   "occurredAt": "2026-07-03T10:00:00Z",
-  "payload": { "brand": "GODREJ", "deviceId": "DEV-5" }
+  "payload": { "brand": "GODREJ", "status": "1", "serial": "DEV-5" }
 }
 ```
 
 **Drive to outcome**
 - **Full-stack:** cause a transport-level failure on the vendor call — either **stop the mock-vendors server on :9106** (connection refused → `IOException` → `TRANSIENT`, `"vendor unreachable"`) or add a stub returning **HTTP 5xx** (→ `TRANSIENT`, `"vendor HTTP 5xx"`). Brand `GODREJ` is used so the failing node is `n_block` (block-only). Because no `retrySpec` is configured, the TRANSIENT class does **not** retry here — the node fails on the first response, same as PERMANENT. (Sub-lever for an OAUTH brand: keep the vendor up but stop the token endpoint → `fetchToken` → TRANSIENT.)
-- **Engine-only** (instance `ji-corr-df-fail-transient`): n_brand OK (validationRequired false), then:
+- **Engine-only** (instance `ji-corr-df-fail-transient`): n_decide OK (`runBlock:true`, validate/unblock false), then:
   ```json
-  { "journeyInstanceId": "ji-corr-df-fail-transient", "correlationId": "corr-df-fail-transient", "nodeId": "n_block", "capabilityKey": "device-financing", "status": "ERROR", "result": {}, "errorClass": "TRANSIENT" }
+  { "journeyInstanceId": "ji-corr-df-fail-transient", "correlationId": "corr-df-fail-transient", "nodeId": "n_block", "capabilityKey": "device-validation", "status": "ERROR", "result": {}, "errorClass": "TRANSIENT" }
   ```
 
 **Expected result** — ops status **`FAILED_SFDC_NOTIFIED`**, terminal node **`n_block`**, terminalOutcome **ERROR**, `nodeStats[].failureClass:"TRANSIENT"`. **Verify:** `GET /ops/runs/search?key=corr-df-fail-transient` → `FAILED_SFDC_NOTIFIED`; detail `nodeStats[].failureClass == "TRANSIENT"` (distinguishes it from the PERMANENT case at the same terminal outcome).
 
 ### Permutation 10 — FAILED, AMBIGUOUS via read timeout
 
-**Entry** — topic `orig.device-financing.v1`, key `corr-df-fail-ambiguous`:
+**Entry** — topic `orig.device-validation.v1`, key `corr-df-fail-ambiguous`:
 
 ```json
 {
   "transactionId": "corr-df-fail-ambiguous-t",
   "schemaVersion": "demo.v1",
   "source": "FILE_DEMO",
-  "type": "DEVICE_FINANCING",
+  "type": "DEVICE_VALIDATION",
   "notificationId": "corr-df-fail-ambiguous-n",
   "orgId": "DEMO-ORG",
   "sfdcRecordId": "DEV-6",
@@ -4461,33 +4518,33 @@ This is the "unknown enum / fail-closed" case for this journey: `rowOf(brand)` t
   "originalCorrelationId": "corr-df-fail-ambiguous",
   "payloadContentType": "application/json",
   "occurredAt": "2026-07-03T10:00:00Z",
-  "payload": { "brand": "GODREJ", "deviceId": "DEV-6" }
+  "payload": { "brand": "GODREJ", "status": "1", "serial": "DEV-6" }
 }
 ```
 
 **Drive to outcome**
-- **Full-stack:** add a WireMock stub for `POST /vendor/device-financing/block` with a fixed delay **> `read-timeout-ms` (10000ms)** (e.g. `"fixedDelayMilliseconds": 12000`). The client's read times out → `SocketTimeoutException` → `CapabilityException(AMBIGUOUS, "vendor read timeout")`. No retry configured → node fails immediately.
-- **Engine-only** (instance `ji-corr-df-fail-ambiguous`): n_brand OK (validationRequired false), then:
+- **Full-stack:** add a WireMock stub for `POST /vendor/device-validation/block` with a fixed delay **> `read-timeout-ms` (10000ms)** (e.g. `"fixedDelayMilliseconds": 12000`). The client's read times out → `SocketTimeoutException` → `CapabilityException(AMBIGUOUS, "vendor read timeout")`. No retry configured → node fails immediately.
+- **Engine-only** (instance `ji-corr-df-fail-ambiguous`): n_decide OK (`runBlock:true`, validate/unblock false), then:
   ```json
-  { "journeyInstanceId": "ji-corr-df-fail-ambiguous", "correlationId": "corr-df-fail-ambiguous", "nodeId": "n_block", "capabilityKey": "device-financing", "status": "ERROR", "result": {}, "errorClass": "AMBIGUOUS" }
+  { "journeyInstanceId": "ji-corr-df-fail-ambiguous", "correlationId": "corr-df-fail-ambiguous", "nodeId": "n_block", "capabilityKey": "device-validation", "status": "ERROR", "result": {}, "errorClass": "AMBIGUOUS" }
   ```
 
 **Expected result** — ops status **`FAILED_SFDC_NOTIFIED`**, terminal node **`n_block`**, terminalOutcome **ERROR**, `nodeStats[].failureClass:"AMBIGUOUS"`. **Verify:** `GET /ops/runs/search?key=corr-df-fail-ambiguous` → detail `nodeStats[].failureClass == "AMBIGUOUS"`.
 
 ### Permutation 11 — BREAKER_OPEN (NOT REACHABLE in this journey)
 
-No node in `device-financing` declares a circuit-breaker policy, and the response `errorClass` enum only admits `TRANSIENT | PERMANENT | AMBIGUOUS` (`BREAKER_OPEN` exists only as a `nodeStats.failureClass` the engine's breaker would stamp, which is never armed here). **There is no entry or lever that produces `BREAKER_OPEN` for this journey** — recorded here for completeness so a tester does not hunt for it. (It is exercisable only on a journey/node that configures a breaker.)
+No node in `device-validation` declares a circuit-breaker policy, and the response `errorClass` enum only admits `TRANSIENT | PERMANENT | AMBIGUOUS` (`BREAKER_OPEN` exists only as a `nodeStats.failureClass` the engine's breaker would stamp, which is never armed here). **There is no entry or lever that produces `BREAKER_OPEN` for this journey** — recorded here for completeness so a tester does not hunt for it. (It is exercisable only on a journey/node that configures a breaker.)
 
 ### Permutation 12 — Idempotency / duplicate resend (same correlationId)
 
-**Entry** — re-produce the **exact** Permutation 1 envelope (same `correlationId:"corr-df-approve-samsung"`) to `orig.device-financing.v1`, key `corr-df-approve-samsung`, a second time (after the first run started/completed):
+**Entry** — re-produce the **exact** Permutation 1 envelope (same `correlationId:"corr-df-approve-samsung"`) to `orig.device-validation.v1`, key `corr-df-approve-samsung`, a second time (after the first run started/completed):
 
 ```json
 {
   "transactionId": "corr-df-approve-samsung-t2",
   "schemaVersion": "demo.v1",
   "source": "FILE_DEMO",
-  "type": "DEVICE_FINANCING",
+  "type": "DEVICE_VALIDATION",
   "notificationId": "corr-df-approve-samsung-n",
   "orgId": "DEMO-ORG",
   "sfdcRecordId": "DEV-1",
@@ -4496,7 +4553,7 @@ No node in `device-financing` declares a circuit-breaker policy, and the respons
   "originalCorrelationId": "corr-df-approve-samsung",
   "payloadContentType": "application/json",
   "occurredAt": "2026-07-03T10:05:00Z",
-  "payload": { "brand": "SAMSUNG", "deviceId": "DEV-1" }
+  "payload": { "brand": "SAMSUNG", "status": "1", "imei": "DEV-1" }
 }
 ```
 
@@ -4506,14 +4563,14 @@ No node in `device-financing` declares a circuit-breaker policy, and the respons
 
 ### Permutation 13 — Unknown-type fail-closed (poison → DLQ)
 
-**Entry** — topic `orig.device-financing.v1`, key `corr-df-badtype`, with a `type` that has no `type-to-journey` row:
+**Entry** — topic `orig.device-validation.v1`, key `corr-df-badtype`, with a `type` that has no `type-to-journey` row:
 
 ```json
 {
   "transactionId": "corr-df-badtype-t",
   "schemaVersion": "demo.v1",
   "source": "FILE_DEMO",
-  "type": "DEVICE_FINANCE",
+  "type": "DEVICE_VALIDATE",
   "notificationId": "corr-df-badtype-n",
   "orgId": "DEMO-ORG",
   "sfdcRecordId": "DEV-8",
@@ -4522,24 +4579,24 @@ No node in `device-financing` declares a circuit-breaker policy, and the respons
   "originalCorrelationId": "corr-df-badtype",
   "payloadContentType": "application/json",
   "occurredAt": "2026-07-03T10:00:00Z",
-  "payload": { "brand": "SAMSUNG", "deviceId": "DEV-1" }
+  "payload": { "brand": "SAMSUNG", "status": "1", "imei": "DEV-1" }
 }
 ```
 
-**Drive to outcome** — no levers. `type:"DEVICE_FINANCE"` (typo; the only mapped value is `DEVICE_FINANCING`) → `JourneyOrchestrator` → `registry.resolveForType` → `UnroutableTypeException` → `OriginationConsumer` treats it as a `PoisonMessageException`. Fail-closed A2: **never** a default journey. Engine-only: same — this fails at ingest, before any node dispatch.
+**Drive to outcome** — no levers. `type:"DEVICE_VALIDATE"` (typo; the only mapped value is `DEVICE_VALIDATION`) → `JourneyOrchestrator` → `registry.resolveForType` → `UnroutableTypeException` → `OriginationConsumer` treats it as a `PoisonMessageException`. Fail-closed A2: **never** a default journey. Engine-only: same — this fails at ingest, before any node dispatch.
 
-**Expected result** — **no run is started** (nothing in the ops store). The message is dead-lettered to **`orig.device-financing.v1.dlq`** (source topic + `.dlq` suffix). **Verify:** `GET /ops/runs/search?key=corr-df-badtype` → **empty list** (`[]`); confirm the poison landed on `orig.device-financing.v1.dlq` via Kafka UI.
+**Expected result** — **no run is started** (nothing in the ops store). The message is dead-lettered to **`orig.device-validation.v1.dlq`** (source topic + `.dlq` suffix). **Verify:** `GET /ops/runs/search?key=corr-df-badtype` → **empty list** (`[]`); confirm the poison landed on `orig.device-validation.v1.dlq` via Kafka UI.
 
 ### Permutation 14 — Stuck run → liveness sweeper force-fail
 
-**Entry** — topic `orig.device-financing.v1`, key `corr-df-stuck`:
+**Entry** — topic `orig.device-validation.v1`, key `corr-df-stuck`:
 
 ```json
 {
   "transactionId": "corr-df-stuck-t",
   "schemaVersion": "demo.v1",
   "source": "FILE_DEMO",
-  "type": "DEVICE_FINANCING",
+  "type": "DEVICE_VALIDATION",
   "notificationId": "corr-df-stuck-n",
   "orgId": "DEMO-ORG",
   "sfdcRecordId": "DEV-STUCK",
@@ -4548,12 +4605,12 @@ No node in `device-financing` declares a circuit-breaker policy, and the respons
   "originalCorrelationId": "corr-df-stuck",
   "payloadContentType": "application/json",
   "occurredAt": "2026-07-03T10:00:00Z",
-  "payload": { "brand": "SAMSUNG", "deviceId": "DEV-1" }
+  "payload": { "brand": "SAMSUNG", "status": "1", "imei": "DEV-1" }
 }
 ```
 
 **Drive to outcome** — start the run but never let a capability response arrive, so a node stays pending past the run budget:
-- **Engine-only (the practical path):** publish the envelope, then publish **nothing** on `cap.device-financing.response.v1` (or publish only the `n_brand` OK and then stop, leaving `n_validate` pending). The run sits `RUNNING`.
+- **Engine-only (the practical path):** publish the envelope, then publish **nothing** on `cap.device-validation.response.v1` (or publish only the `n_decide` OK and then stop, leaving `n_validate` pending). The run sits `RUNNING`.
 - **Full-stack:** requires the vendor to hang beyond 900s — not practical with the stubs; use the engine-only path.
 
 Timeline (defaults: `run-budget-seconds=900`, `sweep-interval-ms=60000`): at **~840s** (`900 − 60`) the ops read-model flags it `stuck=true` (still store-state `RUNNING`); at **900s** the sweeper force-fails it — publishes ERROR `JourneyDecision` (`outcome:ERROR`, `terminalNodeId:"__timeout__"`, `loanId:null`) FIRST, marks SFDC notified, sets `State.FAILED`, emits ops event `run.sweptTimeout`.
@@ -4567,18 +4624,18 @@ Timeline (defaults: `run-budget-seconds=900`, `sweep-interval-ms=60000`): at **~
 Run the permutations first so the store is populated, then exercise each ops read. All are GET.
 
 ### Ops-A — List (defaults)
-`GET /ops/runs` → `PageDto` `{items:[…], page:0, size:50, totalItems, totalPages}`, sorted `startedAt` DESC. **Expected:** every device-financing run above appears (approved, declined, failed, running).
+`GET /ops/runs` → `PageDto` `{items:[…], page:0, size:50, totalItems, totalPages}`, sorted `startedAt` DESC. **Expected:** every device-validation run above appears (valid, invalid, failed, running).
 
 ### Ops-B — Filter by status
-- `GET /ops/runs?status=COMPLETED_APPROVED` → Permutations 1, 2, 3.
+- `GET /ops/runs?status=COMPLETED_APPROVED` → Permutations 1, 2, 3, 3b.
 - `GET /ops/runs?status=COMPLETED_DECLINED` → Permutations 4, 5, 6.
 - `GET /ops/runs?status=FAILED_SFDC_NOTIFIED` → Permutations 7, 8, 9, 10, and 14 (post-sweep).
 - `GET /ops/runs?status=RUNNING` → Permutation 14 (pre-sweep), plus any in-flight.
-- `GET /ops/runs?status=FAILED_NOTIFY_PENDING` → empty for this journey (the engine notifies-first, so device-financing failures land as `FAILED_SFDC_NOTIFIED`).
+- `GET /ops/runs?status=FAILED_NOTIFY_PENDING` → empty for this journey (the engine notifies-first, so device-validation failures land as `FAILED_SFDC_NOTIFIED`).
 - `GET /ops/runs?status=BOGUS` → **400** `{"error":"BAD_REQUEST","message":"unknown status 'BOGUS' ..."}`.
 
 ### Ops-C — Filter by journeyKey
-`GET /ops/runs?journeyKey=device-financing` → exactly the runs from this section (excludes loan-origination, employee-lwd, etc.). Combine: `GET /ops/runs?journeyKey=device-financing&status=COMPLETED_DECLINED&page=0&size=25`.
+`GET /ops/runs?journeyKey=device-validation` → exactly the runs from this section (excludes loan-origination, employee-lwd, etc.). Combine: `GET /ops/runs?journeyKey=device-validation&status=COMPLETED_DECLINED&page=0&size=25`.
 
 ### Ops-D — Filter by time window (`since` / `until`)
 `GET /ops/runs?since=2026-07-03T00:00:00Z&until=2026-07-04T00:00:00Z` → runs with `startedAt` in the window. Bad instant, e.g. `?since=yesterday` → **400 BAD_REQUEST**.
@@ -4596,8 +4653,8 @@ Exact match across `runId | correlationId | notificationId | sfdcRecordId`, newe
 
 ### Ops-G — Detail (`/ops/runs/{runId}`)
 Take a `runId` from any search/list result: `GET /ops/runs/{runId}` → `RunDetailDto`. **Check per outcome:**
-- Approved run: `status:"COMPLETED_APPROVED"`, `terminalNodeId:"n_approve"`, `terminalOutcome:"APPROVED"`, `sfdcNotified:"SENT"`, `dlqTopicRef:null`, `transitions` for `n_brand`/`n_validate`/`n_block` (or just `n_brand`/`n_block` for block-only brands).
-- Declined run: `status:"COMPLETED_DECLINED"`, `terminalNodeId:"n_reject"`, `terminalOutcome:"REJECTED"`, `dlqTopicRef:null`.
+- Valid run: `status:"COMPLETED_APPROVED"`, `terminalNodeId:"n_valid"`, `terminalOutcome:"APPROVED"`, `sfdcNotified:"SENT"`, `dlqTopicRef:null`, `transitions` for `n_decide`/`n_validate`/`n_block` (or just `n_decide`/`n_block` for block-only brands, or `n_decide`/`n_unblock` for a status-2 unblock).
+- Invalid run: `status:"COMPLETED_DECLINED"`, `terminalNodeId:"n_invalid"`, `terminalOutcome:"REJECTED"`, `dlqTopicRef:null`.
 - Failed run: `status:"FAILED_SFDC_NOTIFIED"`, `terminalOutcome:"ERROR"`, `nodeStats[].failureClass` = `PERMANENT` / `TRANSIENT` / `AMBIGUOUS` (this field is how you tell the three failure permutations apart at the same terminal status), `dlqTopicRef` non-null.
 - Unknown `runId` → **404 with empty body**.
 
@@ -4605,7 +4662,7 @@ Take a `runId` from any search/list result: `GET /ops/runs/{runId}` → `RunDeta
 
 ### Maker-checker — not applicable to this section
 
-The device-financing journey is loaded from **classpath** on the local profile (`idfc.engine.journey-source=classpath`, `journey-resources` includes `journeys/device-financing.journey.json`); it does **not** pass through the journey-registry maker-checker lifecycle. The registry endpoints (create/draft/submit/approve, 403 self-approve, 409 second-draft/lifecycle, 422 validation) are exercised in the journey-registry section, not here. No maker-checker permutation is triggerable via the device-financing demo door.
+The device-validation journey is loaded from **classpath** on the local profile (`idfc.engine.journey-source=classpath`, `journey-resources` includes `journeys/device-validation.journey.json`); it does **not** pass through the journey-registry maker-checker lifecycle. The registry endpoints (create/draft/submit/approve, 403 self-approve, 409 second-draft/lifecycle, 422 validation) are exercised in the journey-registry section, not here. No maker-checker permutation is triggerable via the device-validation demo door.
 
 
 ---
@@ -6071,7 +6128,7 @@ curl -i "$OPS/runs" -H 'X-Ops-Token:dev-ops-token'    # 401 X-User-Id header is 
 
 | Symptom | Likely cause | Check / fix |
 |---|---|---|
-| **Message produced but no run starts / no `journey.start` log** | (a) `type` has no `type-to-journey` row → poison to `<topic>.dlq`; (b) same `correlationId`/`notificationId` as a prior run → `insertIfAbsent` drop; (c) engine not consuming that topic. | Check `orig.*.v1.dlq` and the engine log for `UnroutableTypeException` / `journey.start.duplicate`. Confirm `type` is mapped (base: PERSONAL_LOAN, LAP, BUSINESS_LOAN, COMMERCIAL, Inbound_Wrapper → loan-origination; +DEVICE_FINANCING/EMPLOYEE_LWD_UPDATE in local profile). Use a fresh `correlationId`. Verify the topic is in `idfc.engine.origination-topics`. |
+| **Message produced but no run starts / no `journey.start` log** | (a) `type` has no `type-to-journey` row → poison to `<topic>.dlq`; (b) same `correlationId`/`notificationId` as a prior run → `insertIfAbsent` drop; (c) engine not consuming that topic. | Check `orig.*.v1.dlq` and the engine log for `UnroutableTypeException` / `journey.start.duplicate`. Confirm `type` is mapped (base: PERSONAL_LOAN, LAP, BUSINESS_LOAN, COMMERCIAL, Inbound_Wrapper → loan-origination; +DEVICE_VALIDATION/EMPLOYEE_LWD_UPDATE in local profile). Use a fresh `correlationId`. Verify the topic is in `idfc.engine.origination-topics`. |
 | **Journey not reachable at all** (verification / e-mandate / payment-execution) | Not loaded by the default `classpath` source and/or no `type-to-journey` row. `payment-execution.journey.json` does not exist (payments is a stub with no consumer). | Add the journey file to `idfc.engine.journey-resources` (or publish via registry + `journey-source=registry`) AND add a `type-to-journey` row; then publish an envelope with that `type`. |
 | **Run stuck / never completes** | A task node is waiting on a `cap.<key>.response.v1` you haven't published (Mode B), or a capability service is down, or a response was mis-addressed. | In Kafka UI read `cap.<key>.request.v1` for the exact `journeyInstanceId`+`nodeId`, then publish a matching response. After `run-budget-seconds` (default 900s) the liveness sweeper force-fails it → `FAILED_SFDC_NOTIFIED`, `terminalNodeId=__timeout__`. Watch `stuckOnly=true` / `sweepDeadline` in ops. |
 | **Capability response ignored (run doesn't advance)** | Wrong `journeyInstanceId` or `nodeId` in the JSON body, response for an already-completed node/terminal run, or malformed JSON (→ `cap.<key>.response.v1.dlq`). | The Kafka key is irrelevant — fix the **body** ids to the exact values from the request message / `journey.start` log. `nodeId` must exist in the pinned journey. Check the response `.dlq`. |
