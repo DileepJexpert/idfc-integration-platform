@@ -62,7 +62,7 @@ public class DeviceFinancingCapability implements Capability {
      */
     private Map<String, Object> vendorCheck(String operation, CapabilityRequest request) {
         String brand = brandOf(request);
-        String deviceId = stringField(request, "deviceId");
+        String deviceId = deviceIdOf(request);
         DeviceFinancingProperties.BrandRow row = rowOf(brand);
 
         Map<String, Object> vendorResponse = vendor.call(operation, brand, deviceId, row);
@@ -77,12 +77,34 @@ public class DeviceFinancingCapability implements Capability {
 
     // ---- helpers ---------------------------------------------------------------
 
+    /**
+     * Brand selector. The DEMO Kafka door carries {@code brand} in the payload;
+     * the REAL SFDC door does NOT — brand is implicit in the svcName (the envelope
+     * {@code type}, e.g. {@code Post_Disbursal_Apple}), so fall back to the
+     * configured svcName→brand map. Fails closed (PERMANENT) if neither yields a
+     * brand — an unmapped svcName never silently runs.
+     */
     private String brandOf(CapabilityRequest request) {
         String brand = stringField(request, "brand");
+        if (brand == null || brand.isBlank()) {
+            brand = props.brandForSvcName(stringField(request, "type"));
+        }
         if (brand == null || brand.isBlank()) {
             throw new CapabilityException(ErrorClass.PERMANENT, "missing brand");
         }
         return brand;
+    }
+
+    /**
+     * Device identifier for the vendor call. The demo door sends {@code deviceId};
+     * the real SFDC Apple payload sends {@code imei} instead — accept either.
+     */
+    private static String deviceIdOf(CapabilityRequest request) {
+        String deviceId = stringField(request, "deviceId");
+        if (deviceId == null || deviceId.isBlank()) {
+            deviceId = stringField(request, "imei");
+        }
+        return deviceId;
     }
 
     private DeviceFinancingProperties.BrandRow rowOf(String brand) {

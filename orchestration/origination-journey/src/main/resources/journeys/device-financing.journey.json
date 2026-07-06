@@ -12,7 +12,7 @@
       "type": "task",
       "capability": "device-financing",
       "operation": "resolveBrand",
-      "input": "{ brand: context.brand }",
+      "input": "{ brand: context.brand, type: context.type }",
       "output": "context.brandConfig",
       "next": ["n_route"]
     },
@@ -29,7 +29,7 @@
       "type": "task",
       "capability": "device-financing",
       "operation": "validate",
-      "input": "{ brand: context.brand, deviceId: context.deviceId }",
+      "input": "{ brand: context.brand, type: context.type, deviceId: context.deviceId, imei: context.imei }",
       "output": "context.validation",
       "next": ["n_vroute"]
     },
@@ -46,7 +46,7 @@
       "type": "task",
       "capability": "device-financing",
       "operation": "block",
-      "input": "{ brand: context.brand, deviceId: context.deviceId }",
+      "input": "{ brand: context.brand, type: context.type, deviceId: context.deviceId, imei: context.imei }",
       "output": "context.block",
       "next": ["n_decide"]
     },

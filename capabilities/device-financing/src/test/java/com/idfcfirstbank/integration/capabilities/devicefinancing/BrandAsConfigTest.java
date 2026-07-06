@@ -24,13 +24,16 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class BrandAsConfigTest {
 
     private static BrandRow row(String auth, boolean validation, String passPath, String passValue) {
-        return new BrandRow(auth, validation, passPath, passValue, null, null, null);
+        return new BrandRow(auth, validation, passPath, passValue, null, null, null, null);
     }
 
     private static final DeviceFinancingProperties PROPS =
             new DeviceFinancingProperties(
                     "http://unused", "http://unused", 3000, 10000,
                     Map.of(
+                            // the REAL SFDC door carries brand in the svcName -> the row declares it
+                            "APPLE", new BrandRow("OAUTH", false, "respCode", "0",
+                                    null, null, null, "Post_Disbursal_Apple"),
                             "SAMSUNG", row("OAUTH", true, "respCode", "0"),
                             "GODREJ", row("NA", false, "status", "OK"),
                             "BOSCH", row("BAUTH", true, "result.code", "S")));
@@ -40,7 +43,7 @@ class BrandAsConfigTest {
             (operation, brand, deviceId, row) -> {
                 boolean pass = !"DEV-DECLINE".equals(deviceId);
                 return switch (brand) {
-                    case "SAMSUNG" -> Map.of("respCode", pass ? "0" : "1");
+                    case "SAMSUNG", "APPLE" -> Map.of("respCode", pass ? "0" : "1");
                     case "BOSCH" -> Map.of("result", Map.of("code", pass ? "S" : "F"));
                     case "HISENSE" -> Map.of("responseStatus", pass ? "-4" : "-9");
                     default -> Map.of("status", pass ? "OK" : "DECLINED");
@@ -82,6 +85,30 @@ class BrandAsConfigTest {
     void declineDevice_isABusinessNo_notAnError() {
         assertThat(call("validate", Map.of("brand", "SAMSUNG", "deviceId", "DEV-DECLINE")))
                 .containsEntry("approved", false);
+    }
+
+    @Test
+    void realSfdcApple_derivesBrandFromSvcName_andReadsImei() {
+        // The real SFDC Post_Disbursal_Apple payload has NO brand and NO deviceId —
+        // brand is implicit in the svcName (the envelope type), the device id is imei.
+        Map<String, Object> payload = Map.of(
+                "type", "Post_Disbursal_Apple",
+                "imei", "431254356142345678",
+                "paymentInfo", Map.of("swipeOrLoanAmount", "23800.00", "loanTenure", "12"));
+        assertThat(call("resolveBrand", payload))
+                .as("brand resolved from svcName -> the APPLE row (post-disbursal: validation off)")
+                .containsEntry("validationRequired", false)
+                .containsEntry("authType", "OAUTH");
+        assertThat(call("block", payload))
+                .as("APPLE pass-logic on the vendor response; imei stands in as the device id")
+                .containsEntry("approved", true);
+    }
+
+    @Test
+    void unmappedSvcName_withNoBrand_failsClosed() {
+        assertThatThrownBy(() -> call("resolveBrand", Map.of("type", "Post_Disbursal_Nokia")))
+                .isInstanceOfSatisfying(CapabilityException.class,
+                        e -> assertThat(e.errorClass()).isEqualTo(ErrorClass.PERMANENT));
     }
 
     @Test

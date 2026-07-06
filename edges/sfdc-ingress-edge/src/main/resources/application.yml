@@ -82,6 +82,14 @@ idfc:
       - type: SENDSMS
         topic: comm.sms.send.v1
         downstream-journey: communications
+      # Apple post-disbursal device financing — REAL SFDC front door. SVCNAME__c
+      # = Post_Disbursal_Apple (case-sensitive, verbatim). Publishes to the
+      # engine-consumed device-financing topic; the engine's type-to-journey maps
+      # Post_Disbursal_Apple -> device-financing. Sibling brands/svcNames (e.g. a
+      # pre-disbursal or other-brand svcName) are added as ROWS as IDFC confirms.
+      - type: Post_Disbursal_Apple
+        topic: orig.device-financing.v1
+        downstream-journey: device-financing
     # Known orgs (org-config-as-data). Unknown org -> refresh+recheck -> DLQ (C2).
     known-orgs:
       - ORG1
@@ -89,6 +97,7 @@ idfc:
       - IDFC_BUSINESS
       - 00D6D00000020HoUAI   # golden-fixture SFDC OrganizationId (account-creation)
       - 00DC40000014dS1MAI   # golden-fixture SFDC OrganizationId (CD sandbox / SENDSMS)
+      - 00D0w0000008ec7EAA   # Apple post-disbursal SFDC OrganizationId (UAT sample)
 
 # --- Error/flow tracking (added platform-wide) ----------------------------------
 # Readable console pattern incl. the journey correlationId from MDC (when present),

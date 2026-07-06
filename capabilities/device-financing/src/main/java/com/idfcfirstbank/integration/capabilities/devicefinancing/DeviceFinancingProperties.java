@@ -31,6 +31,26 @@ public record DeviceFinancingProperties(
         brands = brands == null ? Map.of() : Map.copyOf(brands);
     }
 
+    /**
+     * Resolve the brand-row KEY for an SFDC svcName. The REAL door carries brand
+     * implicitly in the svcName (no brand field in the payload); each brand row
+     * that has a real SFDC front door declares its {@code svcName}. Carried as a
+     * FIELD on the all-uppercase-keyed brands map — which binds cleanly — rather
+     * than a separate mixed-case-keyed collection that Spring relaxed binding
+     * fails to bind.
+     */
+    public String brandForSvcName(String svcName) {
+        if (svcName == null) {
+            return null;
+        }
+        for (Map.Entry<String, BrandRow> e : brands.entrySet()) {
+            if (svcName.equals(e.getValue().svcName())) {
+                return e.getKey();
+            }
+        }
+        return null;
+    }
+
     private static String blankToNull(String s) {
         return (s == null || s.isBlank()) ? null : s;
     }
@@ -38,7 +58,8 @@ public record DeviceFinancingProperties(
     /**
      * One legacy brand config row: auth SCHEME (and its credentials/scope),
      * whether the validation activity runs, the dotted path to the vendor's
-     * pass field in ITS response shape, and the value that means "pass".
+     * pass field in ITS response shape, the value that means "pass", and — for a
+     * brand with a real SFDC front door — the {@code svcName} that maps to it.
      */
     public record BrandRow(
             String authType,
@@ -47,6 +68,7 @@ public record DeviceFinancingProperties(
             String passValue,
             String basicUser,
             String basicPassword,
-            String scope) {
+            String scope,
+            String svcName) {
     }
 }

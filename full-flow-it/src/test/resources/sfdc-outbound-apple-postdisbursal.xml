@@ -1,0 +1,55 @@
+<soapenv:Envelope
+    xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+    xmlns="http://soap.sforce.com/2005/09/outbound"
+    xmlns:sf1="urn:sobject.enterprise.soap.sforce.com">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <notifications>
+      <OrganizationId>00D0w0000008ec7EAA</OrganizationId>
+      <ActionId>04k5g0000008Oy8AAE</ActionId>
+      <SessionId>SID</SessionId>
+      <EnterpriseUrl>EnterpriseUrl</EnterpriseUrl>
+      <PartnerUrl>PartnerUrl</PartnerUrl>
+
+      <!-- Real SFDC Outbound Message for Apple post-disbursal device financing.
+           SVCNAME__c = Post_Disbursal_Apple (the routing key); brand is IMPLICIT
+           in the svcName (no brand field in the CDATA body). -->
+      <Notification>
+        <Id>04l7200000Daq5RAbR</Id>
+        <sObject>
+          <sf1:Id>a2T721100001IS65U9</sf1:Id>
+          <sf1:CLIENTID__c>SFDC</sf1:CLIENTID__c>
+          <sf1:CreatedDate>2009-10-14T12:46:36.000Z</sf1:CreatedDate>
+          <sf1:LastModifiedDate>2014-10-27T15:14:59.000Z</sf1:LastModifiedDate>
+          <sf1:EXECMODE__c>ASYNC</sf1:EXECMODE__c>
+          <sf1:Request__c><![CDATA[{
+  "transactionId": "2025-01-08",
+  "paymentInfo": {
+    "totalInterestSubsidy": "",
+    "swipeOrLoanAmount": "23800.00",
+    "subventionToApple": "",
+    "schemeType": "",
+    "scheme": "2",
+    "loanTenure": "12",
+    "financePartnerName": "IDFC FIRST Bank",
+    "dbdRate": "",
+    "customerProcessingFee": "",
+    "customerLoanInterestRate": "7.50",
+    "bankCashBackPercentage": "",
+    "bankCashBackAmount": "",
+    "appleCashBackPercentage": "",
+    "appleCashBackAmount": ""
+  },
+  "invoiceValue": "",
+  "invoiceNumber": "",
+  "imei": "431254356142345678",
+  "apiVersion": "2"
+}]]></sf1:Request__c>
+          <sf1:SVCNAME__c>Post_Disbursal_Apple</sf1:SVCNAME__c>
+          <sf1:VERSION__c>1.0</sf1:VERSION__c>
+        </sObject>
+      </Notification>
+
+    </notifications>
+  </soapenv:Body>
+</soapenv:Envelope>

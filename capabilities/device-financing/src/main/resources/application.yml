@@ -29,7 +29,26 @@ device-financing:
   token-url: ${DEVICE_FINANCING_OAUTH_URL:http://localhost:9106/oauth/token}
   connect-timeout-ms: 3000
   read-timeout-ms: 10000
+  # svcName (SFDC SVCNAME__c = envelope type) -> brand row. The REAL SFDC door
+  # carries brand IMPLICITLY in the svcName; the payload has no brand field. The
+  # demo Kafka door still sends brand in the payload directly (this map is only
+  # the fallback). Siblings (other brands / a pre-disbursal svcName) are added as
+  # ROWS as IDFC confirms them — do NOT invent svcNames.
   brands:
+    # Apple post-disbursal device financing (the REAL SFDC front door). The real
+    # request carries NO brand field — brand is implicit in the svcName, so this
+    # row declares its svc-name (Post_Disbursal_Apple) and the capability derives
+    # brand=APPLE from it. Post-disbursal = a SINGLE vendor confirmation call, so
+    # validation-required=false (block-only path, like GODREJ). auth-type/pass-path/
+    # pass-value are PLACEHOLDERS for the mock vendor — swap to Apple's real vendor
+    # host + contract when IDFC confirms it (only the vendor DATA is mocked today).
+    APPLE:
+      svc-name: Post_Disbursal_Apple
+      auth-type: OAUTH
+      validation-required: false
+      pass-path: respCode
+      pass-value: "0"
+      scope: device-financing.apple
     SAMSUNG:
       auth-type: OAUTH          # real client-credentials: fetch token, then Bearer
       validation-required: true # activities: validation + block

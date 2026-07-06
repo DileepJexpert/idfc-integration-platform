@@ -116,6 +116,9 @@ class LegacyPatternsDemoIT {
                         "--idfc.engine.origination-group=legacy-demo-engine",
                         "--idfc.engine.response-group=legacy-demo-engine-responses",
                         "--idfc.engine.type-to-journey.DEVICE_FINANCING=device-financing",
+                        // The REAL SFDC front door: svcName Post_Disbursal_Apple -> device-financing
+                        // (bracket notation keeps the mixed-case key literal).
+                        "--idfc.engine.type-to-journey[Post_Disbursal_Apple]=device-financing",
                         "--idfc.engine.type-to-journey.EMPLOYEE_LWD_UPDATE=employee-lwd-update",
                         "--idfc.engine.state-store=in-memory",
                         "--OPS_API_TOKEN=" + OPS_TOKEN,
@@ -187,7 +190,17 @@ class LegacyPatternsDemoIT {
                 "--device-financing.brands.BOSCH.pass-path=result.code",
                 "--device-financing.brands.BOSCH.pass-value=S",
                 "--device-financing.brands.BOSCH.basic-user=bosch-demo",
-                "--device-financing.brands.BOSCH.basic-password=bosch-secret"));
+                "--device-financing.brands.BOSCH.basic-password=bosch-secret",
+                // The REAL SFDC Apple front door: brand is implicit in the svcName, so
+                // the row declares its svc-name. (full-flow-it's classpath carries many
+                // modules' application.yml, so device-financing's own is not the one
+                // Spring loads here — every row is an arg, like the others above.)
+                "--device-financing.brands.APPLE.svc-name=Post_Disbursal_Apple",
+                "--device-financing.brands.APPLE.auth-type=OAUTH",
+                "--device-financing.brands.APPLE.validation-required=false",
+                "--device-financing.brands.APPLE.pass-path=respCode",
+                "--device-financing.brands.APPLE.pass-value=0",
+                "--device-financing.brands.APPLE.scope=device-financing.apple"));
         if (withHisense) {
             // THE "add a brand live" move: a config row (auth scheme + pass path).
             args.addAll(List.of(
@@ -250,7 +263,7 @@ class LegacyPatternsDemoIT {
 
     private static Map<String, Object> deviceShape(String brand, boolean pass) {
         return switch (brand) {
-            case "SAMSUNG" -> Map.of("respCode", pass ? "0" : "1");
+            case "SAMSUNG", "APPLE" -> Map.of("respCode", pass ? "0" : "1");
             case "BOSCH" -> Map.of("result", Map.of("code", pass ? "S" : "F"));
             case "HISENSE" -> Map.of("responseStatus", pass ? "-4" : "-9");
             default -> Map.of("status", pass ? "OK" : "DECLINED");
@@ -322,6 +335,28 @@ class LegacyPatternsDemoIT {
         assertThat(failureClassesOf(failed))
                 .as("the vendor failure carries its CLASS (enum name only)")
                 .contains("PERMANENT");
+    }
+
+    @Test
+    @Order(6)
+    void applePostDisbursal_realSfdcSvcName_brandDerived_approvedThroughDeviceFinancing()
+            throws Exception {
+        // The REAL SFDC front door (secondary journey-only proof; the SOAP→edge half
+        // is proven Docker-free in SfdcSoapEndToEndTest). type = svcName
+        // Post_Disbursal_Apple, NO brand in the payload (derived from the svcName via
+        // config), imei not deviceId — the whole path envelope -> engine route ->
+        // capability (svcName->APPLE, reads imei) -> real vendor call -> decision -> ops.
+        send(DEVICE_TOPIC, appleEnvelope("corr-apple-postdisbursal"));
+
+        JsonNode apple = awaitTerminalRun("corr-apple-postdisbursal");
+
+        assertThat(apple.get("status").asText())
+                .as("brand=APPLE derived from the svcName, imei read, vendor approved")
+                .isEqualTo("COMPLETED_APPROVED");
+        assertThat(apple.get("terminalNodeId").asText()).isEqualTo("n_approve");
+        assertThat(nodeIdsOf(apple))
+                .as("device-financing journey; APPLE row is validation-off -> single confirm call")
+                .contains("n_block").doesNotContain("n_validate");
     }
 
     @Test
@@ -454,6 +489,35 @@ class LegacyPatternsDemoIT {
         envelope.put("payloadContentType", "application/json");
         envelope.put("occurredAt", Instant.now().toString());
         envelope.put("payload", Map.of("brand", brand, "deviceId", deviceId));
+        return envelope;
+    }
+
+    /**
+     * The REAL Apple post-disbursal envelope the SFDC edge produces: source SFDC,
+     * type = the svcName Post_Disbursal_Apple, and the CDATA business body inline
+     * with NO brand field (brand is the svcName) and imei instead of deviceId.
+     */
+    private static Map<String, Object> appleEnvelope(String correlationId) {
+        Map<String, Object> envelope = new LinkedHashMap<>();
+        envelope.put("transactionId", correlationId + "-t");
+        envelope.put("source", "SFDC");
+        envelope.put("type", "Post_Disbursal_Apple");
+        envelope.put("notificationId", correlationId + "-n");
+        envelope.put("orgId", "00D0w0000008ec7EAA");
+        envelope.put("sfdcRecordId", correlationId + "-rec");
+        envelope.put("applicationRef", correlationId + "-app");
+        envelope.put("correlationId", correlationId);
+        envelope.put("originalCorrelationId", correlationId);
+        envelope.put("payloadContentType", "application/json");
+        envelope.put("occurredAt", Instant.now().toString());
+        envelope.put("payload", Map.of(
+                "imei", "431254356142345678",
+                "apiVersion", "2",
+                "paymentInfo", Map.of(
+                        "swipeOrLoanAmount", "23800.00",
+                        "loanTenure", "12",
+                        "scheme", "2",
+                        "customerLoanInterestRate", "7.50")));
         return envelope;
     }
 

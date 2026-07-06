@@ -20,6 +20,7 @@ import com.idfcfirstbank.integration.orchestration.originationjourney.applicatio
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.model.JourneyDefinition;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.service.ExpressionEvaluator;
 import com.idfcfirstbank.integration.orchestration.originationjourney.domain.service.JourneyEngine;
+import com.idfcfirstbank.integration.shared.domain.capability.CapabilityRequest;
 import com.idfcfirstbank.integration.shared.domain.envelope.CanonicalEnvelope;
 import com.idfcfirstbank.integration.shared.domain.envelope.SourceSystem;
 import org.junit.jupiter.api.Test;
@@ -59,7 +60,8 @@ class SfdcSoapEndToEndTest {
 
     private final Map<String, RoutingDecision> routes = Map.of(
             "Inbound_Wrapper", new RoutingDecision(SourceSystem.SFDC, "Inbound_Wrapper", "orig.sfdc.pl.v1", "loan-origination"),
-            "SENDSMS", new RoutingDecision(SourceSystem.SFDC, "SENDSMS", "comm.sms.send.v1", "communications"));
+            "SENDSMS", new RoutingDecision(SourceSystem.SFDC, "SENDSMS", "comm.sms.send.v1", "communications"),
+            "Post_Disbursal_Apple", new RoutingDecision(SourceSystem.SFDC, "Post_Disbursal_Apple", "orig.device-financing.v1", "device-financing"));
 
     /** Edge front-end: parse + un-batch + unwrap + normalise (opaque payload) each notification. */
     private List<CanonicalEnvelope> normalise(String fixtureName) throws Exception {
@@ -130,6 +132,49 @@ class SfdcSoapEndToEndTest {
         assertThat(ctx.toString()).contains("9900766374").contains("0008405");   // customerId / loanNb
         // Envelope identity survived alongside the opaque body.
         assertThat(ctx.get("notificationId")).isEqualTo("04l6D00000AbCdE0001");
+    }
+
+    @Test
+    void applePostDisbursalSoapRoutesToDeviceFinancingWithRealPayloadInContext() throws Exception {
+        CanonicalEnvelope env = normalise("sfdc-outbound-apple-postdisbursal.xml").get(0);
+
+        // The EDGE's job: real SOAP -> canonical envelope. type = svcName verbatim,
+        // source = SFDC, and the opaque CDATA business body rides inline as payload
+        // (brand is IMPLICIT in the svcName — there is no brand field in the body).
+        assertThat(env.type()).isEqualTo("Post_Disbursal_Apple");
+        assertThat(env.source()).isEqualTo(SourceSystem.SFDC);
+        assertThat(env.notificationId()).isEqualTo("04l7200000Daq5RAbR");   // dedup key
+        assertThat(env.sfdcRecordId()).isEqualTo("a2T721100001IS65U9");
+        assertThat(env.orgId()).isEqualTo("00D0w0000008ec7EAA");
+        assertThat(env.payload())
+                .containsEntry("imei", "431254356142345678")
+                .containsKey("paymentInfo");
+
+        // The ENGINE's job: type Post_Disbursal_Apple -> the device-financing journey,
+        // with the real payload flattened into the run context and the svcName carried
+        // to the first capability hop (so it can derive brand=APPLE).
+        List<CapabilityRequest> dispatched = new ArrayList<>();
+        InMemoryJourneyInstanceStore store = new InMemoryJourneyInstanceStore();
+        JourneyRegistry registry = new JourneyRegistry(
+                new ClasspathJourneySource(new JourneyDefinitionLoader(new ObjectMapper()),
+                        List.of("journeys/device-financing.journey.json")),
+                Map.of("Post_Disbursal_Apple", "device-financing"));
+        registry.bootstrap();
+        JourneyOrchestrator orchestrator = new JourneyOrchestrator(
+                new JourneyEngine(new ExpressionEvaluator()),
+                registry, store, dispatched::add, d -> { }, () -> "ji-fallback");
+
+        String id = orchestrator.onOrigination(asOriginationMap(env));
+
+        Map<String, Object> ctx = store.find(id).orElseThrow().payload();
+        assertThat(ctx).containsEntry("imei", "431254356142345678").containsKey("paymentInfo");
+        assertThat(ctx.get("type")).isEqualTo("Post_Disbursal_Apple");
+        assertThat(dispatched).as("first hop dispatched to the device-financing capability")
+                .isNotEmpty();
+        assertThat(dispatched.get(0).capabilityKey()).isEqualTo("device-financing");
+        assertThat(dispatched.get(0).payload())
+                .as("svcName carried to the capability so it derives brand=APPLE")
+                .containsEntry("type", "Post_Disbursal_Apple");
     }
 
     @Test
