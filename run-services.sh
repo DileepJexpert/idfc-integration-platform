@@ -56,6 +56,7 @@ SERVICES=(
   "device-validation|capabilities/device-validation|8110"
   "fusion-hcm|capabilities/fusion-hcm|8111"
   "file-batch-edge|edges/file-batch-edge|8112"
+  "imps-disbursal|capabilities/imps-disbursal|8113"
 )
 
 c_green=$'\e[32m'; c_red=$'\e[31m'; c_yellow=$'\e[33m'; c_dim=$'\e[2m'; c_off=$'\e[0m'

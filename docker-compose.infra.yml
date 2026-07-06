@@ -181,6 +181,16 @@ services:
     volumes:
       - ./infra/mock-vendors/fusion/mappings:/home/wiremock/mappings:ro
 
+  # --- digital-lending SYNC lane vendor (WireMock; only the DATA is mocked) -----
+  mock-imps:
+    image: wiremock/wiremock:3.9.1
+    container_name: idfc-mock-imps
+    networks: [idfc]
+    command: ["--port", "8080", "--disable-banner", "--disable-http2-plain"]
+    ports: ["9110:8080"]
+    volumes:
+      - ./infra/mock-vendors/imps/mappings:/home/wiremock/mappings:ro
+
   mock-finnone:
     image: gvenzl/oracle-xe:21-slim
     container_name: idfc-mock-finnone

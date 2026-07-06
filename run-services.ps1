@@ -66,6 +66,7 @@ $Services = @(
     @{ name = 'device-validation';   module = 'capabilities/device-validation';    port = 8110 }
     @{ name = 'fusion-hcm';          module = 'capabilities/fusion-hcm';            port = 8111 }
     @{ name = 'file-batch-edge';     module = 'edges/file-batch-edge';              port = 8112 }
+    @{ name = 'imps-disbursal';      module = 'capabilities/imps-disbursal';        port = 8113 }
 )
 
 # --- Optional machine-local port overrides (gitignored) ---------------------

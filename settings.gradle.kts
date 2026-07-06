@@ -44,6 +44,7 @@ include("capabilities:communications") // SENDSMS/OTP notification action — co
 include("capabilities:verification")   // per-svcName verification (Karza/IMPS) — control-plane routed, DLQ-on-failure
 include("capabilities:device-validation") // brand-as-config capability (real HTTP; vendor mocked in dev)
 include("capabilities:fusion-hcm")       // per-record Fusion HCM update/read (real HTTP; vendor mocked in dev)
+include("capabilities:imps-disbursal")   // digital-lending SYNC lane: IMPS fund transfer (caller waits; not the engine)
 
 // orchestration/ — long-running journeys (stubs in Slice 1)
 include("orchestration:origination-journey")

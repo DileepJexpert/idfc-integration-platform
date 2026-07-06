@@ -1,0 +1,13 @@
+{
+  "priority": 1,
+  "request": {
+    "method": "POST",
+    "urlPath": "/api/v1/impsFT",
+    "bodyPatterns": [ { "matchesJsonPath": "$[?(@.custBankAccNo == 'SERVER-ERROR')]" } ]
+  },
+  "response": {
+    "status": 500,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": { "error": "backend_unavailable" }
+  }
+}
