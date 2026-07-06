@@ -23,6 +23,9 @@ question. You stop at the level you need.
 | **[03-component.md](03-component.md)** | L3 Component | inside each deployable | developers | What are the parts of the engine / a capability / the edge? |
 | **[04-journeys.md](04-journeys.md)** | L4 Code | one journey, node-by-node | implementers, reviewers, QA | How does *this specific flow* actually execute? |
 
+Plus a **[per-capability reference](capabilities/README.md)** — one page each — as an L3 companion for the
+team that owns a given capability.
+
 Two existing documents sit alongside this set and are referenced, not duplicated:
 
 - **[JOURNEY_DAG_CHARTER.md](../JOURNEY_DAG_CHARTER.md)** — the *contract*: the DAG DSL grammar and the
