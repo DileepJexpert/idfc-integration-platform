@@ -282,7 +282,7 @@ Expected: `200` `{ "applicationId":"DIG-CRED-APP-HIGH-1", "status":"ACK_PROCESSE
 7. [Journey: payment-execution (IMPS / UPI_MANDATE / BILL_PAY / unsupported)](#sec-payment-execution)
 8. [Journey: emandate-autopay-setup](#sec-emandate-autopay)
 9. [Journey: emandate-cancel (found / not-found)](#sec-emandate-cancel)
-10. [Demo: device-financing (brand-as-config, real HTTP -> WireMock)](#sec-device-financing)
+10. [Journey: device-financing (SFDC real entry + brand-as-config demo door)](#sec-device-financing)
 11. [Demo: employee-lwd-update file-batch](#sec-employee-lwd)
 12. [Control plane: journey-registry maker-checker (Postman)](#sec-registry)
 13. [Control plane: ops read window /ops (Postman)](#sec-ops)
@@ -4065,9 +4065,11 @@ H='-H X-Ops-Token:dev-ops-token -H X-User-Id:ops.analyst@bank'
 
 ---
 
-## Demo: device-financing (brand-as-config, real HTTP -> WireMock)
+## Journey: device-financing (brand-as-config, real HTTP -> WireMock)
 
-This journey is the local-profile demo door where **every per-brand difference is a config row, not code**: validate-or-not, auth scheme (OAUTH / BASIC / NA), and the "approved" pass-path/pass-value all come from `device-financing.brands.*`. The capability (`device-financing`, ops `resolveBrand` / `validate` / `block`) makes a **real HTTP POST** to the WireMock vendor at `http://localhost:9106/vendor/device-financing/{validate|block}`; only the response DATA is mocked.
+**Two entry doors, ONE journey.** The REAL production front door is an **SFDC Outbound Messaging SOAP call** — `SVCNAME__c = Post_Disbursal_Apple` (Apple post-disbursal device financing) — which the SFDC ingress edge normalizes and routes here; the payload has **no brand field** (brand=**APPLE** is implicit in the svcName) and the device id is `imei` (see *Permutation 0* below + `docs/DEVICE_FINANCING_SFDC_ENTRY.md`). The **demo Kafka door** (`type:"DEVICE_FINANCING"`, `payload.brand`/`payload.deviceId`) is the secondary, journey-only path used by `demo/run-demo1.sh` for the four-outcome set (Permutations 1+).
+
+Either way it is ONE journey where **every per-brand difference is a config row, not code**: validate-or-not, auth scheme (OAUTH / BASIC / NA), and the "approved" pass-path/pass-value all come from `device-financing.brands.*`. The capability (`device-financing`, ops `resolveBrand` / `validate` / `block`) makes a **real HTTP POST** to the WireMock vendor at `http://localhost:9106/vendor/device-financing/{validate|block}`; only the response DATA is mocked.
 
 ### Pinned journey facts (device-financing v1, classpath-loaded on the local profile)
 
@@ -4075,17 +4077,18 @@ Nodes (start `n_brand`):
 
 | id | type | op / condition | output | true-arm → | default → |
 |---|---|---|---|---|---|
-| `n_brand` | task | `resolveBrand`, input `{ brand: context.brand }` | `context.brandConfig` = `{brand, validationRequired, authType}` | — | `n_route` |
+| `n_brand` | task | `resolveBrand`, input `{ brand: context.brand, type: context.type }` | `context.brandConfig` = `{brand, validationRequired, authType}` | — | `n_route` |
 | `n_route` | branch | `context.brandConfig.validationRequired == true` | — | `n_validate` | `n_block` |
-| `n_validate` | task | `validate`, input `{ brand, deviceId }` | `context.validation` = `{brand, approved, authType, vendor}` | — | `n_vroute` |
+| `n_validate` | task | `validate`, input `{ brand, type, deviceId, imei }` | `context.validation` = `{brand, approved, authType, vendor}` | — | `n_vroute` |
 | `n_vroute` | branch | `context.validation.approved == true` | — | `n_block` | `n_reject` |
-| `n_block` | task | `block`, input `{ brand, deviceId }` | `context.block` = `{brand, approved, authType, vendor}` | — | `n_decide` |
+| `n_block` | task | `block`, input `{ brand, type, deviceId, imei }` | `context.block` = `{brand, approved, authType, vendor}` | — | `n_decide` |
 | `n_decide` | branch | `context.block.approved == true` | — | `n_approve` | `n_reject` |
 | `n_approve` | terminal | `status:"completed"`, `emit:["DeviceFinancingApproved"]` | → outcome **APPROVED** | — | — |
 | `n_reject` | terminal | `status:"rejected"`, `emit:["DeviceFinancingDeclined"]` | → outcome **REJECTED** | — | — |
 
 Key derived facts (all confirmed in code):
 - `==` is a **string compare**; the booleans stringify (`true`→`"true"`). Branch drivers: `brandConfig.validationRequired`, `validation.approved`, `block.approved`.
+- **Brand + device-id resolution:** the capability reads `payload.brand` if present (demo Kafka door); otherwise it derives the brand from the svcName (`type`) via the brand row's `svc-name` (real SFDC door — e.g. `Post_Disbursal_Apple → APPLE`). The device id is `payload.deviceId` if present, else `payload.imei`. Neither yields a brand → PERMANENT (fail closed, "missing brand").
 - A validation-required brand (SAMSUNG, BOSCH) must pass **BOTH** `validate` and `block` to reach APPROVED. A block-only brand (GODREJ, HISENSE) runs `n_block` only.
 - **No node has a `retrySpec`, `onFailure`, or breaker policy.** Any capability `status:ERROR` fails the node on the first response and fails the run — TRANSIENT and AMBIGUOUS are **not retried** here (they die exactly like PERMANENT); only the recorded `failureClass` differs. There is **no compensation** (no completed compensable node). **`BREAKER_OPEN` is unreachable** in this journey (no circuit-breaker configured, and `ErrorClass` only has TRANSIENT/PERMANENT/AMBIGUOUS — see the N/A permutation below).
 - HTTP→ErrorClass map (`DeviceFinancingVendorClient`): **4xx → PERMANENT**, **5xx → TRANSIENT**, **read-timeout(>10000ms) → AMBIGUOUS**, **connect/IO refused → TRANSIENT**, empty body → PERMANENT, unknown/missing brand → PERMANENT (fail-closed).
@@ -4098,17 +4101,40 @@ Key derived facts (all confirmed in code):
 | GODREJ | NA | false | `status` | `"OK"` | `{"status":"OK"}` |
 | BOSCH | BAUTH | true | `result.code` | `"S"` | `{"result":{"code":"S"}}` |
 | HISENSE | OAUTH | false | `responseStatus` | `"-4"` | `{"responseStatus":"-4"}` (added at runtime, no rebuild) |
+| APPLE | OAUTH | false | `respCode` | `"0"` | `{"respCode":"0"}` (real SFDC door; row also declares `svc-name: Post_Disbursal_Apple`) |
 
 deviceId levers (WireMock, `POST /vendor/device-financing/{validate|block}`):
 - **`DEV-FAIL`** → `00-fail.json` (priority 1) returns **HTTP 422** for ANY brand → PERMANENT → FAILED.
 - **`DEV-DECLINE`** → per-brand decline body at **HTTP 200** (`{"respCode":"1"}` / `{"status":"DECLINED"}` / `{"result":{"code":"F"}}`) → `approved=false` → business decline (teal).
 - any other deviceId → per-brand pass body at HTTP 200 → `approved=true`.
 
-### Entry (identical shape for every permutation)
+### Entry — two doors
 
-There is **no REST entry** for this journey — it is a **Kafka door**. Produce to topic **`orig.device-financing.v1`**, message **key = `correlationId`**, value = the CanonicalEnvelope. `type` MUST be `DEVICE_FINANCING`; `payload.brand` and `payload.deviceId` are the only business fields the capability reads. Engine instance id is `"ji-" + correlationId` (correlationId is the first non-null dedup key). Ops search keys for a run = its `correlationId`, `notificationId`, `sfdcRecordId`.
+**Real SFDC SOAP door (production — Permutation 0):** an SFDC Outbound Message `POST /api/v1/sfdc/outbound-messages` (edge `:8080`, header `X-Auth-Token: dev-token`) with `SVCNAME__c = Post_Disbursal_Apple`. The edge normalizes it (svcName → `type`, `Request__c` CDATA → inline `payload`) and publishes to `orig.device-financing.v1`; the engine's `type-to-journey.Post_Disbursal_Apple` routes it here. The payload has **no brand field** (brand=APPLE from the svcName) and carries `imei` + `paymentInfo`. The correlationId is **edge-generated** (NOT the `correlationid` header), so the run's ops search key is its **`notificationId`** (`Notification/Id`) or **`sfdcRecordId`** (`sf1:Id`). Full curl + reference envelope: `docs/DEVICE_FINANCING_SFDC_ENTRY.md`; fixture `full-flow-it/src/test/resources/sfdc-outbound-apple-postdisbursal.xml`.
+
+**Demo Kafka door (secondary — Permutations 1+):** produce to topic **`orig.device-financing.v1`**, **key = `correlationId`**, value = the CanonicalEnvelope with `type:"DEVICE_FINANCING"` and `payload.brand`/`payload.deviceId` (the business fields the capability reads on this door). Engine instance id `"ji-" + correlationId` (correlationId is the first non-null dedup key). Ops search keys = `correlationId` / `notificationId` / `sfdcRecordId`.
 
 Full-stack prereq: engine started via `./run-services.sh` (or `bootRun --spring.profiles.active=local --idfc.engine.journey-source=classpath`), the `device-financing` app, and the WireMock mock-vendors server (`:9106`) all running (or just run `demo/run-demo1.sh` for the canned four-outcome set). Engine-only manual prereq: engine running; you hand-publish `cap.device-financing.response.v1` messages to steer each hop.
+
+---
+
+### Permutation 0 — REAL SFDC SOAP entry (Post_Disbursal_Apple → APPROVED)
+
+The production path. `SVCNAME__c = Post_Disbursal_Apple`, **no brand in the body** (brand=APPLE derived from the svcName), device id = `imei`. APPLE is `validation-required:false`, so it is a single `n_block` confirmation call — no `n_validate` (structurally like GODREJ).
+
+**Entry** — SOAP POST to the LOCAL edge (`docs/DEVICE_FINANCING_SFDC_ENTRY.md` has the full envelope inline):
+```bash
+curl -sS -X POST http://localhost:8080/api/v1/sfdc/outbound-messages \
+  -H "X-Auth-Token: dev-token" -H "Content-Type: text/xml" \
+  --data-binary @full-flow-it/src/test/resources/sfdc-outbound-apple-postdisbursal.xml
+# expected: 200  <Ack>true</Ack>
+```
+
+**Drive to outcome**
+- **Full-stack:** `apple-pass.json` matches `brand=APPLE` and returns `{"respCode":"0"}` → `approved=true`. (Apple is OAUTH → the client fetches a bearer token from `oauth-token.json` first.)
+- **Engine-only:** the instanceId is **edge-generated** — read it from the engine `journey.start instanceId=...` log or `GET /ops/runs/search?key=<notificationId>`. Then publish to `cap.device-financing.response.v1`: `n_brand` result `{"brand":"APPLE","validationRequired":false,"authType":"OAUTH"}`, then `n_block` result `{"brand":"APPLE","approved":true,"authType":"OAUTH","vendor":{"respCode":"0"}}`.
+
+**Expected result** — ops status **`COMPLETED_APPROVED`**, terminalNodeId `n_approve`, transitions `n_brand → n_block` (no `n_validate`). Emit `DeviceFinancingApproved`. **Verify:** `GET /ops/runs/search?key=04l7200000Daq5RAbR` (the `notificationId`) — one run, `journeyKey:"device-financing"`. Decline/technical-fail variants behave exactly as the decline/fail permutations below (a non-pass vendor body → `COMPLETED_DECLINED` at `n_reject`; a 4xx/5xx/timeout → `FAILED_*` at `n_block`, failureClass PERMANENT/TRANSIENT/AMBIGUOUS).
 
 ---
 
