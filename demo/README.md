@@ -2,14 +2,14 @@
 
 **`demo/` is now just the runnable demo HARNESS** — scripts (`run-demo1.sh`,
 `run-demo2.sh`) and the sample CSV. The pieces it exercises are **REAL modules**,
-not demo code: the `device-financing` and `fusion-hcm` capabilities live in
+not demo code: the `device-validation` and `fusion-hcm` capabilities live in
 `capabilities/`, and the local-folder ingress is `edges/file-batch-edge` — each
 sits with its peers, on the capability framework, exactly like `kyc` or the SFDC
 edge. They make **real outbound HTTP** (real client, timeouts, per-brand auth,
-HTTP-status → failure-class) to a **WireMock** vendor (`mock-devicefin` /
+HTTP-status → failure-class) to a **WireMock** vendor (`mock-devicevalidation` /
 `mock-fusion` in `docker-compose.infra.yml`); the ONLY thing mocked is the
 vendor's response DATA (mappings under
-`infra/mock-vendors/{device-financing,fusion}/mappings/`) — just as every
+`infra/mock-vendors/{device-validation,fusion}/mappings/`) — just as every
 capability talks to a mock vendor in dev. None of it is the census-gated
 migration target (`docs/legacy-analysis-review.md` §6/§8 — the generic-http
 capability, production SFTP edge, `foreach` execution and sync lane stay unbuilt
@@ -24,9 +24,9 @@ drawn DAG). Same behaviour, no new deployable.*
 
 | piece | what it proves |
 |---|---|
-| `capabilities/device-financing` | **Brand-as-config**: ONE journey; SAMSUNG (OAUTH, validate+block), GODREJ (NA, block-only), BOSCH (BAUTH, nested pass path) are ROWS in its `application.yml`. Each row's auth is **real** (Samsung fetches an OAuth token then Bearer; Bosch sends Basic); the vendor call is **real HTTP** to `mock-devicefin`. Unknown brands FAIL CLOSED. |
+| `capabilities/device-validation` | **Brand-as-config**: ONE journey, THREE config-gated activities (validate / block / unblock). Each brand is a ROW in `application.yml` carrying its `validate`/`block`/`unblock` flags, `validate-by` (imei\|serial), auth scheme and pass path: SAMSUNG (OAUTH, imei, full lifecycle), GODREJ (NA, serial, block-only), BOSCH (BAUTH, serial, nested pass path, full lifecycle). The request's `status` (`1`=validate+block, `2`=unblock) intersects with the brand flags to decide what runs. Each row's auth is **real** (Samsung fetches an OAuth token then Bearer; Bosch sends Basic); the vendor call is **real HTTP** to `mock-devicevalidation`. Outcomes are **valid/invalid**; unknown brands FAIL CLOSED. |
 | `capabilities/fusion-hcm` + `edges/file-batch-edge` | **File-batch scaffold**: the edge polls a CSV dropped in `demo/batch-inbox/` and starts one engine run per record; the `fusion-hcm` capability makes a **real HTTP** POST to Fusion (`mock-fusion`) per record — a malformed date is a real 400 → PERMANENT. Grouped by ONE batch search key. (Capability and ingress edge are separate deployables.) |
-| engine `local` profile | The two demo doors as CONFIG (in `application-local.yml` — no separate `demo` profile): topics `orig.device-financing.v1` / `orig.employee-lwd-update.v1`, `type-to-journey` rows, the two journey JSONs. Loaded via classpath (`run-services.sh`, or `--idfc.engine.journey-source=classpath`). |
+| engine `local` profile | The two demo doors as CONFIG (in `application-local.yml` — no separate `demo` profile): topics `orig.device-validation.v1` / `orig.employee-lwd-update.v1`, `type-to-journey` rows, the two journey JSONs. Loaded via classpath (`run-services.sh`, or `--idfc.engine.journey-source=classpath`). |
 | ops view (existing) | Every run above is watchable: status, node position, per-record outcomes, failure CLASS, DLQ ref. Nothing demo-specific was added to it. |
 | Designer seeds (designer repo) | The runnable demo journeys drawn, plus the two REFERENCE drafts — production file-batch (SFTP → `foreach` → email) and the sync-read lane — **drawn, not built** (the honesty slide). |
 
@@ -38,7 +38,7 @@ re-drop refused by ledger AND engine dedup, empty file skipped.
 ## Running it live
 
 ```bash
-docker compose -f docker-compose.infra.yml up -d        # Kafka + Aerospike + mock-devicefin (9106) + mock-fusion (9107)
+docker compose -f docker-compose.infra.yml up -d        # Kafka + Aerospike + mock-devicevalidation (9106) + mock-fusion (9107)
 
 # 1. the engine with the demo rows (classpath journeys; flip to registry to
 #    show the designer→registry→engine seam instead)
@@ -46,7 +46,7 @@ docker compose -f docker-compose.infra.yml up -d        # Kafka + Aerospike + mo
   --args='--spring.profiles.active=local --idfc.engine.journey-source=classpath --idfc.engine.state-store=in-memory'
 
 # 2. the capabilities + the file-batch ingress edge
-./gradlew :capabilities:device-financing:bootRun --args='--spring.profiles.active=local' &
+./gradlew :capabilities:device-validation:bootRun --args='--spring.profiles.active=local' &
 ./gradlew :capabilities:fusion-hcm:bootRun --args='--spring.profiles.active=local' &
 #    (bootRun's working dir is the MODULE dir, so pass the inbox absolutely —
 #     otherwise the poller watches edges/file-batch-edge/demo/batch-inbox and
@@ -67,16 +67,19 @@ Open the ops view: four runs — SAMSUNG approved THROUGH `n_validate`, GODREJ
 approved WITHOUT it (its row says block-only), the BOSCH device declined
 (teal completion, never red), the failed device red with `PERMANENT`.
 
-**Add HISENSE live** (the payoff): restart `device-financing` with four
+**Add HISENSE live** (the payoff): restart `device-validation` with a few
 extra CLI rows — no rebuild, no new service:
 
 ```bash
-./gradlew :capabilities:device-financing:bootRun --args='--spring.profiles.active=local \
-  --device-financing.brands.HISENSE.auth-type=OAUTH \
-  --device-financing.brands.HISENSE.validation-required=false \
-  --device-financing.brands.HISENSE.pass-path=responseStatus \
-  --device-financing.brands.HISENSE.pass-value=-4'   # WireMock hisense-pass returns responseStatus:-4
-demo/run-demo1.sh HISENSE         # now approves (before the row: FAILED, fail-closed)
+./gradlew :capabilities:device-validation:bootRun --args='--spring.profiles.active=local \
+  --device-validation.brands.HISENSE.validate=false \
+  --device-validation.brands.HISENSE.block=true \
+  --device-validation.brands.HISENSE.unblock=false \
+  --device-validation.brands.HISENSE.validate-by=imei \
+  --device-validation.brands.HISENSE.auth-type=OAUTH \
+  --device-validation.brands.HISENSE.pass-path=responseStatus \
+  --device-validation.brands.HISENSE.pass-value=-4'   # WireMock hisense-pass returns responseStatus:-4
+demo/run-demo1.sh HISENSE         # now valid (before the row: FAILED, fail-closed)
 ```
 
 > Say: *"26 brands in legacy = 26 config files + a dedicated service. Here:

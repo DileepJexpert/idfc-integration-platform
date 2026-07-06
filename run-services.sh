@@ -53,7 +53,7 @@ SERVICES=(
   "bureau|capabilities/bureau|8092"
   "scoring|capabilities/scoring|8093"
   "lending-origination|capabilities/lending-origination|8094"
-  "device-financing|capabilities/device-financing|8110"
+  "device-validation|capabilities/device-validation|8110"
   "fusion-hcm|capabilities/fusion-hcm|8111"
   "file-batch-edge|edges/file-batch-edge|8112"
 )

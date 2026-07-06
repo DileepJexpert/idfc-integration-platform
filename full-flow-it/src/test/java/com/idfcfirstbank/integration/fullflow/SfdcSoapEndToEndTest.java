@@ -61,7 +61,7 @@ class SfdcSoapEndToEndTest {
     private final Map<String, RoutingDecision> routes = Map.of(
             "Inbound_Wrapper", new RoutingDecision(SourceSystem.SFDC, "Inbound_Wrapper", "orig.sfdc.pl.v1", "loan-origination"),
             "SENDSMS", new RoutingDecision(SourceSystem.SFDC, "SENDSMS", "comm.sms.send.v1", "communications"),
-            "Post_Disbursal_Apple", new RoutingDecision(SourceSystem.SFDC, "Post_Disbursal_Apple", "orig.device-financing.v1", "device-financing"));
+            "Post_Disbursal_Apple", new RoutingDecision(SourceSystem.SFDC, "Post_Disbursal_Apple", "orig.device-validation.v1", "device-validation"));
 
     /** Edge front-end: parse + un-batch + unwrap + normalise (opaque payload) each notification. */
     private List<CanonicalEnvelope> normalise(String fixtureName) throws Exception {
@@ -135,7 +135,7 @@ class SfdcSoapEndToEndTest {
     }
 
     @Test
-    void applePostDisbursalSoapRoutesToDeviceFinancingWithRealPayloadInContext() throws Exception {
+    void applePostDisbursalSoapRoutesToDeviceValidationWithRealPayloadInContext() throws Exception {
         CanonicalEnvelope env = normalise("sfdc-outbound-apple-postdisbursal.xml").get(0);
 
         // The EDGE's job: real SOAP -> canonical envelope. type = svcName verbatim,
@@ -150,15 +150,15 @@ class SfdcSoapEndToEndTest {
                 .containsEntry("imei", "431254356142345678")
                 .containsKey("paymentInfo");
 
-        // The ENGINE's job: type Post_Disbursal_Apple -> the device-financing journey,
+        // The ENGINE's job: type Post_Disbursal_Apple -> the device-validation journey,
         // with the real payload flattened into the run context and the svcName carried
         // to the first capability hop (so it can derive brand=APPLE).
         List<CapabilityRequest> dispatched = new ArrayList<>();
         InMemoryJourneyInstanceStore store = new InMemoryJourneyInstanceStore();
         JourneyRegistry registry = new JourneyRegistry(
                 new ClasspathJourneySource(new JourneyDefinitionLoader(new ObjectMapper()),
-                        List.of("journeys/device-financing.journey.json")),
-                Map.of("Post_Disbursal_Apple", "device-financing"));
+                        List.of("journeys/device-validation.journey.json")),
+                Map.of("Post_Disbursal_Apple", "device-validation"));
         registry.bootstrap();
         JourneyOrchestrator orchestrator = new JourneyOrchestrator(
                 new JourneyEngine(new ExpressionEvaluator()),
@@ -169,9 +169,9 @@ class SfdcSoapEndToEndTest {
         Map<String, Object> ctx = store.find(id).orElseThrow().payload();
         assertThat(ctx).containsEntry("imei", "431254356142345678").containsKey("paymentInfo");
         assertThat(ctx.get("type")).isEqualTo("Post_Disbursal_Apple");
-        assertThat(dispatched).as("first hop dispatched to the device-financing capability")
+        assertThat(dispatched).as("first hop dispatched to the device-validation capability")
                 .isNotEmpty();
-        assertThat(dispatched.get(0).capabilityKey()).isEqualTo("device-financing");
+        assertThat(dispatched.get(0).capabilityKey()).isEqualTo("device-validation");
         assertThat(dispatched.get(0).payload())
                 .as("svcName carried to the capability so it derives brand=APPLE")
                 .containsEntry("type", "Post_Disbursal_Apple");

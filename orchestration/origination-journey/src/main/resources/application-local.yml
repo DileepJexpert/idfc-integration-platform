@@ -26,18 +26,18 @@ idfc:
     # the type-to-journey MAP merges with the base rows in application.yml.
     journey-resources:
       - journeys/loan-origination.journey.json
-      - journeys/device-financing.journey.json
+      - journeys/device-validation.journey.json
       - journeys/employee-lwd-update.journey.json
       - journeys/vehicle-rc-verification.journey.json
-    origination-topics: ${IDFC_ENGINE_ORIGINATION_TOPICS:orig.sfdc.pl.v1,orig.sfdc.lap.v1,orig.sfdc.bl.v1,orig.sfdc.commercial.v1,orig.device-financing.v1,orig.employee-lwd-update.v1}
+    origination-topics: ${IDFC_ENGINE_ORIGINATION_TOPICS:orig.sfdc.pl.v1,orig.sfdc.lap.v1,orig.sfdc.bl.v1,orig.sfdc.commercial.v1,orig.device-validation.v1,orig.employee-lwd-update.v1}
     type-to-journey:
-      DEVICE_FINANCING: device-financing
+      DEVICE_VALIDATION: device-validation
       EMPLOYEE_LWD_UPDATE: employee-lwd-update
-      # Real SFDC front door for Apple device financing: the SFDC edge normalizes
+      # Real SFDC front door for Apple device validation: the SFDC edge normalizes
       # SVCNAME__c=Post_Disbursal_Apple to type=Post_Disbursal_Apple and publishes
-      # to orig.device-financing.v1; route it to the device-financing journey.
-      # (The DEVICE_FINANCING row above is the demo Kafka door — kept for isolation.)
-      Post_Disbursal_Apple: device-financing
+      # to orig.device-validation.v1; route it to the device-validation journey.
+      # (The DEVICE_VALIDATION row above is the secondary Kafka door — kept for isolation.)
+      Post_Disbursal_Apple: device-validation
       # Karza VAHAN-RC verification journey. Routing lives here (config), not in
       # the registry — the journey is seeded/loadable but stays unroutable until
       # a type maps to it, so publish origination envelopes with type=VEHICLE_RC.

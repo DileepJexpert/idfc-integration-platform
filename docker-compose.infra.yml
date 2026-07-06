@@ -160,17 +160,17 @@ services:
     volumes:
       - ./infra/mock-vendors/karza/mappings:/home/wiremock/mappings:ro
 
-  # --- legacy-patterns DEMO vendors (WireMock; only the DATA is mocked) --------
-  mock-devicefin:
+  # --- capability vendor stubs (WireMock; only the DATA is mocked) -------------
+  mock-devicevalidation:
     image: wiremock/wiremock:3.9.1
-    container_name: idfc-mock-devicefin
+    container_name: idfc-mock-devicevalidation
     networks: [idfc]
-    # --disable-http2-plain: the demo capability uses RestClient/JDK HttpClient
+    # --disable-http2-plain: the capability uses RestClient/JDK HttpClient
     # (h2c upgrade); WireMock 3.9.1 mishandles h2c → force clean HTTP/1.1.
     command: ["--port", "8080", "--disable-banner", "--disable-http2-plain"]
     ports: ["9106:8080"]
     volumes:
-      - ./infra/mock-vendors/device-financing/mappings:/home/wiremock/mappings:ro
+      - ./infra/mock-vendors/device-validation/mappings:/home/wiremock/mappings:ro
 
   mock-fusion:
     image: wiremock/wiremock:3.9.1

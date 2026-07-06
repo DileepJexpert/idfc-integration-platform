@@ -1,0 +1,13 @@
+{
+  "priority": 5,
+  "request": {
+    "method": "POST",
+    "urlPathPattern": "/vendor/device-validation/(validate|block|unblock)",
+    "bodyPatterns": [ { "matchesJsonPath": "$[?(@.brand == 'BOSCH')]" } ]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": { "result": { "code": "S" } }
+  }
+}

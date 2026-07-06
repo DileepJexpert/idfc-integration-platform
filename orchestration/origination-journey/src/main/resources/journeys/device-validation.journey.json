@@ -1,0 +1,123 @@
+{
+  "journeyKey": "device-validation",
+  "version": 1,
+  "schemaVersion": 2,
+  "context": {
+    "schemaRef": "device-validation-context@1"
+  },
+  "startNodeId": "n_decide",
+  "nodes": [
+    {
+      "id": "n_decide",
+      "type": "task",
+      "capability": "device-validation",
+      "operation": "decideActivities",
+      "input": "{ brand: context.brand, type: context.type, status: context.status }",
+      "output": "context.plan",
+      "next": ["n_gate_validate"]
+    },
+    {
+      "id": "n_gate_validate",
+      "type": "branch",
+      "arms": [
+        { "when": "context.plan.runValidate == true", "next": "n_validate" }
+      ],
+      "default": "n_gate_block"
+    },
+    {
+      "id": "n_validate",
+      "type": "task",
+      "capability": "device-validation",
+      "operation": "validate",
+      "input": "{ brand: context.brand, type: context.type, status: context.status, imei: context.imei, serial: context.serial, deviceId: context.deviceId }",
+      "output": "context.validateResult",
+      "next": ["n_after_validate"]
+    },
+    {
+      "id": "n_after_validate",
+      "type": "branch",
+      "arms": [
+        { "when": "context.validateResult.valid == true", "next": "n_gate_block" }
+      ],
+      "default": "n_invalid"
+    },
+    {
+      "id": "n_gate_block",
+      "type": "branch",
+      "arms": [
+        { "when": "context.plan.runBlock == true", "next": "n_block" }
+      ],
+      "default": "n_gate_unblock"
+    },
+    {
+      "id": "n_block",
+      "type": "task",
+      "capability": "device-validation",
+      "operation": "block",
+      "input": "{ brand: context.brand, type: context.type, status: context.status, imei: context.imei, serial: context.serial, deviceId: context.deviceId }",
+      "output": "context.blockResult",
+      "next": ["n_after_block"]
+    },
+    {
+      "id": "n_after_block",
+      "type": "branch",
+      "arms": [
+        { "when": "context.blockResult.valid == true", "next": "n_gate_unblock" }
+      ],
+      "default": "n_invalid"
+    },
+    {
+      "id": "n_gate_unblock",
+      "type": "branch",
+      "arms": [
+        { "when": "context.plan.runUnblock == true", "next": "n_unblock" }
+      ],
+      "default": "n_valid"
+    },
+    {
+      "id": "n_unblock",
+      "type": "task",
+      "capability": "device-validation",
+      "operation": "unblock",
+      "input": "{ brand: context.brand, type: context.type, status: context.status, imei: context.imei, serial: context.serial, deviceId: context.deviceId }",
+      "output": "context.unblockResult",
+      "next": ["n_after_unblock"]
+    },
+    {
+      "id": "n_after_unblock",
+      "type": "branch",
+      "arms": [
+        { "when": "context.unblockResult.valid == true", "next": "n_valid" }
+      ],
+      "default": "n_invalid"
+    },
+    {
+      "id": "n_valid",
+      "type": "terminal",
+      "action": "push_decision_to_channel",
+      "emit": ["DeviceValidationValid"],
+      "status": "completed"
+    },
+    {
+      "id": "n_invalid",
+      "type": "terminal",
+      "action": "push_decision_to_channel",
+      "emit": ["DeviceValidationInvalid"],
+      "status": "rejected"
+    }
+  ],
+  "layout": {
+    "n_decide": { "x": 80.0, "y": 220.0 },
+    "n_gate_validate": { "x": 280.0, "y": 220.0 },
+    "n_validate": { "x": 480.0, "y": 100.0 },
+    "n_after_validate": { "x": 680.0, "y": 100.0 },
+    "n_gate_block": { "x": 480.0, "y": 300.0 },
+    "n_block": { "x": 680.0, "y": 300.0 },
+    "n_after_block": { "x": 880.0, "y": 300.0 },
+    "n_gate_unblock": { "x": 680.0, "y": 460.0 },
+    "n_unblock": { "x": 880.0, "y": 460.0 },
+    "n_after_unblock": { "x": 1080.0, "y": 460.0 },
+    "n_valid": { "x": 1280.0, "y": 260.0 },
+    "n_invalid": { "x": 1280.0, "y": 420.0 }
+  }
+}

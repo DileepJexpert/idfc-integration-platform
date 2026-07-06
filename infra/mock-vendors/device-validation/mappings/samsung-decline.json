@@ -1,0 +1,13 @@
+{
+  "priority": 2,
+  "request": {
+    "method": "POST",
+    "urlPathPattern": "/vendor/device-validation/(validate|block|unblock)",
+    "bodyPatterns": [ { "matchesJsonPath": "$[?(@.brand == 'SAMSUNG')]" }, { "matchesJsonPath": "$[?(@.deviceId == 'DEV-DECLINE')]" } ]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": { "respCode": "1" }
+  }
+}

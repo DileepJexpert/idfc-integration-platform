@@ -16,12 +16,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code application-local.yml}; {@code full-flow-it} supplies routing as CLI
  * args (its classpath carries many modules' yml, so it can't exercise this one),
  * so this test is the guard that the real Apple svcName — a mixed-case map key —
- * actually binds and routes to the device-financing journey on a real run.
+ * actually binds and routes to the device-validation journey on a real run.
  */
 class TypeToJourneyLocalYamlTest {
 
     @Test
-    void appleSvcNameAndDemoTypesRouteToTheirJourneysInTheLocalProfile() throws Exception {
+    void appleSvcNameAndTypesRouteToTheirJourneysInTheLocalProfile() throws Exception {
         var source = new YamlPropertySourceLoader()
                 .load("application-local", new ClassPathResource("application-local.yml"))
                 .get(0);
@@ -32,9 +32,9 @@ class TypeToJourneyLocalYamlTest {
                 .get();
 
         assertThat(typeToJourney)
-                .as("the REAL SFDC front door: svcName Post_Disbursal_Apple -> device-financing")
-                .containsEntry("Post_Disbursal_Apple", "device-financing")
-                .as("the demo Kafka door is kept alongside it")
-                .containsEntry("DEVICE_FINANCING", "device-financing");
+                .as("the REAL SFDC front door: svcName Post_Disbursal_Apple -> device-validation")
+                .containsEntry("Post_Disbursal_Apple", "device-validation")
+                .as("the secondary Kafka door is kept alongside it")
+                .containsEntry("DEVICE_VALIDATION", "device-validation");
     }
 }

@@ -42,7 +42,7 @@ include("capabilities:echo")           // trivial reference capability — prove
 include("capabilities:mandate")        // e-mandate lifecycle — reference capability (BRD §3, step 2)
 include("capabilities:communications") // SENDSMS/OTP notification action — consumes the SFDC edge's SENDSMS route
 include("capabilities:verification")   // per-svcName verification (Karza/IMPS) — control-plane routed, DLQ-on-failure
-include("capabilities:device-financing") // brand-as-config capability (real HTTP; vendor mocked in dev)
+include("capabilities:device-validation") // brand-as-config capability (real HTTP; vendor mocked in dev)
 include("capabilities:fusion-hcm")       // per-record Fusion HCM update/read (real HTTP; vendor mocked in dev)
 
 // orchestration/ — long-running journeys (stubs in Slice 1)

@@ -23,7 +23,7 @@ dependencies {
     testImplementation(project(":edges:sfdc-ingress-edge"))
     testImplementation(project(":edges:digital-partner-edge"))
     // LegacyPatternsDemoIT — the promoted capabilities + the file-batch ingress edge.
-    testImplementation(project(":capabilities:device-financing"))
+    testImplementation(project(":capabilities:device-validation"))
     testImplementation(project(":capabilities:fusion-hcm"))
     testImplementation(project(":edges:file-batch-edge"))
     testImplementation("com.fasterxml.jackson.core:jackson-databind")

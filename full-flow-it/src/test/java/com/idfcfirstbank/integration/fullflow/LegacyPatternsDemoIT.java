@@ -2,7 +2,7 @@ package com.idfcfirstbank.integration.fullflow;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.idfcfirstbank.integration.capabilities.devicefinancing.DeviceFinancingApplication;
+import com.idfcfirstbank.integration.capabilities.devicevalidation.DeviceValidationApplication;
 import com.idfcfirstbank.integration.capabilities.fusionhcm.FusionHcmApplication;
 import com.idfcfirstbank.integration.edges.filebatch.FileBatchEdgeApplication;
 import com.idfcfirstbank.integration.orchestration.originationjourney.OriginationJourneyApplication;
@@ -42,7 +42,7 @@ import static org.awaitility.Awaitility.await;
  * asserted:
  *
  * <ol>
- *   <li><b>Brand-as-config</b>: ONE device-financing journey; SAMSUNG
+ *   <li><b>Brand-as-config</b>: ONE device-validation journey; SAMSUNG
  *       validates+blocks, GODREJ blocks only, a declined device is a teal
  *       completion, a vendor failure is a red FAILED run — every difference a
  *       config row. HISENSE FAILS CLOSED until its row exists, then a restart
@@ -58,7 +58,7 @@ import static org.awaitility.Awaitility.await;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class LegacyPatternsDemoIT {
 
-    private static final String DEVICE_TOPIC = "orig.device-financing.v1";
+    private static final String DEVICE_TOPIC = "orig.device-validation.v1";
     private static final String HR_TOPIC = "orig.employee-lwd-update.v1";
     private static final String OPS_TOKEN = "demo-ops-token";
 
@@ -86,7 +86,7 @@ class LegacyPatternsDemoIT {
     static void bootEverything() throws Exception {
         kafka = new EmbeddedKafkaKraftBroker(1, 1,
                 DEVICE_TOPIC, HR_TOPIC,
-                "cap.device-financing.request.v1", "cap.device-financing.response.v1",
+                "cap.device-validation.request.v1", "cap.device-validation.response.v1",
                 "cap.fusion-hcm.request.v1", "cap.fusion-hcm.response.v1",
                 "orig.decision.v1", "ops.journey.events.v1");
         kafka.afterPropertiesSet();
@@ -110,15 +110,15 @@ class LegacyPatternsDemoIT {
                         "--spring.kafka.bootstrap-servers=" + brokers,
                         "--spring.kafka.consumer.auto-offset-reset=earliest",
                         "--idfc.engine.journey-source=classpath",
-                        "--idfc.engine.journey-resources[0]=journeys/device-financing.journey.json",
+                        "--idfc.engine.journey-resources[0]=journeys/device-validation.journey.json",
                         "--idfc.engine.journey-resources[1]=journeys/employee-lwd-update.journey.json",
                         "--idfc.engine.origination-topics=" + DEVICE_TOPIC + "," + HR_TOPIC,
                         "--idfc.engine.origination-group=legacy-demo-engine",
                         "--idfc.engine.response-group=legacy-demo-engine-responses",
-                        "--idfc.engine.type-to-journey.DEVICE_FINANCING=device-financing",
-                        // The REAL SFDC front door: svcName Post_Disbursal_Apple -> device-financing
+                        "--idfc.engine.type-to-journey.DEVICE_VALIDATION=device-validation",
+                        // The REAL SFDC front door: svcName Post_Disbursal_Apple -> device-validation
                         // (bracket notation keeps the mixed-case key literal).
-                        "--idfc.engine.type-to-journey[Post_Disbursal_Apple]=device-financing",
+                        "--idfc.engine.type-to-journey[Post_Disbursal_Apple]=device-validation",
                         "--idfc.engine.type-to-journey.EMPLOYEE_LWD_UPDATE=employee-lwd-update",
                         "--idfc.engine.state-store=in-memory",
                         "--OPS_API_TOKEN=" + OPS_TOKEN,
@@ -163,9 +163,12 @@ class LegacyPatternsDemoIT {
     }
 
     /**
-     * The brand table as CLI args — rows, not code. Each row carries only its
-     * auth SCHEME + pass-logic path; the pass/decline/fail DATA comes back from
-     * the real HTTP call to the vendor stub. HISENSE only when asked.
+     * The brand table as CLI args — rows, not code. Each row carries its three
+     * activity flags (validate/block/unblock), how the device is identified
+     * (validate-by), its auth SCHEME + pass-logic path; the pass/decline/fail DATA
+     * comes back from the real HTTP call to the vendor stub. SAMSUNG/BOSCH support
+     * the full lifecycle (incl. unblock); GODREJ/APPLE are block-only. HISENSE only
+     * when asked.
      */
     private static ConfigurableApplicationContext bootDeviceCapability(boolean withHisense) {
         java.util.List<String> args = new java.util.ArrayList<>(List.of(
@@ -174,43 +177,62 @@ class LegacyPatternsDemoIT {
                         + ".autoconfigure.jdbc.DataSourceAutoConfiguration",
                 "--spring.kafka.bootstrap-servers=" + brokers,
                 // real HTTP to the vendor stub + OAuth token endpoint
-                "--device-financing.vendor-base-url=" + vendorBase + "/vendor/device-financing",
-                "--device-financing.token-url=" + vendorBase + "/oauth/token",
-                "--device-financing.brands.SAMSUNG.auth-type=OAUTH",
-                "--device-financing.brands.SAMSUNG.validation-required=true",
-                "--device-financing.brands.SAMSUNG.pass-path=respCode",
-                "--device-financing.brands.SAMSUNG.pass-value=0",
-                "--device-financing.brands.SAMSUNG.scope=device-financing.samsung",
-                "--device-financing.brands.GODREJ.auth-type=NA",
-                "--device-financing.brands.GODREJ.validation-required=false",
-                "--device-financing.brands.GODREJ.pass-path=status",
-                "--device-financing.brands.GODREJ.pass-value=OK",
-                "--device-financing.brands.BOSCH.auth-type=BAUTH",
-                "--device-financing.brands.BOSCH.validation-required=true",
-                "--device-financing.brands.BOSCH.pass-path=result.code",
-                "--device-financing.brands.BOSCH.pass-value=S",
-                "--device-financing.brands.BOSCH.basic-user=bosch-demo",
-                "--device-financing.brands.BOSCH.basic-password=bosch-secret",
+                "--device-validation.vendor-base-url=" + vendorBase + "/vendor/device-validation",
+                "--device-validation.token-url=" + vendorBase + "/oauth/token",
+                // SAMSUNG — full lifecycle (validate + block + unblock), imei-identified.
+                "--device-validation.brands.SAMSUNG.validate=true",
+                "--device-validation.brands.SAMSUNG.block=true",
+                "--device-validation.brands.SAMSUNG.unblock=true",
+                "--device-validation.brands.SAMSUNG.validate-by=imei",
+                "--device-validation.brands.SAMSUNG.auth-type=OAUTH",
+                "--device-validation.brands.SAMSUNG.pass-path=respCode",
+                "--device-validation.brands.SAMSUNG.pass-value=0",
+                "--device-validation.brands.SAMSUNG.scope=device-validation.samsung",
+                // GODREJ — appliance: block-only, serial-identified, no auth.
+                "--device-validation.brands.GODREJ.validate=false",
+                "--device-validation.brands.GODREJ.block=true",
+                "--device-validation.brands.GODREJ.unblock=false",
+                "--device-validation.brands.GODREJ.validate-by=serial",
+                "--device-validation.brands.GODREJ.auth-type=NA",
+                "--device-validation.brands.GODREJ.pass-path=status",
+                "--device-validation.brands.GODREJ.pass-value=OK",
+                // BOSCH — full lifecycle, serial-identified, real Basic auth, nested pass path.
+                "--device-validation.brands.BOSCH.validate=true",
+                "--device-validation.brands.BOSCH.block=true",
+                "--device-validation.brands.BOSCH.unblock=true",
+                "--device-validation.brands.BOSCH.validate-by=serial",
+                "--device-validation.brands.BOSCH.auth-type=BAUTH",
+                "--device-validation.brands.BOSCH.pass-path=result.code",
+                "--device-validation.brands.BOSCH.pass-value=S",
+                "--device-validation.brands.BOSCH.basic-user=bosch-demo",
+                "--device-validation.brands.BOSCH.basic-password=bosch-secret",
                 // The REAL SFDC Apple front door: brand is implicit in the svcName, so
-                // the row declares its svc-name. (full-flow-it's classpath carries many
-                // modules' application.yml, so device-financing's own is not the one
-                // Spring loads here — every row is an arg, like the others above.)
-                "--device-financing.brands.APPLE.svc-name=Post_Disbursal_Apple",
-                "--device-financing.brands.APPLE.auth-type=OAUTH",
-                "--device-financing.brands.APPLE.validation-required=false",
-                "--device-financing.brands.APPLE.pass-path=respCode",
-                "--device-financing.brands.APPLE.pass-value=0",
-                "--device-financing.brands.APPLE.scope=device-financing.apple"));
+                // the row declares its svc-name. Post-disbursal = block only, imei.
+                // (full-flow-it's classpath carries many modules' application.yml, so
+                // device-validation's own is not the one Spring loads here — every row
+                // is an arg, like the others above.)
+                "--device-validation.brands.APPLE.svc-name=Post_Disbursal_Apple",
+                "--device-validation.brands.APPLE.validate=false",
+                "--device-validation.brands.APPLE.block=true",
+                "--device-validation.brands.APPLE.unblock=false",
+                "--device-validation.brands.APPLE.validate-by=imei",
+                "--device-validation.brands.APPLE.auth-type=OAUTH",
+                "--device-validation.brands.APPLE.pass-path=respCode",
+                "--device-validation.brands.APPLE.pass-value=0",
+                "--device-validation.brands.APPLE.scope=device-validation.apple"));
         if (withHisense) {
-            // THE "add a brand live" move: a config row (auth scheme + pass path).
+            // THE "add a brand live" move: a config row (flags + auth scheme + pass path).
             args.addAll(List.of(
-                    "--device-financing.brands.HISENSE.auth-type=OAUTH",
-                    "--device-financing.brands.HISENSE.validation-required=false",
-                    "--device-financing.brands.HISENSE.pass-path=responseStatus",
-                    "--device-financing.brands.HISENSE.pass-value=-4",
-                    "--device-financing.brands.HISENSE.scope=device-financing.hisense"));
+                    "--device-validation.brands.HISENSE.validate=false",
+                    "--device-validation.brands.HISENSE.block=true",
+                    "--device-validation.brands.HISENSE.unblock=false",
+                    "--device-validation.brands.HISENSE.validate-by=imei",
+                    "--device-validation.brands.HISENSE.auth-type=OAUTH",
+                    "--device-validation.brands.HISENSE.pass-path=responseStatus",
+                    "--device-validation.brands.HISENSE.pass-value=-4",
+                    "--device-validation.brands.HISENSE.scope=device-validation.hisense"));
         }
-        return new SpringApplicationBuilder(DeviceFinancingApplication.class)
+        return new SpringApplicationBuilder(DeviceValidationApplication.class)
                 .run(args.toArray(String[]::new));
     }
 
@@ -227,7 +249,7 @@ class LegacyPatternsDemoIT {
         server.createContext("/oauth/token", exchange -> respond(exchange, 200,
                 Map.of("access_token", "demo-token", "token_type", "Bearer", "expires_in", 3600)));
 
-        server.createContext("/vendor/device-financing/", exchange -> {
+        server.createContext("/vendor/device-validation/", exchange -> {
             Map<String, Object> body = readBody(exchange);
             String brand = String.valueOf(body.get("brand"));
             String deviceId = String.valueOf(body.get("deviceId"));
@@ -318,7 +340,7 @@ class LegacyPatternsDemoIT {
 
         assertThat(samsung.get("status").asText()).isEqualTo("COMPLETED_APPROVED");
         assertThat(nodeIdsOf(samsung))
-                .as("SAMSUNG's row says validation-required -> the validate hop RUNS")
+                .as("SAMSUNG supports validate (status 1 asks for it) -> the validate hop RUNS")
                 .contains("n_validate", "n_block");
 
         assertThat(godrej.get("status").asText()).isEqualTo("COMPLETED_APPROVED");
@@ -339,7 +361,7 @@ class LegacyPatternsDemoIT {
 
     @Test
     @Order(6)
-    void applePostDisbursal_realSfdcSvcName_brandDerived_approvedThroughDeviceFinancing()
+    void applePostDisbursal_realSfdcSvcName_brandDerived_approvedThroughDeviceValidation()
             throws Exception {
         // The REAL SFDC front door (secondary journey-only proof; the SOAP→edge half
         // is proven Docker-free in SfdcSoapEndToEndTest). type = svcName
@@ -351,12 +373,29 @@ class LegacyPatternsDemoIT {
         JsonNode apple = awaitTerminalRun("corr-apple-postdisbursal");
 
         assertThat(apple.get("status").asText())
-                .as("brand=APPLE derived from the svcName, imei read, vendor approved")
+                .as("brand=APPLE derived from the svcName, imei read, vendor says valid")
                 .isEqualTo("COMPLETED_APPROVED");
-        assertThat(apple.get("terminalNodeId").asText()).isEqualTo("n_approve");
+        assertThat(apple.get("terminalNodeId").asText()).isEqualTo("n_valid");
         assertThat(nodeIdsOf(apple))
-                .as("device-financing journey; APPLE row is validation-off -> single confirm call")
-                .contains("n_block").doesNotContain("n_validate");
+                .as("device-validation journey; APPLE row is validate-off/block-only -> single block call")
+                .contains("n_block").doesNotContain("n_validate", "n_unblock");
+    }
+
+    @Test
+    @Order(7)
+    void status2_unblock_runsOnlyTheUnblockActivity_whenTheBrandSupportsIt() throws Exception {
+        // status "2" (closure) asks for UNBLOCK only. SAMSUNG's row supports unblock,
+        // so the journey skips validate + block and runs the single unblock hop —
+        // the intersection of (request asks) AND (brand supports), end-to-end.
+        send(DEVICE_TOPIC, deviceEnvelope("corr-samsung-unblock", "SAMSUNG", "DEV-1", "2"));
+
+        JsonNode unblocked = awaitTerminalRun("corr-samsung-unblock");
+
+        assertThat(unblocked.get("status").asText()).isEqualTo("COMPLETED_APPROVED");
+        assertThat(unblocked.get("terminalNodeId").asText()).isEqualTo("n_valid");
+        assertThat(nodeIdsOf(unblocked))
+                .as("status 2 -> only the unblock hop runs; validate + block are skipped")
+                .contains("n_unblock").doesNotContain("n_validate", "n_block");
     }
 
     @Test
@@ -475,11 +514,21 @@ class LegacyPatternsDemoIT {
 
     private static Map<String, Object> deviceEnvelope(String correlationId,
                                                       String brand, String deviceId) {
+        return deviceEnvelope(correlationId, brand, deviceId, null);
+    }
+
+    /**
+     * A Kafka-door device-validation envelope. An optional {@code status} carries
+     * the activity intent ("1" = validate+block, "2" = unblock); a null status
+     * omits the field so the capability applies its configured default ("1").
+     */
+    private static Map<String, Object> deviceEnvelope(String correlationId,
+                                                      String brand, String deviceId, String status) {
         Map<String, Object> envelope = new LinkedHashMap<>();
         envelope.put("transactionId", correlationId + "-t");
         envelope.put("schemaVersion", "demo.v1");
         envelope.put("source", "FILE_DEMO");
-        envelope.put("type", "DEVICE_FINANCING");
+        envelope.put("type", "DEVICE_VALIDATION");
         envelope.put("notificationId", correlationId + "-n");
         envelope.put("orgId", "DEMO-ORG");
         envelope.put("sfdcRecordId", deviceId);
@@ -488,7 +537,13 @@ class LegacyPatternsDemoIT {
         envelope.put("originalCorrelationId", correlationId);
         envelope.put("payloadContentType", "application/json");
         envelope.put("occurredAt", Instant.now().toString());
-        envelope.put("payload", Map.of("brand", brand, "deviceId", deviceId));
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("brand", brand);
+        payload.put("deviceId", deviceId);
+        if (status != null) {
+            payload.put("status", status);
+        }
+        envelope.put("payload", payload);
         return envelope;
     }
 

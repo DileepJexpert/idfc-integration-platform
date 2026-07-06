@@ -82,14 +82,14 @@ idfc:
       - type: SENDSMS
         topic: comm.sms.send.v1
         downstream-journey: communications
-      # Apple post-disbursal device financing — REAL SFDC front door. SVCNAME__c
+      # Apple post-disbursal device validation — REAL SFDC front door. SVCNAME__c
       # = Post_Disbursal_Apple (case-sensitive, verbatim). Publishes to the
-      # engine-consumed device-financing topic; the engine's type-to-journey maps
-      # Post_Disbursal_Apple -> device-financing. Sibling brands/svcNames (e.g. a
+      # engine-consumed device-validation topic; the engine's type-to-journey maps
+      # Post_Disbursal_Apple -> device-validation. Sibling brands/svcNames (e.g. a
       # pre-disbursal or other-brand svcName) are added as ROWS as IDFC confirms.
       - type: Post_Disbursal_Apple
-        topic: orig.device-financing.v1
-        downstream-journey: device-financing
+        topic: orig.device-validation.v1
+        downstream-journey: device-validation
     # Known orgs (org-config-as-data). Unknown org -> refresh+recheck -> DLQ (C2).
     known-orgs:
       - ORG1
