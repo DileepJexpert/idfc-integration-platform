@@ -11,7 +11,7 @@ file:line where it matters.
 |---|---|---|---|---|
 | 1 | device-validation (Apple SOAP) | SOAP `:8080` | ✅ TESTED — passed on 2nd attempt | `n_valid` → `COMPLETED_APPROVED` |
 | 2 | vehicle-rc-verification | Kafka `orig.sfdc.pl.v1` | ✅ TESTED — passed (after fixing launcher + local profile) | `n_proceed` → `COMPLETED_APPROVED` |
-| 3 | loan-origination (PERSONAL_LOAN) | SOAP `:8080` | ✅ TESTED — passed first try | `n_done` → `COMPLETED_APPROVED` (`LoanBooked`) |
+| 3 | loan-origination (PERSONAL_LOAN) | SOAP `:8080` | ✅ TESTED — **approve + decline** both passed | `n_done`/`n_reject` → `COMPLETED_APPROVED`/`COMPLETED_DECLINED` |
 
 ---
 
@@ -202,10 +202,17 @@ Dedup key = `Notification/Id` → **bump `…LOAN0001` → `…LOAN0002` each ru
 All five capability services are in the launcher (8090-8094). runId = `ji-<edge-minted corr>`; find it via the
 key on any `cap.*` message, or search the notificationId `04l6D00000LOAN0001` (ops view, local convenience).
 
-### Expectation & levers (guide-vetted)
-- `pan ABCDE1234F` + `negativeFlags: []` → **`COMPLETED_APPROVED`**, terminal `n_done`, emit `LoanBooked`.
-- PAN containing `LOW` (e.g. `LOWSC1234F`) → low score → **`COMPLETED_DECLINED`**, terminal `n_reject`, `LoanRejected`.
-- Any scoring-mock outage (:9103 down) → technical failure, `FAILED_*` — never a silent success.
+### Expectation & levers (verified against `DecisionRule.java` + cibil mock stubs)
+Rule: **`APPROVED` iff `bureauScore >= 700` AND `negativeFlags` is empty**; otherwise `REJECTED`. fico mock returns a
+fixed 750; the *bureau* (cibil) score is the deciding number.
+- `negativeFlags: []` (+ default score) → **`COMPLETED_APPROVED`**, `n_done`, `LoanBooked`.  **[TESTED ✅]**
+- **`negativeFlags: ["FRAUD"]`** (any non-empty list) → declines **regardless of score** → **`COMPLETED_DECLINED`**,
+  `n_reject`, `LoanRejected`.  **[TESTED ✅]** ← the reliable decline lever on the **SOAP** door.
+- Low-score decline: the cibil mock drops the score (→540) only when **`applicationRef` matches `/LOW/i`**. The SOAP
+  edge sets `applicationRef=null`, so this fires **only on a direct-Kafka publish** where you set
+  `"applicationRef":"APP-LOW-1"` — NOT via the SOAP door.
+- Scoring/bureau mock outage (:9103 / :9102 down) → technical failure `FAILED_*` — never a silent success
+  (this is the *failure* case, distinct from the business *decline* above).
 
 **ACTUAL RESULT (2026-07-07): `COMPLETED_APPROVED` ✅** — runId `ji-corr-c14a5d85-b167-4f10-8956-654203f15628`,
 terminal `n_done`, emit `LoanBooked`. All 7 nodes green in ~33s (16:01:28 → 16:02:01):
@@ -214,6 +221,17 @@ terminal `n_done`, emit `LoanBooked`. All 7 nodes green in ~33s (16:01:28 → 16
 **Passed on the FIRST publish, no bugs** — the five capabilities are the original core set, already in the
 launcher AND with local profiles, so none of the RC-style gaps applied. Confirms the platform + full SOAP→edge→
 Kafka→engine→5-capability-fan-out→decision chain end-to-end.
+
+**DECLINE VARIANT (2026-07-07): `COMPLETED_DECLINED` ✅** — same journey, one field changed in the payload:
+`negativeFlags: ["FRAUD"]` (Notification/Id `04l6D00000LOAN0002`, `sf1:Id` `a0X6D00000LOAN0002`). All four
+upstream nodes still ran **green** (`n_customer → n_kyc → n_bureau → n_score`), then `n_decide` took the
+`default` arm (`scoring.decision != 'APPROVED'`) → terminal **`n_reject`**, decision **`LoanRejected`** on
+`orig.decision.v1`. **Proves P6 live: a business "no" is `COMPLETED_DECLINED` — a green run, no DLQ, no
+`FAILED_*`. It is NOT a technical failure.** (Contrast: killing the cibil/fico mock would give `FAILED_*`.)
+
+Decline curl = the approve curl above with exactly two edits:
+`<sf1:Request__c>` CDATA → `{"pan":"ABCDE1234F","name":"ASHA RAO","amount":500000,"tenureMonths":36,"negativeFlags":["FRAUD"]}`
+and bump `<Id>`/`<sf1:Id>` to `…LOAN0002`.
 
 ---
 <!-- APPEND NEXT JOURNEY BELOW THIS LINE -->
