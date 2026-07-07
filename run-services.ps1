@@ -63,6 +63,9 @@ $Services = @(
     @{ name = 'bureau';              module = 'capabilities/bureau';                port = 8092 }
     @{ name = 'scoring';             module = 'capabilities/scoring';               port = 8093 }
     @{ name = 'lending-origination'; module = 'capabilities/lending-origination';   port = 8094 }
+    @{ name = 'verification';        module = 'capabilities/verification';          port = 8102 }
+    @{ name = 'communications';      module = 'capabilities/communications';        port = 8101 }
+    @{ name = 'mandate';             module = 'capabilities/mandate';               port = 8098 }
     @{ name = 'device-validation';   module = 'capabilities/device-validation';    port = 8110 }
     @{ name = 'fusion-hcm';          module = 'capabilities/fusion-hcm';            port = 8111 }
     @{ name = 'file-batch-edge';     module = 'edges/file-batch-edge';              port = 8112 }

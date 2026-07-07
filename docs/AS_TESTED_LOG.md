@@ -79,9 +79,10 @@ curl --location 'http://localhost:8082/ops/runs/search?key=04l7200000Daq5RAb3' -
 
 **Entry:** Kafka (there is **no** SOAP door for VEHICLE_RC — routing is by the envelope's `type` field, so any consumed origination topic works; use `orig.sfdc.pl.v1`). **Capability:** `verification` (op `KARZA_VAHAN_RC`). **Vendor mock:** Karza 9105.
 
-**⚠️ PREREQUISITE — start the `verification` capability first (it is NOT in `run-services.ps1`):**
+**⚠️ PREREQUISITE — the `verification` capability must be running.** It is now in `run-services.ps1`/`.sh`
+(added alongside `communications` and `mandate`), so `git pull` + `.\run-services.ps1 -Clean` picks it up
+automatically. Until you pull, start it by hand:
 ```powershell
-# after .\run-services.ps1 -Clean has built the jars:
 java -jar capabilities\verification\build\libs\verification-0.1.0-SNAPSHOT.jar --spring.profiles.active=local --server.port=8102
 ```
 Also confirm Karza mock is up: `docker ps --filter "name=karza"` → `idfc-mock-karza … 0.0.0.0:9105->8080/tcp`.
