@@ -157,4 +157,56 @@ Symptom trail: runs `ji-rc-corr-0001` / `ji-rc-corr-0002` sat "active" at `n_veh
 **Gotcha for future journeys:** any capability run on the host needs an `application-local.yml` pinning Kafka to `localhost:29092` (and its vendor URL to the host mock port). A capability that hangs a journey at its task node with the request stuck on `cap.<key>.request.v1` = its consumer isn't connected — check it's launched *and* has a local profile.
 
 ---
+
+## 3. loan-origination — PERSONAL_LOAN via SFDC SOAP  ⏳ READY
+
+**Entry:** SFDC SOAP door (full prod chain: SOAP → edge auth/dedup/org-check → route row → Kafka → engine → journey).
+**Capabilities (5, in sequence):** customer-party → kyc → bureau → scoring → (branch) → lending-origination.
+**Vendor mocks needed:** posidex 9101 · cibil 9102 · fico 9103 · nsdl 9104 · finnone 1521 (all in `docker-compose.infra.yml`).
+
+### Honest labelling (provenance — verified against code/docs 2026-07-07)
+- **`Inbound_Wrapper` is a REAL legacy SVCNAME** (real golden captured SOAP; payload `createGenericAccountReq`) —
+  **but it is CASA account-creation, NOT a loan wrapper.** Its `→ loan-origination` row is an explicitly
+  documented plumbing-demo holdover (`orchestration/.../application.yml:54-58`: *"kept for the end-to-end
+  plumbing demo. Pointing it at a real account-creation journey is this one-row swap."*). Earlier claim that
+  "any loan product arrives via Inbound_Wrapper with product in the payload" was **wrong** — corrected here.
+- **`PERSONAL_LOAN` / `LAP` / `BUSINESS_LOAN` / `COMMERCIAL` as SVCNAMEs are scaffold names** — plausible, not
+  captured from UAT. **TODO: capture a real loan-origination SOAP from UAT** (like the Apple curl that unlocked
+  device-validation) to learn the true svcName(s), whether product rides in svcName or payload, and real fields.
+- **"All products, one identical DAG" is scaffolding truth, not business truth.** Real LAP will likely need
+  property-valuation/legal branches; business loans GST/financials. The DSL supports product branches/subjourneys
+  off the shared trunk (customer→kyc→bureau→scoring→decide→book) — pending real requirements, never copy-paste.
+
+### Command (Postman-importable; vetted envelope from MANUAL_TEST_GUIDE — org `00D6D00000020HoUAI` is allow-listed)
+```
+curl --location 'http://localhost:8080/api/v1/sfdc/outbound-messages' \
+--header 'X-Auth-Token: dev-token' \
+--header 'Content-Type: text/xml' \
+--data-raw '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns="http://soap.sforce.com/2005/09/outbound" xmlns:sf1="urn:sobject.enterprise.soap.sforce.com"><soapenv:Body><notifications><OrganizationId>00D6D00000020HoUAI</OrganizationId><ActionId>OUTID1240000000000</ActionId><SessionId>SID</SessionId><EnterpriseUrl>EnterpriseUrl</EnterpriseUrl><PartnerUrl>PartnerUrl</PartnerUrl><Notification><Id>04l6D00000LOAN0001</Id><sObject><sf1:Id>a0X6D00000LOAN0001</sf1:Id><sf1:CLIENTID__c>SFDC</sf1:CLIENTID__c><sf1:EXECMODE__c>ASYNC</sf1:EXECMODE__c><sf1:Request__c><![CDATA[{"pan":"ABCDE1234F","name":"ASHA RAO","amount":500000,"tenureMonths":36,"negativeFlags":[]}]]></sf1:Request__c><sf1:SVCNAME__c>PERSONAL_LOAN</sf1:SVCNAME__c><sf1:VERSION__c>1.0</sf1:VERSION__c></sObject></Notification></notifications></soapenv:Body></soapenv:Envelope>'
+```
+Dedup key = `Notification/Id` → **bump `…LOAN0001` → `…LOAN0002` each run** (and `sf1:Id` alongside).
+
+### Verify — watch the topics in order (Kafka UI), one publish → seven hops
+```
+1. orig.sfdc.pl.v1                    edge publishes  { type:PERSONAL_LOAN, payload:{pan,name,amount,…} }
+2. cap.customer-party.request.v1      engine → n_customer   (mock posidex :9101)
+   cap.customer-party.response.v1     capability answers
+3. cap.kyc.request.v1 / .response.v1  n_kyc                 (mock nsdl :9104)
+4. cap.bureau.request.v1 / .response  n_bureau              (mock cibil :9102)
+5. cap.scoring.request.v1 / .response n_score → decision APPROVED (mock fico :9103)
+6. cap.lending-origination.request.v1 n_book — branch n_decide passed (scoring.decision=='APPROVED')
+   cap.lending-origination.response   booked in FinnOne mock (:1521)
+7. orig.decision.v1                   { decision:"LoanBooked" }  → run COMPLETED_APPROVED, terminal n_done
+```
+All five capability services are in the launcher (8090-8094). runId = `ji-<edge-minted corr>`; find it via the
+key on any `cap.*` message, or search the notificationId `04l6D00000LOAN0001` (ops view, local convenience).
+
+### Expectation & levers (guide-vetted)
+- `pan ABCDE1234F` + `negativeFlags: []` → **`COMPLETED_APPROVED`**, terminal `n_done`, emit `LoanBooked`.
+- PAN containing `LOW` (e.g. `LOWSC1234F`) → low score → **`COMPLETED_DECLINED`**, terminal `n_reject`, `LoanRejected`.
+- Any scoring-mock outage (:9103 down) → technical failure, `FAILED_*` — never a silent success.
+
+**ACTUAL RESULT:** _(fill in after the run: runId, status, terminal, decision message)_
+
+---
 <!-- APPEND NEXT JOURNEY BELOW THIS LINE -->
