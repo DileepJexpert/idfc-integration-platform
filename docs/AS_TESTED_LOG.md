@@ -11,6 +11,7 @@ file:line where it matters.
 |---|---|---|---|---|
 | 1 | device-validation (Apple SOAP) | SOAP `:8080` | ✅ TESTED — passed on 2nd attempt | `n_valid` → `COMPLETED_APPROVED` |
 | 2 | vehicle-rc-verification | Kafka `orig.sfdc.pl.v1` | ✅ TESTED — passed (after fixing launcher + local profile) | `n_proceed` → `COMPLETED_APPROVED` |
+| 3 | loan-origination (PERSONAL_LOAN) | SOAP `:8080` | ✅ TESTED — passed first try | `n_done` → `COMPLETED_APPROVED` (`LoanBooked`) |
 
 ---
 
@@ -158,7 +159,7 @@ Symptom trail: runs `ji-rc-corr-0001` / `ji-rc-corr-0002` sat "active" at `n_veh
 
 ---
 
-## 3. loan-origination — PERSONAL_LOAN via SFDC SOAP  ⏳ READY
+## 3. loan-origination — PERSONAL_LOAN via SFDC SOAP  ✅ TESTED
 
 **Entry:** SFDC SOAP door (full prod chain: SOAP → edge auth/dedup/org-check → route row → Kafka → engine → journey).
 **Capabilities (5, in sequence):** customer-party → kyc → bureau → scoring → (branch) → lending-origination.
@@ -206,7 +207,13 @@ key on any `cap.*` message, or search the notificationId `04l6D00000LOAN0001` (o
 - PAN containing `LOW` (e.g. `LOWSC1234F`) → low score → **`COMPLETED_DECLINED`**, terminal `n_reject`, `LoanRejected`.
 - Any scoring-mock outage (:9103 down) → technical failure, `FAILED_*` — never a silent success.
 
-**ACTUAL RESULT:** _(fill in after the run: runId, status, terminal, decision message)_
+**ACTUAL RESULT (2026-07-07): `COMPLETED_APPROVED` ✅** — runId `ji-corr-c14a5d85-b167-4f10-8956-654203f15628`,
+terminal `n_done`, emit `LoanBooked`. All 7 nodes green in ~33s (16:01:28 → 16:02:01):
+`n_customer`(+8s) → `n_kyc`(+5s) → `n_bureau`(+6s) → `n_score`(+6s, decision APPROVED) →
+`n_decide` (branch `scoring.decision=='APPROVED'`) → `n_book`(+6s, booked in FinnOne 1521) → `n_done`.
+**Passed on the FIRST publish, no bugs** — the five capabilities are the original core set, already in the
+launcher AND with local profiles, so none of the RC-style gaps applied. Confirms the platform + full SOAP→edge→
+Kafka→engine→5-capability-fan-out→decision chain end-to-end.
 
 ---
 <!-- APPEND NEXT JOURNEY BELOW THIS LINE -->
