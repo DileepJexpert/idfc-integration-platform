@@ -10,7 +10,7 @@ file:line where it matters.
 | # | Journey | Entry | Status | Terminal seen |
 |---|---|---|---|---|
 | 1 | device-validation (Apple SOAP) | SOAP `:8080` | ✅ TESTED — passed on 2nd attempt | `n_valid` → `COMPLETED_APPROVED` |
-| 2 | vehicle-rc-verification | Kafka `orig.sfdc.pl.v1` | ⏳ READY (needs `verification` cap started) | expect `n_proceed` → `COMPLETED_APPROVED` |
+| 2 | vehicle-rc-verification | Kafka `orig.sfdc.pl.v1` | ✅ TESTED — passed (after fixing launcher + local profile) | `n_proceed` → `COMPLETED_APPROVED` |
 
 ---
 
@@ -146,7 +146,15 @@ Failure topics: Karza unreachable/permanent → `cap.verification.dlq.v1` · unr
 - `registrationNumber = XX00YY0000` → mock `vahan-rc-fail` (BLACKLIST) → **`COMPLETED_DECLINED`**, terminal `n_decline`, emit `VehicleRcDeclined`.
 - Karza unreachable / mock down (9105) → technical failure → `n_rcError` / `FAILED_*`.
 
-**ACTUAL RESULT:** _(fill in after you run it: runId, status, terminal node)_
+**ACTUAL RESULT (2026-07-07): `COMPLETED_APPROVED` ✅** — terminal `n_proceed`, decision `VehicleRcApproved` on `orig.decision.v1`.
+
+Got there after fixing **two real bugs** the test flushed out (both on `main`):
+1. `verification` (and `communications`, `mandate`) were **missing from `run-services.ps1`/`.sh`** → engine dispatched to `cap.verification.request.v1` with no consumer → run hung at `n_vehicleRc` (RUNNING). Fixed in commit `5d2103e`.
+2. `verification` had **no `application-local.yml`** → under `--spring.profiles.active=local` it fell back to the in-container Kafka `localhost:9092` (unreachable from host) and Karza `mock-karza:8080`; it booted but its consumer never connected. Fixed in commit `c673c55` (local profile → Kafka `29092`, Karza routes → `localhost:9105`, allow-list `localhost`).
+
+Symptom trail: runs `ji-rc-corr-0001` / `ji-rc-corr-0002` sat "active" at `n_vehicleRc`; the `CapabilityRequest` was visible on `cap.verification.request.v1` but never consumed (no `cap-verification` consumer-group member). After `git pull` + `.\run-services.ps1 -Clean`, `verification` connected, drained the pending request, called Karza (9105), and the run walked `n_vehicleRc → n_rcDecision → n_proceed`.
+
+**Gotcha for future journeys:** any capability run on the host needs an `application-local.yml` pinning Kafka to `localhost:29092` (and its vendor URL to the host mock port). A capability that hangs a journey at its task node with the request stuck on `cap.<key>.request.v1` = its consumer isn't connected — check it's launched *and* has a local profile.
 
 ---
 <!-- APPEND NEXT JOURNEY BELOW THIS LINE -->
