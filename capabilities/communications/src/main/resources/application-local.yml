@@ -1,0 +1,7 @@
+# LOCAL profile — run this capability on the HOST against the docker-compose infra.
+# Kafka is reached via the HOST listener (29092); the INTERNAL listener (kafka:9092)
+# only resolves inside the docker network. Send is an in-memory/mock adapter (no
+# external SMS gateway), so no vendor host override is needed.
+spring:
+  kafka:
+    bootstrap-servers: localhost:29092

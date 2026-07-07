@@ -1,0 +1,26 @@
+# LOCAL profile — run this capability on the HOST against the docker-compose infra
+# + Karza WireMock mock. Kafka is reached via the HOST listener (29092); the Karza
+# vendor endpoints are the compose mock on 9105 (container mock-karza:8080).
+#
+# NOTE: Spring list properties REPLACE (do not merge) across profiles, so the
+# `routes` and `allowed-hosts` lists are restated here IN FULL, repointed to the
+# host. OAuth is a mock token provider (no real token endpoint needed).
+spring:
+  kafka:
+    bootstrap-servers: localhost:29092
+
+idfc:
+  verification:
+    routes:
+      - svc-name: KARZA_VAHAN_RC
+        base-url: http://localhost:9105/karza/vahan-rc
+        auth-type: OAUTH_BEARER
+      - svc-name: KARZA_DOMAIN_CHECK
+        base-url: http://localhost:9105/karza/domain-check
+        auth-type: OAUTH_BEARER
+      - svc-name: ENT_KARZA_NEGATIVE_AREA_TAGGING
+        base-url: http://localhost:9105/karza/negative-area
+        auth-type: OAUTH_BEARER
+    # anti-SSRF allow-list: on the host every route resolves to localhost.
+    allowed-hosts:
+      - localhost
