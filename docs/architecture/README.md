@@ -6,6 +6,19 @@ This folder is the **architecture documentation set** for the integration platfo
 > **If you read one thing, read this page.** It states *why the platform is built the way it is* (the
 > design philosophy) and *how the documents are organised* (so you know where to go next).
 
+### 🎼 Visual overview (for stakeholders / management)
+
+**[`architecture-visual.html`](architecture-visual.html)** — a single, colourful, self-contained page:
+high-level → components → the loan-origination journey DAG, plus the **saga** pattern and
+**orchestration vs choreography** (and why orchestration was chosen). Light/dark aware.
+
+> ⚠️ GitHub shows `.html` as **source, not rendered**. To see the actual page:
+> - **Download & open** the raw file: [raw.githubusercontent.com/…/architecture-visual.html](https://raw.githubusercontent.com/DileepJexpert/idfc-integration-platform/main/docs/architecture/architecture-visual.html) → Save As → double-click, **or**
+> - **Preview in-browser** via htmlpreview: [htmlpreview.github.io/?…/architecture-visual.html](https://htmlpreview.github.io/?https://github.com/DileepJexpert/idfc-integration-platform/blob/main/docs/architecture/architecture-visual.html)
+
+The rest of this folder is the **written** architecture set (below) — the visual page is the fast overview;
+these are the reference.
+
 ---
 
 ## 1. Why multiple documents?
