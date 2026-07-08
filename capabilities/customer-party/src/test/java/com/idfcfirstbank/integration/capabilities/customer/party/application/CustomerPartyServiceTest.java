@@ -1,16 +1,20 @@
 package com.idfcfirstbank.integration.capabilities.customer.party.application;
 
 import com.idfcfirstbank.integration.capabilities.customer.party.adapter.out.posidex.MockPosidexAdapter;
+import com.idfcfirstbank.integration.capabilities.customer.party.adapter.out.posidex.PosidexHttpAdapter;
 import com.idfcfirstbank.integration.capabilities.customer.party.domain.model.CustomerProfile;
 import com.idfcfirstbank.integration.capabilities.customer.party.domain.port.PosidexPort;
+import com.idfcfirstbank.integration.shared.capability.CapabilityException;
 import com.idfcfirstbank.integration.shared.domain.capability.CapabilityRequest;
 import com.idfcfirstbank.integration.shared.domain.capability.CapabilityResponse;
 import com.idfcfirstbank.integration.shared.domain.capability.CapabilityStatus;
+import com.idfcfirstbank.integration.shared.domain.capability.ErrorClass;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class CustomerPartyServiceTest {
 
@@ -31,13 +35,38 @@ class CustomerPartyServiceTest {
     }
 
     @Test
-    void posidexFailureYieldsErrorResponse() {
+    void unclassifiedPosidexFailureIsErrorResponseClassifiedPermanent() {
         PosidexPort failing = identity -> {
             throw new RuntimeException("posidex down");
         };
-        CustomerPartyService service = new CustomerPartyService(failing);
-        CapabilityResponse resp = service.handle(request(Map.of("pan", "X")));
+        CapabilityResponse resp = new CustomerPartyService(failing).handle(request(Map.of("pan", "X")));
         assertThat(resp.status()).isEqualTo(CapabilityStatus.ERROR);
+        // An unclassified failure is conservatively PERMANENT (don't blind-retry an unknown).
+        assertThat(resp.errorClass()).isEqualTo(ErrorClass.PERMANENT);
+    }
+
+    @Test
+    void transientPosidexFailureIsPreserved_notCollapsedToPermanent() {
+        // The bug: a down posidex (transport failure) was reported PERMANENT, so the
+        // engine DLQ'd instead of retrying. The service must carry the port's TRANSIENT
+        // classification through untouched.
+        PosidexPort down = identity -> {
+            throw new CapabilityException(ErrorClass.TRANSIENT, "posidex unreachable");
+        };
+        CapabilityResponse resp = new CustomerPartyService(down).handle(request(Map.of("pan", "X")));
+        assertThat(resp.status()).isEqualTo(CapabilityStatus.ERROR);
+        assertThat(resp.errorClass()).isEqualTo(ErrorClass.TRANSIENT);
+    }
+
+    @Test
+    void httpAdapterClassifiesAnUnreachableVendorAsRetryable_notPermanent() {
+        // Nothing listens on localhost:1 -> connect refused -> a RETRYABLE class, never
+        // PERMANENT. Proves the mislabel is fixed at the transport boundary too.
+        PosidexHttpAdapter adapter = new PosidexHttpAdapter("http://localhost:1");
+        assertThatThrownBy(() -> adapter.resolve(Map.of("pan", "ABCDE1234F")))
+                .isInstanceOfSatisfying(CapabilityException.class, ex ->
+                        assertThat(ex.errorClass())
+                                .isIn(ErrorClass.TRANSIENT, ErrorClass.AMBIGUOUS));
     }
 
     @Test
