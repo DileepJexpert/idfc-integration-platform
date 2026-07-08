@@ -100,4 +100,29 @@ public class ImpsDisbursalService implements SyncInvocable {
     private Object stripeFor(String key) {
         return stripes[(key.hashCode() & 0x7fffffff) % stripes.length];
     }
+
+    // --- Audit hooks (SyncInvocation) — ids-only, PII-safe ---------------------------
+
+    /** The IMPS business dedup id is the caller-supplied {@code idempotentId}. */
+    @Override
+    public String idempotencyKeyOf(Map<String, Object> payload) {
+        Object v = payload == null ? null : payload.get("idempotentId");
+        return v == null ? null : String.valueOf(v);
+    }
+
+    /** {@code status:"S"} is the only success; any other status is a business "no". */
+    @Override
+    public com.idfcfirstbank.integration.shared.sync.SyncOutcome businessOutcome(Map<String, Object> response) {
+        Object status = response == null ? null : response.get("status");
+        return ImpsFtResult.SUCCESS.equals(status)
+                ? com.idfcfirstbank.integration.shared.sync.SyncOutcome.SUCCESS
+                : com.idfcfirstbank.integration.shared.sync.SyncOutcome.BUSINESS_FAILURE;
+    }
+
+    /** The IMPS backend's transfer reference, for the audit trail. */
+    @Override
+    public String downstreamRefOf(Map<String, Object> response) {
+        Object v = response == null ? null : response.get("transactionId");
+        return v == null ? null : String.valueOf(v);
+    }
 }

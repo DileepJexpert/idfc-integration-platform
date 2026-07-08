@@ -28,3 +28,7 @@ idfc:
   sync-edge:
     auth:
       accepted-tokens: ${SYNC_EDGE_ACCEPTED_TOKENS:dev-sync-token}
+  # DEV ONLY ops token for the sync-invocation audit /ops surface (base fails closed).
+  # Read it with headers  X-Ops-Token: dev-ops-token  and  X-User-Id: you@bank
+  ops:
+    auth-token: ${OPS_API_TOKEN:dev-ops-token}

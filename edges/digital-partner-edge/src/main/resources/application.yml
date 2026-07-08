@@ -54,6 +54,11 @@ idfc:
   sync-edge:
     auth:
       accepted-tokens: ${SYNC_EDGE_ACCEPTED_TOKENS:}
+  # Audited /ops surface for the sync-lane invocation records. FAIL CLOSED: no
+  # compiled-in default — a blank token authorizes nothing. Same X-Ops-Token (+
+  # X-User-Id actor) the journey ops view uses; local dev sets a dev value.
+  ops:
+    auth-token: ${OPS_API_TOKEN:}
 
 # The SYNC capabilities the edge invokes in-thread. Vendor hosts + auth are config
 # (real IMPS/LMS backends later = host swaps); timeouts are mandatory (the caller

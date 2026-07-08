@@ -5,6 +5,8 @@ import com.idfcfirstbank.integration.capabilities.lmsutilities.LmsUtilitiesModul
 import com.idfcfirstbank.integration.digitaledge.config.SyncEdgeProperties;
 import com.idfcfirstbank.integration.shared.sync.SyncCapabilityInvoker;
 import com.idfcfirstbank.integration.shared.sync.SyncInvocable;
+import com.idfcfirstbank.integration.shared.sync.SyncInvocationRecorder;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -25,7 +27,12 @@ import java.util.List;
 public class SyncConfiguration {
 
     @Bean
-    public SyncCapabilityInvoker syncCapabilityInvoker(List<SyncInvocable> invocables) {
-        return new SyncCapabilityInvoker(invocables);
+    public SyncCapabilityInvoker syncCapabilityInvoker(List<SyncInvocable> invocables,
+                                                       ObjectProvider<SyncInvocationRecorder> recorder) {
+        // Every sync call writes one audit record (success/business/technical) via the
+        // recorder — the sync-lane counterpart to the journey ops view. The recorder is
+        // OPTIONAL (NOOP when a lean context omits it), so the invoker never depends on
+        // the audit surface being present.
+        return new SyncCapabilityInvoker(invocables, recorder.getIfAvailable(() -> SyncInvocationRecorder.NOOP));
     }
 }
