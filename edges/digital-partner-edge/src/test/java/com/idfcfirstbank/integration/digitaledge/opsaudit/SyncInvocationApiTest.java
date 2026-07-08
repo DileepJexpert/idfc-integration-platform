@@ -2,13 +2,18 @@ package com.idfcfirstbank.integration.digitaledge.opsaudit;
 
 import com.idfcfirstbank.integration.shared.sync.SyncInvocation;
 import com.idfcfirstbank.integration.shared.sync.SyncOutcome;
+import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockFilterChain;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.time.Instant;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -65,5 +70,27 @@ class SyncInvocationApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].idempotencyKey").value("idem-1"))
                 .andExpect(jsonPath("$[0].transactionId").value("TXN-1"));
+    }
+
+    /**
+     * A CORS preflight (OPTIONS, no {@code X-Ops-Token} by spec) must NOT be failed
+     * closed — otherwise the browser blocks the whole request and the ops view can
+     * never load (curl works because it does no CORS). The real GET still fails closed
+     * (covered above); only the preflight is exempt.
+     */
+    @Test
+    void cors_preflight_OPTIONS_is_not_rejected_by_the_auth_filter() throws Exception {
+        MockHttpServletRequest preflight = new MockHttpServletRequest("OPTIONS", "/ops/sync-invocations");
+        preflight.addHeader("Origin", "http://localhost:8087");
+        preflight.addHeader("Access-Control-Request-Method", "GET");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+
+        new OpsAuditAuthFilter("dev-ops-token").doFilter(preflight, response, chain);
+
+        assertThat(response.getStatus()).isNotEqualTo(HttpServletResponse.SC_UNAUTHORIZED);
+        assertThat(chain.getRequest())
+                .as("the preflight proceeded down the chain instead of being 401'd")
+                .isNotNull();
     }
 }

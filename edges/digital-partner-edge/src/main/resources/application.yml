@@ -59,6 +59,10 @@ idfc:
   # X-User-Id actor) the journey ops view uses; local dev sets a dev value.
   ops:
     auth-token: ${OPS_API_TOKEN:}
+    # The sync-invocations view is a browser app — CORS is required or the cross-origin
+    # read is blocked (curl still works). Dev default = any localhost port; prod narrows
+    # it to the real ops-view origin(s), comma-separated.
+    cors-allowed-origin-patterns: "${OPS_CORS_ALLOWED_ORIGINS:http://localhost:[*]}"
 
 # The SYNC capabilities the edge invokes in-thread. Vendor hosts + auth are config
 # (real IMPS/LMS backends later = host swaps); timeouts are mandatory (the caller
