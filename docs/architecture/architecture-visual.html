@@ -1,0 +1,445 @@
+<style>
+  :root{
+    --ground:#F6F7FB; --panel:#FFFFFF; --ink:#151A2D; --muted:#5B6480; --line:#E4E7F2;
+    --engine:#5B4FE9; --engine-soft:#EAE7FE;
+    --edge:#2E7DF6;   --edge-soft:#E4EFFE;
+    --cap:#0FA37F;    --cap-soft:#E0F5EE;
+    --vendor:#7A8AA8; --vendor-soft:#EEF1F7;
+    --sync:#F07E2A;   --sync-soft:#FCEDE0;
+    --saga:#E44867;   --saga-soft:#FCE4EA;
+    --gold:#C9902A;
+    --shadow:0 1px 2px rgba(20,26,45,.05), 0 8px 24px rgba(20,26,45,.06);
+    --radius:14px;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+    --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --ground:#0C0F1C; --panel:#141A2C; --ink:#EEF1FA; --muted:#98A2BE; --line:#26304A;
+      --engine:#8E86FF; --engine-soft:#221F44;
+      --edge:#5CA0FF;   --edge-soft:#132540;
+      --cap:#33C79E;    --cap-soft:#0E3128;
+      --vendor:#94A3BE; --vendor-soft:#1B2236;
+      --sync:#FF9B57;   --sync-soft:#3A2413;
+      --saga:#FF6B87;   --saga-soft:#3A1622;
+      --gold:#E6B455;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="light"]{
+    --ground:#F6F7FB; --panel:#FFFFFF; --ink:#151A2D; --muted:#5B6480; --line:#E4E7F2;
+    --engine:#5B4FE9; --engine-soft:#EAE7FE; --edge:#2E7DF6; --edge-soft:#E4EFFE;
+    --cap:#0FA37F; --cap-soft:#E0F5EE; --vendor:#7A8AA8; --vendor-soft:#EEF1F7;
+    --sync:#F07E2A; --sync-soft:#FCEDE0; --saga:#E44867; --saga-soft:#FCE4EA; --gold:#C9902A;
+    --shadow:0 1px 2px rgba(20,26,45,.05), 0 8px 24px rgba(20,26,45,.06);
+  }
+  :root[data-theme="dark"]{
+    --ground:#0C0F1C; --panel:#141A2C; --ink:#EEF1FA; --muted:#98A2BE; --line:#26304A;
+    --engine:#8E86FF; --engine-soft:#221F44; --edge:#5CA0FF; --edge-soft:#132540;
+    --cap:#33C79E; --cap-soft:#0E3128; --vendor:#94A3BE; --vendor-soft:#1B2236;
+    --sync:#FF9B57; --sync-soft:#3A2413; --saga:#FF6B87; --saga-soft:#3A1622; --gold:#E6B455;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);
+    line-height:1.6;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1120px;margin:0 auto;padding:clamp(20px,4vw,56px) clamp(16px,4vw,40px) 80px;}
+  h1,h2,h3{text-wrap:balance;letter-spacing:-.02em;line-height:1.12;margin:0;}
+  h1{font-size:clamp(2rem,5vw,3.2rem);font-weight:800;}
+  h2{font-size:clamp(1.4rem,3vw,2rem);font-weight:750;}
+  h3{font-size:1.06rem;font-weight:700;letter-spacing:-.01em;}
+  p{margin:.5rem 0;color:var(--ink);}
+  .eyebrow{font-family:var(--mono);font-size:.72rem;font-weight:600;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--muted);}
+  .lead{font-size:1.14rem;color:var(--muted);max-width:64ch;}
+  code,.m{font-family:var(--mono);font-size:.86em;}
+  .m{background:var(--line);padding:.08em .4em;border-radius:6px;}
+
+  /* header */
+  header{border-bottom:1px solid var(--line);padding-bottom:28px;margin-bottom:8px;}
+  .titlebar{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap;}
+  .toggle{font-family:var(--mono);font-size:.72rem;border:1px solid var(--line);background:var(--panel);
+    color:var(--muted);padding:8px 12px;border-radius:999px;cursor:pointer;white-space:nowrap;}
+  .toggle:hover{color:var(--ink);border-color:var(--engine);}
+  .toggle:focus-visible{outline:2px solid var(--engine);outline-offset:2px;}
+
+  /* legend */
+  .legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:22px;}
+  .lg{display:inline-flex;align-items:center;gap:8px;font-size:.8rem;font-weight:600;
+    padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel);}
+  .dot{width:11px;height:11px;border-radius:50%;flex:none;}
+
+  section{margin-top:56px;scroll-margin-top:20px;}
+  .kicker{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:6px;}
+  .num{font-family:var(--mono);font-size:.8rem;color:var(--engine);font-weight:700;}
+
+  /* diagram scaffolding */
+  .board{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:clamp(16px,3vw,28px);margin-top:22px;overflow-x:auto;}
+  .rowlabel{font-family:var(--mono);font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--muted);margin:0 0 10px;}
+  .flow{display:flex;align-items:stretch;gap:10px;flex-wrap:wrap;}
+  .flow.tight{flex-wrap:nowrap;min-width:max-content;}
+  .stage{display:flex;flex-direction:column;gap:10px;flex:1;min-width:150px;}
+  .arrow{align-self:center;color:var(--muted);font-size:1.4rem;flex:none;user-select:none;}
+  .down{display:flex;justify-content:center;color:var(--muted);font-size:1.3rem;margin:8px 0;}
+
+  .node{border-radius:11px;padding:12px 14px;border:1px solid var(--line);background:var(--panel);
+    box-shadow:var(--shadow);display:flex;flex-direction:column;gap:3px;}
+  .node .t{font-weight:700;font-size:.95rem;letter-spacing:-.01em;}
+  .node .s{font-family:var(--mono);font-size:.72rem;color:var(--muted);}
+  .node.k-edge{background:var(--edge-soft);border-color:color-mix(in srgb,var(--edge) 40%,transparent);}
+  .node.k-edge .t{color:var(--edge);}
+  .node.k-engine{background:var(--engine-soft);border-color:color-mix(in srgb,var(--engine) 45%,transparent);}
+  .node.k-engine .t{color:var(--engine);}
+  .node.k-cap{background:var(--cap-soft);border-color:color-mix(in srgb,var(--cap) 40%,transparent);}
+  .node.k-cap .t{color:var(--cap);}
+  .node.k-vendor{background:var(--vendor-soft);border-color:color-mix(in srgb,var(--vendor) 45%,transparent);}
+  .node.k-vendor .t{color:var(--vendor);}
+  .node.k-sync{background:var(--sync-soft);border-color:color-mix(in srgb,var(--sync) 45%,transparent);}
+  .node.k-sync .t{color:var(--sync);}
+  .node.k-saga{background:var(--saga-soft);border-color:color-mix(in srgb,var(--saga) 45%,transparent);}
+  .node.k-saga .t{color:var(--saga);}
+  .node.k-store{background:transparent;border-style:dashed;}
+  .node.k-store .t{color:var(--muted);}
+
+  /* DAG chips */
+  .dag{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;min-width:max-content;}
+  .chip{border-radius:999px;padding:9px 14px;font-weight:700;font-size:.86rem;white-space:nowrap;
+    border:1.5px solid;display:flex;flex-direction:column;align-items:center;gap:1px;}
+  .chip small{font-family:var(--mono);font-weight:500;font-size:.66rem;opacity:.8;}
+  .c-task{background:var(--cap-soft);border-color:var(--cap);color:var(--cap);}
+  .c-branch{background:var(--engine-soft);border-color:var(--engine);color:var(--engine);}
+  .c-ok{background:var(--cap-soft);border-color:var(--cap);color:var(--cap);}
+  .c-no{background:var(--saga-soft);border-color:var(--saga);color:var(--saga);}
+  .a2{color:var(--muted);font-size:1.1rem;flex:none;}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:22px;}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr;}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:20px 22px;box-shadow:var(--shadow);}
+  .card.hi{border-color:color-mix(in srgb,var(--engine) 55%,transparent);}
+  .tag{display:inline-block;font-family:var(--mono);font-size:.68rem;letter-spacing:.1em;
+    text-transform:uppercase;font-weight:700;padding:4px 9px;border-radius:6px;margin-bottom:10px;}
+  .tag.orch{background:var(--engine-soft);color:var(--engine);}
+  .tag.chor{background:var(--sync-soft);color:var(--sync);}
+  .tag.saga{background:var(--saga-soft);color:var(--saga);}
+  ul{margin:.4rem 0;padding-left:1.1rem;}
+  li{margin:.32rem 0;}
+  .win{display:flex;align-items:center;gap:8px;font-weight:700;color:var(--cap);font-size:.9rem;margin-top:4px;}
+  .callout{border-left:3px solid var(--engine);background:var(--engine-soft);
+    border-radius:0 10px 10px 0;padding:14px 18px;margin-top:18px;}
+  .callout .eyebrow{color:var(--engine);}
+  table{width:100%;border-collapse:collapse;margin-top:14px;font-size:.92rem;}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top;}
+  th{font-family:var(--mono);font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;}
+  tr td:first-child{font-weight:700;}
+  footer{margin-top:64px;padding-top:24px;border-top:1px solid var(--line);color:var(--muted);font-size:.9rem;}
+  @media (prefers-reduced-motion:no-preference){.node,.chip{transition:transform .15s ease;}}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="titlebar">
+    <div>
+      <div class="eyebrow">IDFC Integration Platform · Architecture for stakeholders</div>
+      <h1>One engine, many doors — and why a conductor runs the show</h1>
+    </div>
+    <button class="toggle" id="themeToggle" aria-label="Toggle light or dark theme">◐ Theme</button>
+  </div>
+  <p class="lead" style="margin-top:16px">
+    How a loan request travels from a partner or Salesforce, through a data-driven <strong>orchestration
+    engine</strong>, out to the bank's real systems, and safely back — plus the two patterns that keep it
+    correct when money is involved: the <strong>saga</strong> (safe undo) and <strong>orchestration</strong>
+    (a central conductor instead of scattered signalling).
+  </p>
+  <div class="legend" aria-label="Colour legend">
+    <span class="lg"><span class="dot" style="background:var(--edge)"></span>Edge / door</span>
+    <span class="lg"><span class="dot" style="background:var(--engine)"></span>Orchestration engine</span>
+    <span class="lg"><span class="dot" style="background:var(--cap)"></span>Capability (business skill)</span>
+    <span class="lg"><span class="dot" style="background:var(--vendor)"></span>External vendor</span>
+    <span class="lg"><span class="dot" style="background:var(--sync)"></span>Sync lane</span>
+    <span class="lg"><span class="dot" style="background:var(--saga)"></span>Saga / compensation</span>
+  </div>
+</header>
+
+<!-- ============ L1/L2 HIGH LEVEL ============ -->
+<section id="highlevel">
+  <div class="kicker"><span class="num">01</span><span class="eyebrow">High level · the whole platform</span></div>
+  <h2>Every channel enters through a thin door, then runs the same core</h2>
+  <p class="lead">A new channel is a new <em>door</em>, never a fork of the core. Each door normalises its input
+    into one shared envelope and hands it to the engine; the engine calls reusable capabilities; capabilities
+    call the bank's real vendors behind swappable ports.</p>
+
+  <div class="board">
+    <p class="rowlabel">Channels → Doors (edges)</p>
+    <div class="flow">
+      <div class="stage"><div class="node k-edge"><span class="t">Salesforce (SOAP)</span><span class="s">sfdc-ingress-edge · :8080</span></div></div>
+      <div class="stage"><div class="node k-edge"><span class="t">Digital partners</span><span class="s">digital-partner-edge · :8081</span></div></div>
+      <div class="stage"><div class="node k-edge"><span class="t">File / batch (CSV)</span><span class="s">file-batch-edge · :8112</span></div></div>
+    </div>
+    <div class="down">▼ &nbsp; one canonical envelope, on Kafka</div>
+    <p class="rowlabel">Core — two execution lanes</p>
+    <div class="flow">
+      <div class="stage" style="flex:2">
+        <div class="node k-engine"><span class="t">Orchestration engine — the conductor</span>
+          <span class="s">origination-journey · :8082 · walks the journey DAG</span></div>
+      </div>
+      <div class="stage">
+        <div class="node k-sync"><span class="t">Sync lane — money / queries</span>
+          <span class="s">in-thread on :8081 · no engine, caller waits</span></div>
+      </div>
+    </div>
+    <div class="down">▼ &nbsp; cap.&lt;name&gt;.request / response</div>
+    <p class="rowlabel">Capabilities (one reusable business skill each)</p>
+    <div class="flow">
+      <div class="stage"><div class="node k-cap"><span class="t">customer-party</span><span class="s">resolve</span></div></div>
+      <div class="stage"><div class="node k-cap"><span class="t">kyc</span><span class="s">verify</span></div></div>
+      <div class="stage"><div class="node k-cap"><span class="t">bureau</span><span class="s">pull</span></div></div>
+      <div class="stage"><div class="node k-cap"><span class="t">scoring</span><span class="s">decide</span></div></div>
+      <div class="stage"><div class="node k-cap"><span class="t">lending-origination</span><span class="s">book · reverseBooking</span></div></div>
+      <div class="stage"><div class="node k-cap"><span class="t">verification · device-validation · …</span><span class="s">+ more</span></div></div>
+    </div>
+    <div class="down">▼ &nbsp; real HTTP, behind swappable ports</div>
+    <p class="rowlabel">External vendors (swapped by config)</p>
+    <div class="flow">
+      <div class="stage"><div class="node k-vendor"><span class="t">Posidex · NSDL · CIBIL · FICO</span><span class="s">identity · KYC · bureau · score</span></div></div>
+      <div class="stage"><div class="node k-vendor"><span class="t">FinnOne (core lending)</span><span class="s">books the loan</span></div></div>
+      <div class="stage"><div class="node k-vendor"><span class="t">Karza · IMPS · Fusion HCM</span><span class="s">RC · money rail · HR</span></div></div>
+    </div>
+  </div>
+  <div class="callout">
+    <span class="eyebrow">The load-bearing idea</span>
+    <p style="margin:.3rem 0 0">N channels × M products would be N×M things to build. By normalising every door
+      into one envelope and one engine, it becomes <strong>N + M</strong>: add a channel = a door; add a product =
+      a journey. Nothing else changes.</p>
+  </div>
+</section>
+
+<!-- ============ TWO LANES ============ -->
+<section id="lanes">
+  <div class="kicker"><span class="num">02</span><span class="eyebrow">Two lanes, one capability model</span></div>
+  <h2>Long journeys go async; money movement stays synchronous</h2>
+  <div class="grid2">
+    <div class="card">
+      <span class="tag orch">Async engine lane</span>
+      <h3>Multi-step business journeys</h3>
+      <p>Loan origination, device validation, RC verification. The caller gets a fast acknowledgement; the work
+        runs later over Kafka as a durable, auditable journey.</p>
+      <ul>
+        <li>Walks a <strong>DAG</strong> of nodes</li>
+        <li>Durable run state in Aerospike — resumable on crash</li>
+        <li>Every step visible in the <strong>ops view</strong></li>
+      </ul>
+      <div class="win">✓ answer comes back later · fully audited</div>
+    </div>
+    <div class="card">
+      <span class="tag chor">Sync lane</span>
+      <h3>Real-time request / response</h3>
+      <p>IMPS fund transfer (loan disbursal), LMS offer check. The caller <strong>blocks</strong> and gets the
+        answer in the HTTP response — you cannot fire-and-forget a money transfer.</p>
+      <ul>
+        <li>Runs <strong>in-thread</strong> — no engine, no Kafka</li>
+        <li>Idempotent: a retry never double-pays</li>
+        <li>A timeout is <span class="m">AMBIGUOUS</span>, never a false success</li>
+      </ul>
+      <div class="win" style="color:var(--sync)">✓ answer is immediate · no journey run</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ COMPONENT LEVEL ============ -->
+<section id="component">
+  <div class="kicker"><span class="num">03</span><span class="eyebrow">Component level · inside the conductor</span></div>
+  <h2>What lives inside the orchestration engine</h2>
+  <p class="lead">The engine contains <strong>zero business logic</strong>. It only reads a journey, walks its
+    nodes, evaluates branch conditions, dispatches to capabilities, and persists every step.</p>
+  <div class="board">
+    <div class="flow tight">
+      <div class="stage"><div class="node k-engine"><span class="t">Origination consumer</span><span class="s">reads orig.* topics</span></div></div>
+      <div class="arrow">→</div>
+      <div class="stage"><div class="node k-engine"><span class="t">Journey orchestrator</span><span class="s">resolves type → journey</span></div></div>
+      <div class="arrow">→</div>
+      <div class="stage"><div class="node k-engine"><span class="t">Journey engine</span><span class="s">walks the DAG</span></div></div>
+      <div class="arrow">→</div>
+      <div class="stage"><div class="node k-engine"><span class="t">Expression evaluator</span><span class="s">reads branch conditions</span></div></div>
+    </div>
+    <div class="down">supported by ▾</div>
+    <div class="flow">
+      <div class="stage"><div class="node k-store"><span class="t">Journey registry</span><span class="s">the DAGs as versioned data</span></div></div>
+      <div class="stage"><div class="node k-store"><span class="t">Instance store (Aerospike)</span><span class="s">durable run state · CAS on save</span></div></div>
+      <div class="stage"><div class="node k-store"><span class="t">Capability ports</span><span class="s">cap.&lt;name&gt;.request / response</span></div></div>
+      <div class="stage"><div class="node k-store"><span class="t">Ops surface</span><span class="s">read-only audit window</span></div></div>
+    </div>
+  </div>
+  <p style="margin-top:16px;color:var(--muted)">Because the flow is <em>data</em> and the engine is generic, the
+    same engine runs every journey. A capability is equally dumb: it answers one request and knows nothing about
+    the journey or the other capabilities — which is what keeps it reusable.</p>
+</section>
+
+<!-- ============ LOW LEVEL DAG ============ -->
+<section id="lowlevel">
+  <div class="kicker"><span class="num">04</span><span class="eyebrow">Low level · one journey, node by node</span></div>
+  <h2>The loan-origination journey (as it actually runs)</h2>
+  <p class="lead">A real DAG from the platform. Green = a step that calls a capability; indigo = a decision the
+    engine makes; rose = the safe-undo path.</p>
+  <div class="board">
+    <div class="dag">
+      <div class="chip c-task">Resolve customer<small>n_customer</small></div><span class="a2">→</span>
+      <div class="chip c-task">KYC<small>n_kyc</small></div><span class="a2">→</span>
+      <div class="chip c-task">Bureau pull<small>n_bureau</small></div><span class="a2">→</span>
+      <div class="chip c-task">Score<small>n_score</small></div><span class="a2">→</span>
+      <div class="chip c-branch">Approved?<small>n_decide</small></div><span class="a2">→</span>
+      <div class="chip c-task">Book loan<small>n_book · FinnOne</small></div><span class="a2">→</span>
+      <div class="chip c-ok">Booked ✓<small>n_done</small></div>
+    </div>
+    <div style="display:flex;gap:26px;flex-wrap:wrap;margin-top:16px;font-size:.86rem;color:var(--muted)">
+      <span>↳ <strong style="color:var(--saga)">decline path:</strong> <span class="m">n_decide</span> → <span class="m">n_reject</span> — a business "no", a green run, not a failure</span>
+      <span>↳ <strong style="color:var(--saga)">failure path:</strong> <span class="m">n_book</span> fails → <span class="m">reverseBooking</span> (saga, next section)</span>
+    </div>
+  </div>
+  <p style="margin-top:16px;color:var(--muted)">Changing this flow — a new check, a different order, a new
+    product — means <strong>editing the diagram</strong> (versioned in the Designer), not editing and redeploying
+    the engine.</p>
+</section>
+
+<!-- ============ SAGA ============ -->
+<section id="saga">
+  <div class="kicker"><span class="num">05</span><span class="eyebrow">Pattern · the saga</span></div>
+  <h2>Saga — how you undo a half-done loan safely</h2>
+  <p class="lead">You cannot hold one database transaction across the bank's core systems (FinnOne, bureaus, KYC).
+    A <strong>saga</strong> replaces that impossible distributed lock with a chain of local steps, each with a
+    matching <em>compensation</em> that undoes it. If a later step fails, completed steps are reversed — in
+    reverse order.</p>
+
+  <div class="grid2">
+    <div class="card">
+      <span class="tag saga">The use case we solve</span>
+      <h3>Booking a loan has a real side-effect</h3>
+      <p>When <span class="m">n_book</span> runs, a loan record is created in FinnOne — real money committed. If
+        anything downstream can't complete, the platform must not just error out and leave a phantom loan on the
+        books. It must <strong>reverse the booking</strong>.</p>
+      <p style="margin-top:10px">The journey declares this inline on the node:</p>
+      <ul>
+        <li><span class="m">onFailure: "compensate"</span> — start the saga</li>
+        <li><span class="m">compensation: reverseBooking(loanId)</span> — the undo</li>
+        <li><span class="m">meter: finnone_pool (max 20)</span> — throttle concurrent bookings so the core isn't flooded</li>
+      </ul>
+    </div>
+    <div class="card hi">
+      <span class="tag saga">How the engine runs it</span>
+      <h3>Decide now, clean up after</h3>
+      <div class="board" style="box-shadow:none;margin-top:6px;padding:14px">
+        <p class="rowlabel">happy path</p>
+        <div class="dag"><div class="chip c-task">book</div><span class="a2">→</span><div class="chip c-ok">✓ booked</div></div>
+        <p class="rowlabel" style="margin-top:16px">failure → compensating saga</p>
+        <div class="dag">
+          <div class="chip c-task">book</div><span class="a2">✕</span>
+          <div class="chip c-no">ERROR now</div><span class="a2">→</span>
+          <div class="chip c-no">reverse ◂ completed steps</div>
+        </div>
+      </div>
+      <ul style="margin-top:14px">
+        <li>The business outcome is <strong>decided immediately</strong> (the caller is told now)</li>
+        <li>Compensations run <strong>in reverse completion order</strong>, one at a time</li>
+        <li>A single-owner election (compare-and-set) stops two engine replicas double-undoing</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout" style="border-color:var(--saga);background:var(--saga-soft)">
+    <span class="eyebrow" style="color:var(--saga)">Why it matters</span>
+    <p style="margin:.3rem 0 0">No phantom loans, no double disbursals, no 2am "is this loan real?" — the undo is
+      declared next to the step it undoes, and the engine guarantees it runs exactly once.</p>
+  </div>
+</section>
+
+<!-- ============ ORCHESTRATION VS CHOREOGRAPHY ============ -->
+<section id="orchestration">
+  <div class="kicker"><span class="num">06</span><span class="eyebrow">Pattern · orchestration vs choreography</span></div>
+  <h2>Two ways to coordinate services — we chose the conductor</h2>
+  <p class="lead">When many services must cooperate on one outcome, there are two styles. The difference is whether
+    a <strong>central brain holds the flow</strong>, or the flow is an emergent side-effect of who reacts to what.</p>
+
+  <div class="grid2">
+    <div class="card">
+      <span class="tag chor">Choreography</span>
+      <h3>Dancers, no conductor</h3>
+      <div class="board" style="box-shadow:none;padding:14px">
+        <div class="dag" style="flex-wrap:wrap">
+          <div class="chip c-task">customer</div><span class="a2">⇢ event ⇢</span>
+          <div class="chip c-task">kyc</div><span class="a2">⇢ event ⇢</span>
+          <div class="chip c-task">bureau</div><span class="a2">⇢ … ⇢</span>
+          <div class="chip c-task">book</div>
+        </div>
+      </div>
+      <p style="margin-top:12px">Each service listens for an event, does its bit, emits the next event. No one
+        owns the whole flow.</p>
+      <ul>
+        <li>Loose coupling, no central component</li>
+        <li>✗ the flow is <strong>implicit</strong> — nowhere to read "what happens to a loan"</li>
+        <li>✗ each service must know what comes next (hidden coupling)</li>
+        <li>✗ compensation logic scattered across services</li>
+        <li>✗ "where is loan X?" has no single answer</li>
+      </ul>
+    </div>
+    <div class="card hi">
+      <span class="tag orch">Orchestration — our choice</span>
+      <h3>A conductor holds the score</h3>
+      <div class="board" style="box-shadow:none;padding:14px">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
+          <div class="node k-engine" style="align-items:center"><span class="t">engine — holds the DAG</span></div>
+          <div style="color:var(--muted)">▼ tells each, in order ▼</div>
+          <div class="dag" style="flex-wrap:wrap;justify-content:center">
+            <div class="chip c-task">customer</div><div class="chip c-task">kyc</div>
+            <div class="chip c-task">bureau</div><div class="chip c-task">book</div>
+          </div>
+        </div>
+      </div>
+      <p style="margin-top:12px">One engine holds the flow and directs each capability; capabilities stay dumb and
+        reusable.</p>
+      <ul>
+        <li>✓ the flow is <strong>explicit, in one place</strong> (the journey)</li>
+        <li>✓ capabilities know nothing of each other — truly reusable</li>
+        <li>✓ compensation coordinated centrally (the saga)</li>
+        <li>✓ every step audited — the ops view answers "where is loan X?"</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout">
+    <span class="eyebrow">Why orchestration is the right call for regulated lending</span>
+    <table>
+      <thead><tr><th>The need</th><th>Why orchestration wins here</th></tr></thead>
+      <tbody>
+        <tr><td>Auditability</td><td>A regulator asks "what happened to this application, which step, why declined?" — the engine records every hop; choreography keeps no central record.</td></tr>
+        <tr><td>Change velocity</td><td>Products &amp; policies change constantly — the flow is <strong>data</strong> (a DAG in the Designer), so business changes it without a code release.</td></tr>
+        <tr><td>Safe undo</td><td>Reversing a booking across systems needs a coordinator — the engine runs the saga in reverse order, exactly once.</td></tr>
+        <tr><td>Safety by default</td><td>An unknown request type is quarantined to a dead-letter queue (fail-closed), never silently mis-processed.</td></tr>
+        <tr><td>Reuse</td><td>The same KYC / bureau / scoring capabilities serve every product because they carry no flow knowledge.</td></tr>
+      </tbody>
+    </table>
+    <p style="margin:.6rem 0 0;color:var(--muted)">Choreography suits high-throughput, loosely-related events
+      (notifications, analytics fan-out). A regulated, multi-step, money-committing loan flow wants the conductor.</p>
+  </div>
+</section>
+
+<footer>
+  <strong>IDFC Integration Platform</strong> — one platform, many doors · a journey is data, not code · a capability
+  is a reusable skill behind a port · two lanes, one capability model · a business "no" is never a technical failure ·
+  idempotent, confirmed &amp; audited by default.
+  <br><span style="font-family:var(--mono);font-size:.8rem">Diagrams reflect the live code: loan-origination.journey.json · JourneyEngine · digital-partner-edge · sync lane.</span>
+</footer>
+</div>
+
+<script>
+  (function(){
+    var btn=document.getElementById('themeToggle');
+    var root=document.documentElement;
+    btn.addEventListener('click',function(){
+      var cur=root.getAttribute('data-theme');
+      var next = cur==='dark' ? 'light' : cur==='light' ? 'dark'
+                 : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'light' : 'dark');
+      root.setAttribute('data-theme',next);
+    });
+  })();
+</script>
