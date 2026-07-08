@@ -66,16 +66,31 @@ public class SyncCapabilityInvoker {
 
         try {
             Map<String, Object> response = invocable.invoke(operation, payload, context);
-            recorder.record(new SyncInvocation(invocationId, capabilityKey, operation, source, idempotencyKey,
+            safeRecord(new SyncInvocation(invocationId, capabilityKey, operation, source, idempotencyKey,
                     correlationId, invocable.downstreamRefOf(response), invocable.businessOutcome(response),
                     null, null, startedAt, durationMs(startedAt), false));
             return response;
         } catch (SyncTechnicalException e) {
-            recorder.record(new SyncInvocation(invocationId, capabilityKey, operation, source, idempotencyKey,
+            safeRecord(new SyncInvocation(invocationId, capabilityKey, operation, source, idempotencyKey,
                     correlationId, null, SyncOutcome.TECHNICAL_ERROR,
                     e.errorClass() == null ? null : e.errorClass().name(), e.code(),
                     startedAt, durationMs(startedAt), false));
             throw e;
+        }
+    }
+
+    /**
+     * Write the audit record without ever letting it affect the business result. A
+     * misbehaving recorder must NOT turn a completed transfer into a failure, nor
+     * swallow the original {@link SyncTechnicalException} (the {@code throw e} that
+     * follows must still run). Auditing is observability, not part of the transaction.
+     */
+    private void safeRecord(SyncInvocation invocation) {
+        try {
+            recorder.record(invocation);
+        } catch (RuntimeException auditFailure) {
+            System.getLogger(SyncCapabilityInvoker.class.getName())
+                    .log(System.Logger.Level.WARNING, "sync audit record failed (ignored)", auditFailure);
         }
     }
 

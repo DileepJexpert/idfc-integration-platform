@@ -8,6 +8,7 @@ import com.idfcfirstbank.integration.capabilities.impsdisbursal.domain.port.out.
 import com.idfcfirstbank.integration.shared.domain.capability.ErrorClass;
 import com.idfcfirstbank.integration.shared.sync.SyncCapabilityInvoker;
 import com.idfcfirstbank.integration.shared.sync.SyncInvocation;
+import com.idfcfirstbank.integration.shared.sync.SyncInvocationRecorder;
 import com.idfcfirstbank.integration.shared.sync.SyncOutcome;
 import com.idfcfirstbank.integration.shared.sync.SyncRequestContext;
 import com.idfcfirstbank.integration.shared.sync.SyncTechnicalException;
@@ -109,6 +110,28 @@ class SyncInvocationAuditTest {
         assertThat(byKey).hasSize(2);
         assertThat(byKey.stream().filter(r -> !r.deduped()).count()).isEqualTo(1); // one real transfer record
         assertThat(byKey.stream().filter(SyncInvocation::deduped).count()).isEqualTo(1); // one dedup replay record
+    }
+
+    @Test
+    void recorder_failure_never_affects_the_business_result_nor_swallows_the_error() {
+        SyncInvocationRecorder throwingRecorder = inv -> {
+            throw new RuntimeException("audit store unavailable");
+        };
+        ImpsDisbursalService imps = new ImpsDisbursalService(port, new FakeIdemStore());
+        SyncCapabilityInvoker guarded = new SyncCapabilityInvoker(List.of(imps), throwingRecorder);
+
+        // A successful transfer still returns its result even though the recorder throws.
+        port.behavior = r -> new ImpsFtResult(r.reqId(), "S", "TXN-7", r.custBankAccNo(), "Bene AC", "", "");
+        Map<String, Object> resp = guarded.invoke("imps-disbursal", "transfer", payload("idem-g1", "ACC"), ctx);
+        assertThat(resp).containsEntry("status", "S").containsEntry("transactionId", "TXN-7");
+
+        // A technical failure still propagates the ORIGINAL exception — not the recorder's.
+        port.behavior = r -> {
+            throw new SyncTechnicalException(ErrorClass.TRANSIENT, "DOWN", "vendor down");
+        };
+        assertThatThrownBy(() -> guarded.invoke("imps-disbursal", "transfer", payload("idem-g2", "ACC"), ctx))
+                .isInstanceOf(SyncTechnicalException.class)
+                .hasMessage("vendor down");
     }
 
     // --- helpers / fakes -------------------------------------------------------------
