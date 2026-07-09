@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FinnOne/LMS svcName census — 30 → ~4</title>
+<style>
+  :root{
+    --ink:#0f172a; --muted:#5b6b82; --line:#e4e8f0; --bg:#f6f8fc; --card:#ffffff;
+    --reads:#0f9e8f; --reads-bg:#e6f7f4;
+    --actions:#ea6a1e; --actions-bg:#fdeee2;
+    --docs:#5b6478; --docs-bg:#eceef3;
+    --callback:#7c5cff; --callback-bg:#efeaff;
+    --legacy:#b0475a; --legacy-bg:#f7e7ea;
+    --warn:#c2410c; --warn-bg:#fff3e6; --warn-line:#f6a55f;
+    --pend:#8a6d1a; --pend-bg:#fbf3d8;
+    --ok:#2e7d5b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.45;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1140px;margin:0 auto;padding:28px 22px 40px}
+  header{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px 16px;border-bottom:2px solid var(--line);padding-bottom:14px}
+  h1{font-size:26px;margin:0;letter-spacing:-.02em}
+  .sub{color:var(--muted);font-size:13.5px}
+  .tag{margin-left:auto;font-size:11.5px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 10px;background:#fff}
+  .honesty{margin:16px 0 22px;background:var(--pend-bg);border:1px solid #e7d59a;border-radius:12px;padding:12px 16px;font-size:13px;color:#5c4a12}
+  .honesty b{color:#3f3208}
+  h2{font-size:13px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:30px 0 12px}
+
+  /* hero collapse */
+  .hero{display:grid;grid-template-columns:minmax(210px,1fr) 60px minmax(430px,1.7fr);gap:8px;align-items:center}
+  @media(max-width:840px){.hero{grid-template-columns:1fr;} .arrow{transform:rotate(90deg);margin:2px auto}}
+  .zoo{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;text-align:center;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+  .zoo .big{font-size:52px;font-weight:800;line-height:1;letter-spacing:-.03em}
+  .zoo .lbl{color:var(--muted);font-size:13px;margin-top:6px}
+  .zoo .leg{margin-top:12px;font-size:11.5px;color:var(--legacy);background:var(--legacy-bg);border-radius:8px;padding:7px 9px}
+  .arrow{font-size:30px;color:#9aa7bd;text-align:center;font-weight:700}
+  .caps{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media(max-width:520px){.caps{grid-template-columns:1fr}}
+  .cap{border-radius:13px;padding:12px 14px;border:1px solid;position:relative;background:var(--card)}
+  .cap .n{font-weight:750;font-size:14.5px;display:flex;align-items:center;gap:7px}
+  .cap .count{font-size:11px;font-weight:700;color:#fff;border-radius:999px;padding:1px 8px}
+  .cap .pat{font-size:11.5px;color:var(--muted);margin-top:4px}
+  .cap .foot{font-size:11px;margin-top:8px;padding-top:7px;border-top:1px dashed var(--line);color:var(--muted)}
+  .cap.reads{border-color:#bfe6df;background:linear-gradient(180deg,var(--reads-bg),#fff 70%)}
+  .cap.reads .count{background:var(--reads)} .cap.reads .n{color:#0b6b60}
+  .cap.actions{border-color:#f3cdae;background:linear-gradient(180deg,var(--actions-bg),#fff 70%)}
+  .cap.actions .count{background:var(--actions)} .cap.actions .n{color:#a8480f}
+  .cap.docs{border-color:#d3d8e2;background:linear-gradient(180deg,var(--docs-bg),#fff 70%)}
+  .cap.docs .count{background:var(--docs)} .cap.docs .n{color:#414a5c}
+  .cap.callback{border-color:#d6ccff;background:linear-gradient(180deg,var(--callback-bg),#fff 70%)}
+  .cap.callback .count{background:var(--callback)} .cap.callback .n{color:#5a3fd6}
+  .pendpill{display:inline-block;font-size:10px;font-weight:700;color:var(--pend);background:var(--pend-bg);border:1px solid #e7d59a;border-radius:6px;padding:1px 6px;margin-left:6px;vertical-align:1px}
+  .warnpill{display:inline-block;font-size:10px;font-weight:700;color:var(--warn);background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:6px;padding:1px 6px;margin-left:6px;vertical-align:1px}
+
+  /* tiers */
+  .tiers{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  @media(max-width:720px){.tiers{grid-template-columns:1fr 1fr}}
+  .tier{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px 14px;border-top:4px solid}
+  .tier .t{font-weight:750;font-size:13.5px}
+  .tier .c{font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1.1}
+  .tier .d{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .t1{border-top-color:var(--reads)} .t2{border-top-color:#2f6fd6} .t3{border-top-color:#9aa7bd} .t4{border-top-color:var(--callback)}
+
+  /* totals banner */
+  .total{margin-top:14px;background:#0f172a;color:#eaf0fb;border-radius:14px;padding:16px 20px;display:flex;flex-wrap:wrap;gap:10px 26px;align-items:center}
+  .total .eq{font-size:15px;font-weight:700}
+  .total .term{font-size:14px} .total .term b{font-size:19px}
+  .total .soft{color:#ffd479}
+  .total .z{color:#7fe0b6}
+
+  /* gates */
+  .gate{background:var(--warn-bg);border:1px solid var(--warn-line);border-left:5px solid var(--warn);border-radius:12px;padding:13px 16px;margin-bottom:10px}
+  .gate .h{font-weight:750;font-size:14px;color:var(--warn);display:flex;gap:8px;align-items:center}
+  .gate .b{font-size:12.5px;color:#6b4419;margin-top:5px}
+  .gate.pivot{border-left-color:#7c5cff;background:#f4f1ff;border-color:#d6ccff}
+  .gate.pivot .h{color:#5a3fd6}
+  .gate.pivot .b{color:#4a3f6e}
+
+  .legend{display:flex;flex-wrap:wrap;gap:8px 14px;font-size:11.5px;color:var(--muted);margin-top:14px}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .dot{width:11px;height:11px;border-radius:3px;display:inline-block}
+  footer{margin-top:26px;padding-top:14px;border-top:1px solid var(--line);color:var(--muted);font-size:11.5px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px 26px}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>FinnOne / LMS svcName census</h1>
+    <span class="sub">Sizing the migration — code-verified, not built</span>
+    <span class="tag">task #38 · reference only · gated</span>
+  </header>
+
+  <div class="honesty">
+    <b>What's solid vs pending.</b> The headline — <b>30 svcNames collapse to ~4 capabilities</b> — is proven by
+    reading the dispatch code. What's <span class="pendpill">pending</span> is <b>how much is truly zero-code</b>:
+    that depends on the response payloads (the <b>M mappers</b> below), which the next census step confirms. And two
+    money-affecting classifications are <span class="warnpill">confirm first</span> before anything is built.
+    Claim the collapse; qualify the zero-code fraction.
+  </div>
+
+  <h2>The collapse</h2>
+  <div class="hero">
+    <div class="zoo">
+      <div class="big">30</div>
+      <div class="lbl">FinnOne/LMS svcNames<br>(the SFDC route table, A–L)</div>
+      <div class="leg">Legacy shape ≈ 30 hand-built wrappers / procs<br>(<code>filenet-wrapper-…</code>, a <code>finnone-*-sys</code> per call)</div>
+    </div>
+    <div class="arrow">➜</div>
+    <div class="caps">
+      <div class="cap reads">
+        <div class="n">Generic sync-utilities <span class="count">≈19</span></div>
+        <div class="pat">reads · built on <b>verification</b> route-resolver · LMS folds in</div>
+        <div class="foot">Tier&nbsp;1 · config route rows <span class="pendpill">T1 pending payload</span></div>
+      </div>
+      <div class="cap actions">
+        <div class="n">Idempotent actions <span class="count">≈7</span></div>
+        <div class="pat">writes · built on <b>imps-disbursal</b> · idempotency required</div>
+        <div class="foot">Tier&nbsp;2 · needs dedup key before 5xx-retry</div>
+      </div>
+      <div class="cap docs">
+        <div class="n">FileNet documents <span class="count">≈3</span></div>
+        <div class="pat">get / attach / upload · different transport (multipart, :8084)</div>
+        <div class="foot">Tier&nbsp;4 · one genuinely new adapter</div>
+      </div>
+      <div class="cap callback">
+        <div class="n">Callback ingress <span class="count">1</span></div>
+        <div class="pat">email-verification · vendor calls <b>in</b> (not an outbound call)</div>
+        <div class="foot">Tier&nbsp;4 · edge/consumer, like the decision consumer</div>
+      </div>
+    </div>
+  </div>
+
+  <h2>By onboarding tier</h2>
+  <div class="tiers">
+    <div class="tier t1">
+      <div class="t">T1 — config row</div>
+      <div class="c">most reads <span class="pendpill">pending</span></div>
+      <div class="d">route row only, reuses passthrough / shared house-envelope mapper — <b>if</b> the response is the house shape</div>
+    </div>
+    <div class="tier t2">
+      <div class="t">T2 — row + mapper</div>
+      <div class="c">all actions + M</div>
+      <div class="d">a new request/response mapper; transport &amp; dispatch reused. <b>M reads</b> land here if their payload is bespoke</div>
+    </div>
+    <div class="tier t3">
+      <div class="t">T3 — new journey</div>
+      <div class="c">0</div>
+      <div class="d">none — every row is a single call; existing journeys <i>compose</i> them as nodes</div>
+    </div>
+    <div class="tier t4">
+      <div class="t">T4 — new capability</div>
+      <div class="c">≈3–4</div>
+      <div class="d">the capability shells themselves: generic-reads, actions, FileNet docs, callback ingress</div>
+    </div>
+  </div>
+
+  <div class="total">
+    <span class="eq">30 svcNames ≈</span>
+    <span class="term"><b>~4</b> capabilities <span class="z">(solid)</span></span>
+    <span class="term"><b>~26</b> config rows</span>
+    <span class="term soft"><b>M</b> mappers (pending payloads)</span>
+    <span class="term"><b>0</b> <span class="z">new journeys</span></span>
+  </div>
+
+  <h2>Gate before building — confirm with IDFC (flagged, not bucketed)</h2>
+  <div class="grid2">
+    <div>
+      <div class="gate pivot">
+        <div class="h">◆ Pivotal — LMS: facade or per-endpoint?</div>
+        <div class="b">The catalog shows LMS as <b>per-endpoint</b> (distinct paths), but <code>lms-utilities</code> was
+        built as a <b>single facade</b> (one <code>/callLmsUtilities</code>, requestCode in the body). They contradict.
+        The answer sets the capability shape for <b>~19 svcNames</b> — settle it first.</div>
+      </div>
+      <div class="gate">
+        <div class="h">⚠ Foreclosure — read or execute?</div>
+        <div class="b">Leaned <b>read</b> (existing <code>lending-servicing</code> models FinnOne foreclosure as a
+        quote/amount read — "servicing never books"), but the verb could be <b>execute</b>. If it's an action mislabeled
+        retry-safe, a retried 5xx could <b>double-execute a foreclosure</b>.</div>
+      </div>
+    </div>
+    <div>
+      <div class="gate">
+        <div class="h">⚠ IMPS_TO_VALIDATE_CUSTOMER — penny-drop?</div>
+        <div class="b">A "validate" is usually a read, but <code>/P2A</code> may move <b>₹1</b> to validate an account →
+        then it's an <b>action needing idempotency</b>, not a read. Same double-execution risk if misclassified.</div>
+      </div>
+      <div class="gate">
+        <div class="h">⚠ M (mappers) — needs payloads</div>
+        <div class="b">Each read is <b>T1</b> only if its response is the shared house envelope; otherwise <b>T2</b>.
+        <b>M is the difference between a cheap and a moderate migration</b> and can't be closed without sample
+        responses. Don't promise the zero-code number yet.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span><span class="dot" style="background:var(--reads)"></span>reads → generic sync-utilities</span>
+    <span><span class="dot" style="background:var(--actions)"></span>actions → idempotent (imps pattern)</span>
+    <span><span class="dot" style="background:var(--docs)"></span>FileNet documents</span>
+    <span><span class="dot" style="background:var(--callback)"></span>inbound callback</span>
+    <span><span class="dot" style="background:var(--warn-line)"></span>confirm-first (safety)</span>
+  </div>
+
+  <footer>
+    Source: 30 svcNames (SFDC route table, A–L) in <code>docs/reference/finnone-svcname-endpoints.md</code>;
+    classification + evidence in <code>docs/reference/finnone-svcname-census.md</code>. Counts are approximate and
+    move once the payloads (M) and the two safety verbs are confirmed. <b>Nothing built</b> — this sizes the
+    migration; building is task #38, gated on the four items above. The safety line (actions need idempotency before a
+    5xx is retryable) is the same discipline as the customer-party/posidex fix, applied to money operations.
+  </footer>
+
+</div>
+</body>
+</html>
