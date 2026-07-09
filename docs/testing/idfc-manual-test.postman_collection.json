@@ -2,7 +2,7 @@
   "info": {
     "name": "IDFC Integration - manual test (SFDC / digital / sync)",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "Importable into Postman AND Insomnia. Requests use {{variables}} (see the collection Variables tab) so you can retarget hosts/tokens in one place. IDs use Postman's {{$guid}} so each send is unique (re-runnable); in Insomnia replace {{$guid}} or use its uuid tag. SERVICE ports are 8080/8081/8082 (the 191xx remap is for the vendor MOCKS the services call, not for you). Watch results: engine ops runs (:8082) / Sync Invocations tab / Kafka UI :8085 for the DLQ (orig.sfdc.dlq.v1). Prereqs: infra + services up (docker compose -f docker-compose.infra.yml up -d, then run-services.ps1)."
+    "description": "Importable into Postman AND Insomnia. Requests use {{variables}} (Variables tab) so you can retarget hosts/tokens in one place. IDs use Postman's {{$guid}} so each send is unique; in Insomnia replace {{$guid}} or use its uuid tag. SERVICE ports are 8080/8081/8082 (the 191xx remap is for the vendor MOCKS the services call, not for you); kafka-ui is 8085.\n\nFolders 1-4 hit the edges over HTTP. Folder 5 covers engine journeys that have NO edge HTTP door (device-validation brand-variety, vehicle-rc, employee-lwd): they are triggered by producing a CanonicalEnvelope to a consumed topic, which folder 5 does via the kafka-ui produce API (each request also carries the guaranteed docker-exec kafka-console-producer fallback).\n\nNOT included by design: negative-area-verification, domain-check-verification, emandate-cancel and emandate-autopay-setup. Their journey files exist but in the default local (classpath) run they are neither loaded (not in the engine's local journey-resources) nor routable (no type-to-journey row), so they cannot run out of the box. To exercise them, publish them via the DAG Designer/journey-registry and add a type-to-journey row, then produce an envelope like folder 5.\n\nWatch results: engine ops runs (:8082) / Sync Invocations tab / kafka-ui :8085 (DLQ orig.sfdc.dlq.v1). Prereqs: infra + services up (docker compose -f docker-compose.infra.yml up -d, then run-services.ps1)."
   },
   "variable": [
     {
@@ -44,6 +44,14 @@
     {
       "key": "flipkartToken",
       "value": "flipkart-dev-token"
+    },
+    {
+      "key": "kafkaUiBase",
+      "value": "http://localhost:8085"
+    },
+    {
+      "key": "kafkaCluster",
+      "value": "idfc"
     }
   ],
   "item": [
@@ -241,7 +249,7 @@
           }
         },
         {
-          "name": "LAP -> DLQ (fail closed, unmapped type)",
+          "name": "LAP -> loan-origination (business line, orig.sfdc.lap.v1)",
           "request": {
             "method": "POST",
             "header": [
@@ -275,7 +283,83 @@
                 "outbound-messages"
               ]
             },
-            "description": "Edge routes LAP to orig.sfdc.lap.v1, but the engine has NO type->journey row -> DLQ (orig.sfdc.dlq.v1). No run. This IS the guardrail working."
+            "description": "CORRECTION: LAP is NOT a DLQ case. The edge routes LAP -> orig.sfdc.lap.v1 and the engine's base type-to-journey maps LAP -> loan-origination, so this runs the SAME journey as PERSONAL_LOAN but via a different topic (proves business-line -> topic routing). A genuinely unmapped type -> engine DLQ is the Kafka-door request in folder 5, because every edge svcName is engine-mapped."
+          }
+        },
+        {
+          "name": "BUSINESS_LOAN -> loan-origination (orig.sfdc.bl.v1)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/xml"
+              },
+              {
+                "key": "X-Auth-Token",
+                "value": "{{sfdcToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns=\"http://soap.sforce.com/2005/09/outbound\" xmlns:sf1=\"urn:sobject.enterprise.soap.sforce.com\"><soapenv:Body><notifications><OrganizationId>IDFC_BUSINESS</OrganizationId><Notification><Id>nid-{{$guid}}</Id><sObject><sf1:Id>sobj-{{$guid}}</sf1:Id><sf1:Request__c><![CDATA[{\"pan\":\"ABCDE1234F\",\"name\":\"ASHA RAO\",\"amount\":500000,\"tenureMonths\":36,\"negativeFlags\":[]}]]></sf1:Request__c><sf1:SVCNAME__c>BUSINESS_LOAN</sf1:SVCNAME__c><sf1:VERSION__c>1.0</sf1:VERSION__c></sObject></Notification></notifications></soapenv:Body></soapenv:Envelope>",
+              "options": {
+                "raw": {
+                  "language": "xml"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{sfdcBase}}/api/v1/sfdc/outbound-messages",
+              "host": [
+                "{{sfdcBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sfdc",
+                "outbound-messages"
+              ]
+            },
+            "description": "Edge routes BUSINESS_LOAN -> orig.sfdc.bl.v1; engine maps BUSINESS_LOAN -> loan-origination. Same journey, another business-line topic."
+          }
+        },
+        {
+          "name": "COMMERCIAL -> loan-origination (orig.sfdc.commercial.v1)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/xml"
+              },
+              {
+                "key": "X-Auth-Token",
+                "value": "{{sfdcToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns=\"http://soap.sforce.com/2005/09/outbound\" xmlns:sf1=\"urn:sobject.enterprise.soap.sforce.com\"><soapenv:Body><notifications><OrganizationId>IDFC_BUSINESS</OrganizationId><Notification><Id>nid-{{$guid}}</Id><sObject><sf1:Id>sobj-{{$guid}}</sf1:Id><sf1:Request__c><![CDATA[{\"pan\":\"ABCDE1234F\",\"name\":\"ASHA RAO\",\"amount\":500000,\"tenureMonths\":36,\"negativeFlags\":[]}]]></sf1:Request__c><sf1:SVCNAME__c>COMMERCIAL</sf1:SVCNAME__c><sf1:VERSION__c>1.0</sf1:VERSION__c></sObject></Notification></notifications></soapenv:Body></soapenv:Envelope>",
+              "options": {
+                "raw": {
+                  "language": "xml"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{sfdcBase}}/api/v1/sfdc/outbound-messages",
+              "host": [
+                "{{sfdcBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sfdc",
+                "outbound-messages"
+              ]
+            },
+            "description": "Edge routes COMMERCIAL -> orig.sfdc.commercial.v1; engine maps COMMERCIAL -> loan-origination. Completes the PL/LAP/BL/Commercial routing set."
           }
         },
         {
@@ -823,6 +907,299 @@
               ]
             },
             "description": "The journey runs list on the engine. Watch the SFDC/digital journeys land here."
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Engine journeys via Kafka UI (no HTTP edge door)",
+      "item": [
+        {
+          "name": "device-validation SAMSUNG (validate+block -> APPROVED)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{kafkaUiBase}}/api/clusters/{{kafkaCluster}}/topics/orig.device-validation.v1/messages",
+              "host": [
+                "{{kafkaUiBase}}"
+              ],
+              "path": [
+                "api",
+                "clusters",
+                "{{kafkaCluster}}",
+                "topics",
+                "orig.device-validation.v1",
+                "messages"
+              ]
+            },
+            "description": "Brand-as-config: SAMSUNG runs validate+block. deviceId DEV-1 passes -> DeviceValidationValid (completed). See demo/run-demo1.sh for the full four-outcome set.\n\nProduces a CanonicalEnvelope to orig.device-validation.v1 via the kafka-ui produce API (cluster '{{kafkaCluster}}'). Watch the run in the engine ops view / Sync-nothing here \u2014 this is the async engine. The correlationId is the ops search key.\n\nFallback (guaranteed): docker compose -f docker-compose.infra.yml exec -T kafka /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server localhost:9092 --topic orig.device-validation.v1   then paste:  {\"transactionId\":\"txn-{{$guid}}\",\"schemaVersion\":\"demo.v1\",\"source\":\"FILE_DEMO\",\"type\":\"DEVICE_VALIDATION\",\"notificationId\":\"corr-samsung-nid-{{$guid}}\",\"orgId\":\"DEMO-ORG\",\"sfdcRecordId\":\"corr-samsung-rec\",\"applicationRef\":\"corr-samsung-app-{{$guid}}\",\"correlationId\":\"corr-samsung-{{$guid}}\",\"originalCorrelationId\":\"corr-samsung-{{$guid}}\",\"payloadContentType\":\"application/json\",\"occurredAt\":\"2026-07-09T10:00:00Z\",\"payload\":{\"brand\":\"SAMSUNG\",\"deviceId\":\"DEV-1\"}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keySerde\": \"String\",\n  \"valueSerde\": \"String\",\n  \"key\": \"corr-samsung-{{$guid}}\",\n  \"content\": \"{\\\"transactionId\\\":\\\"txn-{{$guid}}\\\",\\\"schemaVersion\\\":\\\"demo.v1\\\",\\\"source\\\":\\\"FILE_DEMO\\\",\\\"type\\\":\\\"DEVICE_VALIDATION\\\",\\\"notificationId\\\":\\\"corr-samsung-nid-{{$guid}}\\\",\\\"orgId\\\":\\\"DEMO-ORG\\\",\\\"sfdcRecordId\\\":\\\"corr-samsung-rec\\\",\\\"applicationRef\\\":\\\"corr-samsung-app-{{$guid}}\\\",\\\"correlationId\\\":\\\"corr-samsung-{{$guid}}\\\",\\\"originalCorrelationId\\\":\\\"corr-samsung-{{$guid}}\\\",\\\"payloadContentType\\\":\\\"application/json\\\",\\\"occurredAt\\\":\\\"2026-07-09T10:00:00Z\\\",\\\"payload\\\":{\\\"brand\\\":\\\"SAMSUNG\\\",\\\"deviceId\\\":\\\"DEV-1\\\"}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "device-validation BOSCH DEV-DECLINE (vendor no -> DECLINED)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{kafkaUiBase}}/api/clusters/{{kafkaCluster}}/topics/orig.device-validation.v1/messages",
+              "host": [
+                "{{kafkaUiBase}}"
+              ],
+              "path": [
+                "api",
+                "clusters",
+                "{{kafkaCluster}}",
+                "topics",
+                "orig.device-validation.v1",
+                "messages"
+              ]
+            },
+            "description": "Vendor declines DEV-DECLINE -> DeviceValidationInvalid (rejected, a business no \u2014 not a failure).\n\nProduces a CanonicalEnvelope to orig.device-validation.v1 via the kafka-ui produce API (cluster '{{kafkaCluster}}'). Watch the run in the engine ops view / Sync-nothing here \u2014 this is the async engine. The correlationId is the ops search key.\n\nFallback (guaranteed): docker compose -f docker-compose.infra.yml exec -T kafka /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server localhost:9092 --topic orig.device-validation.v1   then paste:  {\"transactionId\":\"txn-{{$guid}}\",\"schemaVersion\":\"demo.v1\",\"source\":\"FILE_DEMO\",\"type\":\"DEVICE_VALIDATION\",\"notificationId\":\"corr-bosch-nid-{{$guid}}\",\"orgId\":\"DEMO-ORG\",\"sfdcRecordId\":\"corr-bosch-rec\",\"applicationRef\":\"corr-bosch-app-{{$guid}}\",\"correlationId\":\"corr-bosch-{{$guid}}\",\"originalCorrelationId\":\"corr-bosch-{{$guid}}\",\"payloadContentType\":\"application/json\",\"occurredAt\":\"2026-07-09T10:00:00Z\",\"payload\":{\"brand\":\"BOSCH\",\"deviceId\":\"DEV-DECLINE\"}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keySerde\": \"String\",\n  \"valueSerde\": \"String\",\n  \"key\": \"corr-bosch-{{$guid}}\",\n  \"content\": \"{\\\"transactionId\\\":\\\"txn-{{$guid}}\\\",\\\"schemaVersion\\\":\\\"demo.v1\\\",\\\"source\\\":\\\"FILE_DEMO\\\",\\\"type\\\":\\\"DEVICE_VALIDATION\\\",\\\"notificationId\\\":\\\"corr-bosch-nid-{{$guid}}\\\",\\\"orgId\\\":\\\"DEMO-ORG\\\",\\\"sfdcRecordId\\\":\\\"corr-bosch-rec\\\",\\\"applicationRef\\\":\\\"corr-bosch-app-{{$guid}}\\\",\\\"correlationId\\\":\\\"corr-bosch-{{$guid}}\\\",\\\"originalCorrelationId\\\":\\\"corr-bosch-{{$guid}}\\\",\\\"payloadContentType\\\":\\\"application/json\\\",\\\"occurredAt\\\":\\\"2026-07-09T10:00:00Z\\\",\\\"payload\\\":{\\\"brand\\\":\\\"BOSCH\\\",\\\"deviceId\\\":\\\"DEV-DECLINE\\\"}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "device-validation SAMSUNG DEV-FAIL (vendor error -> FAILED)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{kafkaUiBase}}/api/clusters/{{kafkaCluster}}/topics/orig.device-validation.v1/messages",
+              "host": [
+                "{{kafkaUiBase}}"
+              ],
+              "path": [
+                "api",
+                "clusters",
+                "{{kafkaCluster}}",
+                "topics",
+                "orig.device-validation.v1",
+                "messages"
+              ]
+            },
+            "description": "Vendor errors on DEV-FAIL -> FAILED (PERMANENT). Shows the failure terminal vs a business decline.\n\nProduces a CanonicalEnvelope to orig.device-validation.v1 via the kafka-ui produce API (cluster '{{kafkaCluster}}'). Watch the run in the engine ops view / Sync-nothing here \u2014 this is the async engine. The correlationId is the ops search key.\n\nFallback (guaranteed): docker compose -f docker-compose.infra.yml exec -T kafka /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server localhost:9092 --topic orig.device-validation.v1   then paste:  {\"transactionId\":\"txn-{{$guid}}\",\"schemaVersion\":\"demo.v1\",\"source\":\"FILE_DEMO\",\"type\":\"DEVICE_VALIDATION\",\"notificationId\":\"corr-samsung-fail-nid-{{$guid}}\",\"orgId\":\"DEMO-ORG\",\"sfdcRecordId\":\"corr-samsung-fail-rec\",\"applicationRef\":\"corr-samsung-fail-app-{{$guid}}\",\"correlationId\":\"corr-samsung-fail-{{$guid}}\",\"originalCorrelationId\":\"corr-samsung-fail-{{$guid}}\",\"payloadContentType\":\"application/json\",\"occurredAt\":\"2026-07-09T10:00:00Z\",\"payload\":{\"brand\":\"SAMSUNG\",\"deviceId\":\"DEV-FAIL\"}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keySerde\": \"String\",\n  \"valueSerde\": \"String\",\n  \"key\": \"corr-samsung-fail-{{$guid}}\",\n  \"content\": \"{\\\"transactionId\\\":\\\"txn-{{$guid}}\\\",\\\"schemaVersion\\\":\\\"demo.v1\\\",\\\"source\\\":\\\"FILE_DEMO\\\",\\\"type\\\":\\\"DEVICE_VALIDATION\\\",\\\"notificationId\\\":\\\"corr-samsung-fail-nid-{{$guid}}\\\",\\\"orgId\\\":\\\"DEMO-ORG\\\",\\\"sfdcRecordId\\\":\\\"corr-samsung-fail-rec\\\",\\\"applicationRef\\\":\\\"corr-samsung-fail-app-{{$guid}}\\\",\\\"correlationId\\\":\\\"corr-samsung-fail-{{$guid}}\\\",\\\"originalCorrelationId\\\":\\\"corr-samsung-fail-{{$guid}}\\\",\\\"payloadContentType\\\":\\\"application/json\\\",\\\"occurredAt\\\":\\\"2026-07-09T10:00:00Z\\\",\\\"payload\\\":{\\\"brand\\\":\\\"SAMSUNG\\\",\\\"deviceId\\\":\\\"DEV-FAIL\\\"}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "vehicle-rc VAHAN pass (ACTIVE+CLEAR -> APPROVED)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{kafkaUiBase}}/api/clusters/{{kafkaCluster}}/topics/orig.sfdc.pl.v1/messages",
+              "host": [
+                "{{kafkaUiBase}}"
+              ],
+              "path": [
+                "api",
+                "clusters",
+                "{{kafkaCluster}}",
+                "topics",
+                "orig.sfdc.pl.v1",
+                "messages"
+              ]
+            },
+            "description": "type=VEHICLE_RC routes to vehicle-rc-verification (local type-to-journey). Karza mock: any reg != 'XX00YY0000' -> rcStatus ACTIVE + blackListStatus CLEAR -> VehicleRcApproved (completed). Published to orig.sfdc.pl.v1 because VEHICLE_RC has no dedicated topic; the engine routes on the envelope 'type', not the topic.\n\nProduces a CanonicalEnvelope to orig.sfdc.pl.v1 via the kafka-ui produce API (cluster '{{kafkaCluster}}'). Watch the run in the engine ops view / Sync-nothing here \u2014 this is the async engine. The correlationId is the ops search key.\n\nFallback (guaranteed): docker compose -f docker-compose.infra.yml exec -T kafka /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server localhost:9092 --topic orig.sfdc.pl.v1   then paste:  {\"transactionId\":\"txn-{{$guid}}\",\"schemaVersion\":\"demo.v1\",\"source\":\"FILE_DEMO\",\"type\":\"VEHICLE_RC\",\"notificationId\":\"corr-vrc-ok-nid-{{$guid}}\",\"orgId\":\"DEMO-ORG\",\"sfdcRecordId\":\"corr-vrc-ok-rec\",\"applicationRef\":\"corr-vrc-ok-app-{{$guid}}\",\"correlationId\":\"corr-vrc-ok-{{$guid}}\",\"originalCorrelationId\":\"corr-vrc-ok-{{$guid}}\",\"payloadContentType\":\"application/json\",\"occurredAt\":\"2026-07-09T10:00:00Z\",\"payload\":{\"registrationNumber\":\"AB12CD1234\"}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keySerde\": \"String\",\n  \"valueSerde\": \"String\",\n  \"key\": \"corr-vrc-ok-{{$guid}}\",\n  \"content\": \"{\\\"transactionId\\\":\\\"txn-{{$guid}}\\\",\\\"schemaVersion\\\":\\\"demo.v1\\\",\\\"source\\\":\\\"FILE_DEMO\\\",\\\"type\\\":\\\"VEHICLE_RC\\\",\\\"notificationId\\\":\\\"corr-vrc-ok-nid-{{$guid}}\\\",\\\"orgId\\\":\\\"DEMO-ORG\\\",\\\"sfdcRecordId\\\":\\\"corr-vrc-ok-rec\\\",\\\"applicationRef\\\":\\\"corr-vrc-ok-app-{{$guid}}\\\",\\\"correlationId\\\":\\\"corr-vrc-ok-{{$guid}}\\\",\\\"originalCorrelationId\\\":\\\"corr-vrc-ok-{{$guid}}\\\",\\\"payloadContentType\\\":\\\"application/json\\\",\\\"occurredAt\\\":\\\"2026-07-09T10:00:00Z\\\",\\\"payload\\\":{\\\"registrationNumber\\\":\\\"AB12CD1234\\\"}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "vehicle-rc VAHAN blacklist (XX00YY0000 -> DECLINED)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{kafkaUiBase}}/api/clusters/{{kafkaCluster}}/topics/orig.sfdc.pl.v1/messages",
+              "host": [
+                "{{kafkaUiBase}}"
+              ],
+              "path": [
+                "api",
+                "clusters",
+                "{{kafkaCluster}}",
+                "topics",
+                "orig.sfdc.pl.v1",
+                "messages"
+              ]
+            },
+            "description": "Karza mock: registrationNumber == 'XX00YY0000' -> blackListStatus BLACKLIST -> VehicleRcDeclined (rejected).\n\nProduces a CanonicalEnvelope to orig.sfdc.pl.v1 via the kafka-ui produce API (cluster '{{kafkaCluster}}'). Watch the run in the engine ops view / Sync-nothing here \u2014 this is the async engine. The correlationId is the ops search key.\n\nFallback (guaranteed): docker compose -f docker-compose.infra.yml exec -T kafka /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server localhost:9092 --topic orig.sfdc.pl.v1   then paste:  {\"transactionId\":\"txn-{{$guid}}\",\"schemaVersion\":\"demo.v1\",\"source\":\"FILE_DEMO\",\"type\":\"VEHICLE_RC\",\"notificationId\":\"corr-vrc-bl-nid-{{$guid}}\",\"orgId\":\"DEMO-ORG\",\"sfdcRecordId\":\"corr-vrc-bl-rec\",\"applicationRef\":\"corr-vrc-bl-app-{{$guid}}\",\"correlationId\":\"corr-vrc-bl-{{$guid}}\",\"originalCorrelationId\":\"corr-vrc-bl-{{$guid}}\",\"payloadContentType\":\"application/json\",\"occurredAt\":\"2026-07-09T10:00:00Z\",\"payload\":{\"registrationNumber\":\"XX00YY0000\"}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keySerde\": \"String\",\n  \"valueSerde\": \"String\",\n  \"key\": \"corr-vrc-bl-{{$guid}}\",\n  \"content\": \"{\\\"transactionId\\\":\\\"txn-{{$guid}}\\\",\\\"schemaVersion\\\":\\\"demo.v1\\\",\\\"source\\\":\\\"FILE_DEMO\\\",\\\"type\\\":\\\"VEHICLE_RC\\\",\\\"notificationId\\\":\\\"corr-vrc-bl-nid-{{$guid}}\\\",\\\"orgId\\\":\\\"DEMO-ORG\\\",\\\"sfdcRecordId\\\":\\\"corr-vrc-bl-rec\\\",\\\"applicationRef\\\":\\\"corr-vrc-bl-app-{{$guid}}\\\",\\\"correlationId\\\":\\\"corr-vrc-bl-{{$guid}}\\\",\\\"originalCorrelationId\\\":\\\"corr-vrc-bl-{{$guid}}\\\",\\\"payloadContentType\\\":\\\"application/json\\\",\\\"occurredAt\\\":\\\"2026-07-09T10:00:00Z\\\",\\\"payload\\\":{\\\"registrationNumber\\\":\\\"XX00YY0000\\\"}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "employee-lwd update OK (valid date -> UPDATED)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{kafkaUiBase}}/api/clusters/{{kafkaCluster}}/topics/orig.employee-lwd-update.v1/messages",
+              "host": [
+                "{{kafkaUiBase}}"
+              ],
+              "path": [
+                "api",
+                "clusters",
+                "{{kafkaCluster}}",
+                "topics",
+                "orig.employee-lwd-update.v1",
+                "messages"
+              ]
+            },
+            "description": "type=EMPLOYEE_LWD_UPDATE -> employee-lwd-update journey -> fusion-hcm updateEmployee. Valid date -> EmployeeLwdUpdated (completed). The canonical trigger is a CSV drop (demo/run-demo2.sh); this is the single-record HTTP equivalent.\n\nProduces a CanonicalEnvelope to orig.employee-lwd-update.v1 via the kafka-ui produce API (cluster '{{kafkaCluster}}'). Watch the run in the engine ops view / Sync-nothing here \u2014 this is the async engine. The correlationId is the ops search key.\n\nFallback (guaranteed): docker compose -f docker-compose.infra.yml exec -T kafka /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server localhost:9092 --topic orig.employee-lwd-update.v1   then paste:  {\"transactionId\":\"txn-{{$guid}}\",\"schemaVersion\":\"demo.v1\",\"source\":\"FILE_DEMO\",\"type\":\"EMPLOYEE_LWD_UPDATE\",\"notificationId\":\"corr-lwd-ok-nid-{{$guid}}\",\"orgId\":\"DEMO-ORG\",\"sfdcRecordId\":\"corr-lwd-ok-rec\",\"applicationRef\":\"corr-lwd-ok-app-{{$guid}}\",\"correlationId\":\"corr-lwd-ok-{{$guid}}\",\"originalCorrelationId\":\"corr-lwd-ok-{{$guid}}\",\"payloadContentType\":\"application/json\",\"occurredAt\":\"2026-07-09T10:00:00Z\",\"payload\":{\"employeeId\":\"EMP-001\",\"lastWorkingDay\":\"2026-07-31\"}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keySerde\": \"String\",\n  \"valueSerde\": \"String\",\n  \"key\": \"corr-lwd-ok-{{$guid}}\",\n  \"content\": \"{\\\"transactionId\\\":\\\"txn-{{$guid}}\\\",\\\"schemaVersion\\\":\\\"demo.v1\\\",\\\"source\\\":\\\"FILE_DEMO\\\",\\\"type\\\":\\\"EMPLOYEE_LWD_UPDATE\\\",\\\"notificationId\\\":\\\"corr-lwd-ok-nid-{{$guid}}\\\",\\\"orgId\\\":\\\"DEMO-ORG\\\",\\\"sfdcRecordId\\\":\\\"corr-lwd-ok-rec\\\",\\\"applicationRef\\\":\\\"corr-lwd-ok-app-{{$guid}}\\\",\\\"correlationId\\\":\\\"corr-lwd-ok-{{$guid}}\\\",\\\"originalCorrelationId\\\":\\\"corr-lwd-ok-{{$guid}}\\\",\\\"payloadContentType\\\":\\\"application/json\\\",\\\"occurredAt\\\":\\\"2026-07-09T10:00:00Z\\\",\\\"payload\\\":{\\\"employeeId\\\":\\\"EMP-001\\\",\\\"lastWorkingDay\\\":\\\"2026-07-31\\\"}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "employee-lwd bad date (not-a-date -> FAILED)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{kafkaUiBase}}/api/clusters/{{kafkaCluster}}/topics/orig.employee-lwd-update.v1/messages",
+              "host": [
+                "{{kafkaUiBase}}"
+              ],
+              "path": [
+                "api",
+                "clusters",
+                "{{kafkaCluster}}",
+                "topics",
+                "orig.employee-lwd-update.v1",
+                "messages"
+              ]
+            },
+            "description": "EMP-004 with lastWorkingDay='not-a-date' is the crafted failure row from employees-sample.csv (fusion mock 99-bad-date) -> the update fails.\n\nProduces a CanonicalEnvelope to orig.employee-lwd-update.v1 via the kafka-ui produce API (cluster '{{kafkaCluster}}'). Watch the run in the engine ops view / Sync-nothing here \u2014 this is the async engine. The correlationId is the ops search key.\n\nFallback (guaranteed): docker compose -f docker-compose.infra.yml exec -T kafka /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server localhost:9092 --topic orig.employee-lwd-update.v1   then paste:  {\"transactionId\":\"txn-{{$guid}}\",\"schemaVersion\":\"demo.v1\",\"source\":\"FILE_DEMO\",\"type\":\"EMPLOYEE_LWD_UPDATE\",\"notificationId\":\"corr-lwd-bad-nid-{{$guid}}\",\"orgId\":\"DEMO-ORG\",\"sfdcRecordId\":\"corr-lwd-bad-rec\",\"applicationRef\":\"corr-lwd-bad-app-{{$guid}}\",\"correlationId\":\"corr-lwd-bad-{{$guid}}\",\"originalCorrelationId\":\"corr-lwd-bad-{{$guid}}\",\"payloadContentType\":\"application/json\",\"occurredAt\":\"2026-07-09T10:00:00Z\",\"payload\":{\"employeeId\":\"EMP-004\",\"lastWorkingDay\":\"not-a-date\"}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keySerde\": \"String\",\n  \"valueSerde\": \"String\",\n  \"key\": \"corr-lwd-bad-{{$guid}}\",\n  \"content\": \"{\\\"transactionId\\\":\\\"txn-{{$guid}}\\\",\\\"schemaVersion\\\":\\\"demo.v1\\\",\\\"source\\\":\\\"FILE_DEMO\\\",\\\"type\\\":\\\"EMPLOYEE_LWD_UPDATE\\\",\\\"notificationId\\\":\\\"corr-lwd-bad-nid-{{$guid}}\\\",\\\"orgId\\\":\\\"DEMO-ORG\\\",\\\"sfdcRecordId\\\":\\\"corr-lwd-bad-rec\\\",\\\"applicationRef\\\":\\\"corr-lwd-bad-app-{{$guid}}\\\",\\\"correlationId\\\":\\\"corr-lwd-bad-{{$guid}}\\\",\\\"originalCorrelationId\\\":\\\"corr-lwd-bad-{{$guid}}\\\",\\\"payloadContentType\\\":\\\"application/json\\\",\\\"occurredAt\\\":\\\"2026-07-09T10:00:00Z\\\",\\\"payload\\\":{\\\"employeeId\\\":\\\"EMP-004\\\",\\\"lastWorkingDay\\\":\\\"not-a-date\\\"}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "UNMAPPED type -> engine DLQ (fail closed)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{kafkaUiBase}}/api/clusters/{{kafkaCluster}}/topics/orig.sfdc.pl.v1/messages",
+              "host": [
+                "{{kafkaUiBase}}"
+              ],
+              "path": [
+                "api",
+                "clusters",
+                "{{kafkaCluster}}",
+                "topics",
+                "orig.sfdc.pl.v1",
+                "messages"
+              ]
+            },
+            "description": "This IS the real engine-level DLQ demo. type=UNMAPPED_DEMO_TYPE has no type-to-journey row -> the engine fails closed to the DLQ (orig.sfdc.dlq.v1), it never runs a default journey. Watch orig.sfdc.dlq.v1 in kafka-ui.\n\nProduces a CanonicalEnvelope to orig.sfdc.pl.v1 via the kafka-ui produce API (cluster '{{kafkaCluster}}'). Watch the run in the engine ops view / Sync-nothing here \u2014 this is the async engine. The correlationId is the ops search key.\n\nFallback (guaranteed): docker compose -f docker-compose.infra.yml exec -T kafka /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server localhost:9092 --topic orig.sfdc.pl.v1   then paste:  {\"transactionId\":\"txn-{{$guid}}\",\"schemaVersion\":\"demo.v1\",\"source\":\"FILE_DEMO\",\"type\":\"UNMAPPED_DEMO_TYPE\",\"notificationId\":\"corr-dlq-nid-{{$guid}}\",\"orgId\":\"DEMO-ORG\",\"sfdcRecordId\":\"corr-dlq-rec\",\"applicationRef\":\"corr-dlq-app-{{$guid}}\",\"correlationId\":\"corr-dlq-{{$guid}}\",\"originalCorrelationId\":\"corr-dlq-{{$guid}}\",\"payloadContentType\":\"application/json\",\"occurredAt\":\"2026-07-09T10:00:00Z\",\"payload\":{\"note\":\"no type-to-journey row\"}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keySerde\": \"String\",\n  \"valueSerde\": \"String\",\n  \"key\": \"corr-dlq-{{$guid}}\",\n  \"content\": \"{\\\"transactionId\\\":\\\"txn-{{$guid}}\\\",\\\"schemaVersion\\\":\\\"demo.v1\\\",\\\"source\\\":\\\"FILE_DEMO\\\",\\\"type\\\":\\\"UNMAPPED_DEMO_TYPE\\\",\\\"notificationId\\\":\\\"corr-dlq-nid-{{$guid}}\\\",\\\"orgId\\\":\\\"DEMO-ORG\\\",\\\"sfdcRecordId\\\":\\\"corr-dlq-rec\\\",\\\"applicationRef\\\":\\\"corr-dlq-app-{{$guid}}\\\",\\\"correlationId\\\":\\\"corr-dlq-{{$guid}}\\\",\\\"originalCorrelationId\\\":\\\"corr-dlq-{{$guid}}\\\",\\\"payloadContentType\\\":\\\"application/json\\\",\\\"occurredAt\\\":\\\"2026-07-09T10:00:00Z\\\",\\\"payload\\\":{\\\"note\\\":\\\"no type-to-journey row\\\"}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
           }
         }
       ]
