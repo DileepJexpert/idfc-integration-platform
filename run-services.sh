@@ -5,7 +5,7 @@
 # WHY this is fast: it does NOT build Docker images or run containers. It builds
 # the boot jars ONCE (./gradlew bootJar) and launches each service as a plain
 # `java -jar` process with the `local` Spring profile, wired to the dockerized
-# infra over host ports (Kafka :29092, Aerospike :3000, vendor mocks :9101-05).
+# infra over host ports (Kafka :29092, Aerospike :3000, vendor mocks :19101-05).
 #
 # YOU run the infra yourself, once (it is long-lived):
 #     docker compose -f docker-compose.infra.yml up -d

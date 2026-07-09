@@ -62,7 +62,7 @@ flowchart LR
 
 ## Vendor (dev vs real)
 
-Real LMS backend; in dev the WireMock **mock-lms** (`:9111`) — only the DATA is mocked. Lever: `crnNo` = `NO-OFFER-CRN` → the empty-offer case. Real backend later = a host-config swap.
+Real LMS backend; in dev the WireMock **mock-lms** (`:19111`) — only the DATA is mocked. Lever: `crnNo` = `NO-OFFER-CRN` → the empty-offer case. Real backend later = a host-config swap.
 
 ---
 ← [capability index](README.md) · [L3 component view](../03-component.md) · [L4 journeys](../04-journeys.md)

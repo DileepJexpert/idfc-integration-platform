@@ -26,7 +26,7 @@ flowchart LR
 - **Out-port(s):** `PosidexPort` → `PosidexHttpAdapter` (real HTTP) / `MockPosidexAdapter` (in-JVM) → Posidex.
 
 ## Config (what's data, not code)
-`idfc.customer-party.posidex` in `application.yml`: `mode` (`mock`|`real`, default `mock`, env `POSIDEX_MODE`) selects the adapter; `url` (default `http://localhost:9101`, env `POSIDEX_URL`) is the Posidex base URL. The adapter is built as `RestClient.builder().baseUrl(url)` only — **no auth header or explicit timeout is configured** here (simpler than the device-validation vendor client). `mode` defaults to `mock`, so absent config the capability runs against the in-JVM mock rather than failing closed.
+`idfc.customer-party.posidex` in `application.yml`: `mode` (`mock`|`real`, default `mock`, env `POSIDEX_MODE`) selects the adapter; `url` (default `http://localhost:19101`, env `POSIDEX_URL`) is the Posidex base URL. The adapter is built as `RestClient.builder().baseUrl(url)` only — **no auth header or explicit timeout is configured** here (simpler than the device-validation vendor client). `mode` defaults to `mock`, so absent config the capability runs against the in-JVM mock rather than failing closed.
 
 ## Outcomes & error model
 There is **one business outcome**: a resolved profile (the mock always returns `status = ACTIVE`; the real adapter passes the vendor's `status` through). There is no "customer not found" business branch. Any `RuntimeException` — including an empty vendor body — is caught by `CustomerPartyService` and returned as `CapabilityStatus.ERROR` with **no** `ErrorClass`; `CustomerPartyCapability.unwrap` then throws `CapabilityException(PERMANENT)`, so the dispatcher classifies the failure **PERMANENT** (no retry → DLQ). This capability does **not** distinguish `TRANSIENT`/`AMBIGUOUS` — every technical failure collapses to `PERMANENT`.
@@ -44,7 +44,7 @@ There is **one business outcome**: a resolved profile (the mock always returns `
 - `CustomerPartyServiceTest` — locks: `resolve` maps `crn`/`customerStatus` from the profile; a failing `PosidexPort` yields `CapabilityStatus.ERROR`; the mock is deterministic (`CRN-P1`).
 
 ## Vendor (dev vs real)
-Real vendor: **Posidex** (customer source of truth / CDP). In dev it is either the in-JVM `MockPosidexAdapter` (deterministic from PAN, no infra) or a docker mock on `:9101`. Swap to real with config only: `POSIDEX_MODE=real` + `POSIDEX_URL=<host>` — no code change.
+Real vendor: **Posidex** (customer source of truth / CDP). In dev it is either the in-JVM `MockPosidexAdapter` (deterministic from PAN, no infra) or a docker mock on `:19101`. Swap to real with config only: `POSIDEX_MODE=real` + `POSIDEX_URL=<host>` — no code change.
 
 ---
 ← [capability index](README.md) · [L3 component view](../03-component.md) · [L4 journeys](../04-journeys.md)

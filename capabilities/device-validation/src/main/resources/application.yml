@@ -30,9 +30,9 @@ spring:
 # ---------------------------------------------------------------------------
 device-validation:
   # The vendor is the compose WireMock (mock-devicevalidation) in dev — only its
-  # DATA is mocked. Host bootRun -> localhost:9106; in-container -> http://mock-devicevalidation:8080.
-  vendor-base-url: ${DEVICE_VALIDATION_VENDOR_URL:http://localhost:9106/vendor/device-validation}
-  token-url: ${DEVICE_VALIDATION_OAUTH_URL:http://localhost:9106/oauth/token}
+  # DATA is mocked. Host bootRun -> localhost:19106; in-container -> http://mock-devicevalidation:8080.
+  vendor-base-url: ${DEVICE_VALIDATION_VENDOR_URL:http://localhost:19106/vendor/device-validation}
+  token-url: ${DEVICE_VALIDATION_OAUTH_URL:http://localhost:19106/oauth/token}
   connect-timeout-ms: 3000
   read-timeout-ms: 10000
   # The request's activity-intent lives in this field; absent -> default-status.

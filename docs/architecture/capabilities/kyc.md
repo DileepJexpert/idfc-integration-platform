@@ -26,7 +26,7 @@ flowchart LR
 - **Out-port(s):** `NsdlPort` → `NsdlHttpAdapter` (real HTTP) / `MockNsdlAdapter` (in-JVM) → NSDL.
 
 ## Config (what's data, not code)
-`idfc.kyc.nsdl` in `application.yml`: `mode` (`mock`|`real`, default `mock`, env `NSDL_MODE`) selects the adapter; `url` (default `http://localhost:9104`, env `NSDL_URL`) is the NSDL base URL. The adapter is `RestClient.builder().baseUrl(url)` only — **no auth or explicit timeout** is configured here. `mode` defaults to `mock`, so the capability runs on the in-JVM mock unless told otherwise.
+`idfc.kyc.nsdl` in `application.yml`: `mode` (`mock`|`real`, default `mock`, env `NSDL_MODE`) selects the adapter; `url` (default `http://localhost:19104`, env `NSDL_URL`) is the NSDL base URL. The adapter is `RestClient.builder().baseUrl(url)` only — **no auth or explicit timeout** is configured here. `mode` defaults to `mock`, so the capability runs on the in-JVM mock unless told otherwise.
 
 ## Outcomes & error model
 KYC is treated as a **pass-through verification**, not a gate: the journey does **not** branch on `kycStatus` (`n_kyc` → `n_bureau` unconditionally). The mock always returns `VERIFIED`; the real adapter passes the vendor's `status` through (defaulting to `VERIFIED` when absent). Any `RuntimeException` (including an empty body) → `CapabilityStatus.ERROR` with no `ErrorClass`, which `KycCapability.unwrap` promotes to `CapabilityException(PERMANENT)` — so every technical failure classifies **PERMANENT** (no retry → DLQ). `TRANSIENT`/`AMBIGUOUS` are not used.
@@ -44,7 +44,7 @@ KYC is treated as a **pass-through verification**, not a gate: the journey does 
 - `KycServiceTest` — locks: `verify` maps `kycStatus=VERIFIED` + `kycRefId=KYC-<pan>`; a failing `NsdlPort` yields `CapabilityStatus.ERROR`; the mock is deterministic.
 
 ## Vendor (dev vs real)
-Real vendor: **NSDL** (KYC verification). In dev it is either the in-JVM `MockNsdlAdapter` (deterministic from PAN, no infra) or a docker mock on `:9104`. Swap to real with config only: `NSDL_MODE=real` + `NSDL_URL=<host>` — no code change.
+Real vendor: **NSDL** (KYC verification). In dev it is either the in-JVM `MockNsdlAdapter` (deterministic from PAN, no infra) or a docker mock on `:19104`. Swap to real with config only: `NSDL_MODE=real` + `NSDL_URL=<host>` — no code change.
 
 ---
 ← [capability index](README.md) · [L3 component view](../03-component.md) · [L4 journeys](../04-journeys.md)

@@ -20,7 +20,7 @@ All modes require the dockerized infra first. Bring it up once; it is long-lived
 docker compose -f docker-compose.infra.yml up -d
 ```
 
-This starts Kafka (host bootstrap `localhost:29092`), Aerospike (`3000`), **Kafka UI at http://localhost:8085** (cluster name `idfc`), CloudBeaver SQL UI (`8978`), and all vendor mocks (WireMock `9101`–`9107`, Oracle-XE FinnOne `1521`). Verify Kafka + Aerospike are healthy before starting services:
+This starts Kafka (host bootstrap `localhost:29092`), Aerospike (`3000`), **Kafka UI at http://localhost:8085** (cluster name `idfc`), CloudBeaver SQL UI (`8978`), and all vendor mocks (WireMock `19101`–`19107`, Oracle-XE FinnOne `1521`). Verify Kafka + Aerospike are healthy before starting services:
 
 ```bash
 docker inspect --format '{{.State.Health.Status}}' idfc-kafka idfc-aerospike
@@ -56,7 +56,7 @@ Use this to hand-drive a run node-by-node: you publish the starting envelope AND
 
 ### Mode C — Demo features (device-validation + fusion-hcm file batch)
 
-There is **no separate `demo` profile** — the two demo doors + journeys live in the engine's `local` profile (`application-local.yml`), loaded via classpath. Mode C is just Mode A/B **plus** the two demo capability apps that make real HTTP calls to `mock-devicevalidation` (9106) / `mock-fusion` (9107). The one-click `./run-services.sh` already starts all of this; the explicit commands are:
+There is **no separate `demo` profile** — the two demo doors + journeys live in the engine's `local` profile (`application-local.yml`), loaded via classpath. Mode C is just Mode A/B **plus** the two demo capability apps that make real HTTP calls to `mock-devicevalidation` (19106) / `mock-fusion` (19107). The one-click `./run-services.sh` already starts all of this; the explicit commands are:
 
 ```bash
 # engine with the demo rows (adds topics orig.device-validation.v1 / orig.employee-lwd-update.v1 and 2 demo journeys)
@@ -97,8 +97,8 @@ Trigger the demos: `demo/run-demo1.sh` (fires SAMSUNG/GODREJ/BOSCH-decline/SAMSU
 | **Kafka UI** | http://localhost:8085 | cluster `idfc` — produce/consume all topics here |
 | Aerospike | `localhost:3000` | run-dedup + idempotency store (when `state-store=aerospike`) |
 | CloudBeaver (FinnOne/Oracle SQL) | http://localhost:8978 | host=`mock-finnone` port 1521 service `XEPDB1` user/pass `finnone` |
-| mock-posidex / cibil / fico / nsdl / karza | 9101 / 9102 / 9103 / 9104 / 9105 | WireMock vendor stubs (loan + verification) |
-| mock-devicevalidation / mock-fusion | 9106 / 9107 | demo vendor stubs |
+| mock-posidex / cibil / fico / nsdl / karza | 19101 / 19102 / 19103 / 19104 / 19105 | WireMock vendor stubs (loan + verification) |
+| mock-devicevalidation / mock-fusion | 19106 / 19107 | demo vendor stubs |
 
 ### Topics
 
@@ -4069,7 +4069,7 @@ H='-H X-Ops-Token:dev-ops-token -H X-User-Id:ops.analyst@bank'
 
 **Two entry doors, ONE journey.** The REAL production front door is an **SFDC Outbound Messaging SOAP call** — `SVCNAME__c = Post_Disbursal_Apple` (Apple post-disbursal device validation) — which the SFDC ingress edge normalizes and routes here; the payload has **no brand field** (brand=**APPLE** is implicit in the svcName) and the device id is `imei` (see *Permutation 0* below + `docs/DEVICE_VALIDATION_SFDC_ENTRY.md`). The **demo Kafka door** (`type:"DEVICE_VALIDATION"`, `payload.brand`/`payload.imei`/`payload.serial`) is the secondary, journey-only path used by `demo/run-demo1.sh` for the four-outcome set (Permutations 1+).
 
-Either way it is ONE journey that runs up to **three config-gated activities — `validate`, `block`, `unblock`** — where **every per-brand difference is a config row, not code**: which activities the brand supports, how the device is identified (`validate-by: imei | serial`), the auth scheme (OAUTH / BASIC / NA), and the "valid" pass-path/pass-value all come from `device-validation.brands.*`. Each activity runs only on the **INTERSECTION** of (the request asks for it, via its `status`) AND (the brand supports it, via its flag). The capability (`device-validation`, ops `decideActivities` / `validate` / `block` / `unblock`) makes a **real HTTP POST** to the WireMock vendor at `http://localhost:9106/vendor/device-validation/{validate|block|unblock}`; only the response DATA is mocked.
+Either way it is ONE journey that runs up to **three config-gated activities — `validate`, `block`, `unblock`** — where **every per-brand difference is a config row, not code**: which activities the brand supports, how the device is identified (`validate-by: imei | serial`), the auth scheme (OAUTH / BASIC / NA), and the "valid" pass-path/pass-value all come from `device-validation.brands.*`. Each activity runs only on the **INTERSECTION** of (the request asks for it, via its `status`) AND (the brand supports it, via its flag). The capability (`device-validation`, ops `decideActivities` / `validate` / `block` / `unblock`) makes a **real HTTP POST** to the WireMock vendor at `http://localhost:19106/vendor/device-validation/{validate|block|unblock}`; only the response DATA is mocked.
 
 **Request `status` selects activities** (config `device-validation.status-activities`): `status "1"` = **validate + block** (disbursal); `status "2"` = **unblock** (closure). An absent/blank status **defaults to "1"**. `decideActivities` then intersects the status-selected set with the brand's per-activity flags to produce the run plan (`runValidate` / `runBlock` / `runUnblock`).
 
@@ -4121,7 +4121,7 @@ deviceId levers (WireMock, `POST /vendor/device-validation/{validate|block|unblo
 
 **Demo Kafka door (secondary — Permutations 1+):** produce to topic **`orig.device-validation.v1`**, **key = `correlationId`**, value = the CanonicalEnvelope with `type:"DEVICE_VALIDATION"`, `payload.brand`, `payload.status` (`"1"`/`"2"`, defaults to `"1"`), and the device id in `payload.imei`/`payload.serial` per the brand's `validate-by` (generic `payload.deviceId` works as a fallback) — the business fields the capability reads on this door. Engine instance id `"ji-" + correlationId` (correlationId is the first non-null dedup key). Ops search keys = `correlationId` / `notificationId` / `sfdcRecordId`.
 
-Full-stack prereq: engine started via `./run-services.sh` (or `bootRun --spring.profiles.active=local --idfc.engine.journey-source=classpath`), the `device-validation` app, and the WireMock mock-vendors server (`:9106`) all running (or just run `demo/run-demo1.sh` for the canned four-outcome set). Engine-only manual prereq: engine running; you hand-publish `cap.device-validation.response.v1` messages to steer each hop.
+Full-stack prereq: engine started via `./run-services.sh` (or `bootRun --spring.profiles.active=local --idfc.engine.journey-source=classpath`), the `device-validation` app, and the WireMock mock-vendors server (`:19106`) all running (or just run `demo/run-demo1.sh` for the canned four-outcome set). Engine-only manual prereq: engine running; you hand-publish `cap.device-validation.response.v1` messages to steer each hop.
 
 ---
 
@@ -4492,7 +4492,7 @@ This is the "unknown enum / fail-closed" case for this journey: `rowOf(brand)` t
 ```
 
 **Drive to outcome**
-- **Full-stack:** cause a transport-level failure on the vendor call — either **stop the mock-vendors server on :9106** (connection refused → `IOException` → `TRANSIENT`, `"vendor unreachable"`) or add a stub returning **HTTP 5xx** (→ `TRANSIENT`, `"vendor HTTP 5xx"`). Brand `GODREJ` is used so the failing node is `n_block` (block-only). Because no `retrySpec` is configured, the TRANSIENT class does **not** retry here — the node fails on the first response, same as PERMANENT. (Sub-lever for an OAUTH brand: keep the vendor up but stop the token endpoint → `fetchToken` → TRANSIENT.)
+- **Full-stack:** cause a transport-level failure on the vendor call — either **stop the mock-vendors server on :19106** (connection refused → `IOException` → `TRANSIENT`, `"vendor unreachable"`) or add a stub returning **HTTP 5xx** (→ `TRANSIENT`, `"vendor HTTP 5xx"`). Brand `GODREJ` is used so the failing node is `n_block` (block-only). Because no `retrySpec` is configured, the TRANSIENT class does **not** retry here — the node fails on the first response, same as PERMANENT. (Sub-lever for an OAUTH brand: keep the vendor up but stop the token endpoint → `fetchToken` → TRANSIENT.)
 - **Engine-only** (instance `ji-corr-df-fail-transient`): n_decide OK (`runBlock:true`, validate/unblock false), then:
   ```json
   { "journeyInstanceId": "ji-corr-df-fail-transient", "correlationId": "corr-df-fail-transient", "nodeId": "n_block", "capabilityKey": "device-validation", "status": "ERROR", "result": {}, "errorClass": "TRANSIENT" }
@@ -4675,7 +4675,7 @@ This journey is the **file-batch** demo: a local-folder CSV edge (`FolderBatchPo
 
 **Prerequisites (all permutations):**
 - Engine (`origination-journey`) started via `./run-services.sh` (or `bootRun --spring.profiles.active=local --idfc.engine.journey-source=classpath`). The **`local` profile** (`application-local.yml`) loads `journeys/employee-lwd-update.journey.json`, adds the door topic `orig.employee-lwd-update.v1` to `idfc.engine.origination-topics`, and merges the `type-to-journey` row `EMPLOYEE_LWD_UPDATE → employee-lwd-update` — **there is no separate `demo` profile** (`run-services.sh` sets `IDFC_ENGINE_JOURNEY_SOURCE=classpath`; a bare `--spring.profiles.active=local` defaults to `registry` and needs the `journey-source=classpath` override to load the classpath journeys).
-- Full-stack mode additionally needs the `fusion-hcm` capability running (listening on `cap.fusion-hcm.request.v1`) and the `file-batch-edge` started with `--file-batch.enabled=true` (poller scans `demo/batch-inbox/` every 2000 ms), plus the WireMock fusion server on `http://localhost:9107`.
+- Full-stack mode additionally needs the `fusion-hcm` capability running (listening on `cap.fusion-hcm.request.v1`) and the `file-batch-edge` started with `--file-batch.enabled=true` (poller scans `demo/batch-inbox/` every 2000 ms), plus the WireMock fusion server on `http://localhost:19107`.
 - Ops API: `http://localhost:8082/ops`, headers `X-Ops-Token: dev-ops-token` + `X-User-Id: ops.analyst@bank`.
 
 **Journey definition (pinned facts used below):**
@@ -4693,7 +4693,7 @@ This journey is the **file-batch** demo: a local-folder CSV edge (`FolderBatchPo
 - `notificationId = batchId` — shared across the whole batch (the one exact ops-search key that groups it).
 - `sfdcRecordId = employeeId`; `applicationRef = batchId + "/" + employeeId`; `orgId = HR-DEMO`; `type = EMPLOYEE_LWD_UPDATE`; `source = FILE_DEMO`; `schemaVersion = file-demo.v1`. Kafka key = `correlationId`.
 
-**Capability contract:** `updateEmployee` reads `payload.employeeId` (blank → `CapabilityException(PERMANENT)`) and POSTs `{"lastWorkingDay":"<value>"}` to `http://localhost:9107/vendor/fusion/employees/{employeeId}`. On OK it returns `result = { updated:true, employeeId:<id>, vendor:<mock body> }`. HTTP → `ErrorClass`: **4xx → PERMANENT**, **5xx → TRANSIENT**, **read-timeout (SocketTimeoutException) → AMBIGUOUS**, **connect/IO → TRANSIENT**, other → PERMANENT.
+**Capability contract:** `updateEmployee` reads `payload.employeeId` (blank → `CapabilityException(PERMANENT)`) and POSTs `{"lastWorkingDay":"<value>"}` to `http://localhost:19107/vendor/fusion/employees/{employeeId}`. On OK it returns `result = { updated:true, employeeId:<id>, vendor:<mock body> }`. HTTP → `ErrorClass`: **4xx → PERMANENT**, **5xx → TRANSIENT**, **read-timeout (SocketTimeoutException) → AMBIGUOUS**, **connect/IO → TRANSIENT**, other → PERMANENT.
 
 **WireMock fusion levers** (`infra/mock-vendors/fusion/mappings/`):
 

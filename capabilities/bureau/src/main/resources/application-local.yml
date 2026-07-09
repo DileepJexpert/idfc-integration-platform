@@ -11,10 +11,10 @@ idfc:
   bureau:
     cibil:
       mode: real
-      url: http://localhost:9102
+      url: http://localhost:19102
     multi-bureau:
       mode: real
-      url: http://localhost:9102
+      url: http://localhost:19102
     commercial:
       mode: real
-      url: http://localhost:9102
+      url: http://localhost:19102

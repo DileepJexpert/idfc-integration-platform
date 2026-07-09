@@ -107,11 +107,11 @@ sequenceDiagram
 
 - **Server port:** `8093` (`server.port`, overridable via `SERVER_PORT`).
 - **Spring profiles:**
-  - `local` (`application-local.yml`): Kafka on `localhost:29092`; `fico-mode: real` against the docker-compose mock (`http://localhost:9103`).
+  - `local` (`application-local.yml`): Kafka on `localhost:29092`; `fico-mode: real` against the docker-compose mock (`http://localhost:19103`).
   - `eks` (`application-eks.yml`): production posture — `fico-mode: real` with `FICO_URL` from cluster env.
 - **Key `application.yml` settings:**
   - `idfc.scoring.threshold` — the bureau-score cutoff for the decision rule (default `700`, override via `SCORING_THRESHOLD`).
-  - `idfc.scoring.fico-mode` = `mock` | `real` and `idfc.scoring.fico-url` (default `http://localhost:9103`).
+  - `idfc.scoring.fico-mode` = `mock` | `real` and `idfc.scoring.fico-url` (default `http://localhost:19103`).
   - `spring.kafka.bootstrap-servers` (default `localhost:9092`).
   - Actuator exposes only `health,info,prometheus`.
 - **Run locally:**

@@ -13,13 +13,13 @@ Outcomes are **valid / invalid** (not approve/decline).
 
 **Full-stack (real HTTP → WireMock; you publish only the start envelope):**
 ```bash
-docker compose -f docker-compose.infra.yml up -d          # infra + mock-devicevalidation :9106 + Kafka UI :8085
+docker compose -f docker-compose.infra.yml up -d          # infra + mock-devicevalidation :19106 + Kafka UI :8085
 
 # engine on local (classpath) — application-local.yml carries the orig.device-validation.v1 door + journey
 ./gradlew :orchestration:origination-journey:bootRun \
   --args='--spring.profiles.active=local --idfc.engine.journey-source=classpath --idfc.engine.state-store=in-memory'
 
-# the capability app (real HTTP to :9106)
+# the capability app (real HTTP to :19106)
 ./gradlew :capabilities:device-validation:bootRun --args='--spring.profiles.active=local'   # :8110
 ```
 > NOTE: the one-click `./run-services.sh` starts the engine on `local` with `IDFC_ENGINE_JOURNEY_SOURCE=classpath`, so the `orig.device-validation.v1` door + journey ARE active — that is the simplest path. The `bootRun` above does the same thing explicitly.
@@ -110,7 +110,7 @@ Set key = correlationId. Expected = ops `status`.
 | 6 | `corr-dv-invalid-block` | GODREJ | DEV-DECLINE | 1 | `COMPLETED_DECLINED` (invalid at block) |
 | 7 | `corr-dv-fail-permanent` | SAMSUNG | DEV-FAIL | 1 | `FAILED_SFDC_NOTIFIED` / PERMANENT |
 | 8 | `corr-dv-unknown-brand` | NOKIA | DEV-7 | 1 | `FAILED_SFDC_NOTIFIED` / PERMANENT (fail-closed at n_decide) |
-| 9 | `corr-dv-fail-transient` | GODREJ | DEV-5 | 1 | `FAILED_SFDC_NOTIFIED` / TRANSIENT — stop :9106 or stub 5xx |
+| 9 | `corr-dv-fail-transient` | GODREJ | DEV-5 | 1 | `FAILED_SFDC_NOTIFIED` / TRANSIENT — stop :19106 or stub 5xx |
 | 10 | `corr-dv-fail-ambiguous` | GODREJ | DEV-6 | 1 | `FAILED_SFDC_NOTIFIED` / AMBIGUOUS — stub `fixedDelay > 10000ms` |
 | 11 | `corr-dv-valid-samsung` (resend) | SAMSUNG | DEV-1 | 1 | dedup → still ONE run |
 | 12 | `corr-dv-badtype` | SAMSUNG | DEV-1 | 1 | **no run**; poison → `orig.device-validation.v1.dlq` (set `type:"DEVICE_VALIDATE"`) |

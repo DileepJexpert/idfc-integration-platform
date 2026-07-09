@@ -59,7 +59,7 @@ flowchart LR
 
 ## Vendor (dev vs real)
 
-Real per-brand vendor over real HTTP; in dev it's the WireMock **mock-devicevalidation** (`:9106`) — only the response DATA is mocked. Swap to a brand's real host + contract via config.
+Real per-brand vendor over real HTTP; in dev it's the WireMock **mock-devicevalidation** (`:19106`) — only the response DATA is mocked. Swap to a brand's real host + contract via config.
 
 ---
 ← [capability index](README.md) · [L3 component view](../03-component.md) · [L4 journeys](../04-journeys.md)

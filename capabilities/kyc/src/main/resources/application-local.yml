@@ -11,4 +11,4 @@ idfc:
   kyc:
     nsdl:
       mode: real
-      url: http://localhost:9104
+      url: http://localhost:19104

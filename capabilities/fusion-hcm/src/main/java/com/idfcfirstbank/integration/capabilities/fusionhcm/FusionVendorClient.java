@@ -28,7 +28,7 @@ public class FusionVendorClient implements FusionVendor {
     private final RestClient http;
 
     public FusionVendorClient(
-            @Value("${fusion.base-url:http://localhost:9107/vendor/fusion}") String baseUrl,
+            @Value("${fusion.base-url:http://localhost:19107/vendor/fusion}") String baseUrl,
             @Value("${fusion.connect-timeout-ms:3000}") int connectTimeoutMs,
             @Value("${fusion.read-timeout-ms:10000}") int readTimeoutMs) {
         this.baseUrl = baseUrl;

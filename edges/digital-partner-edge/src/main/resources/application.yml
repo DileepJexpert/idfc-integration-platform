@@ -66,16 +66,16 @@ idfc:
 
 # The SYNC capabilities the edge invokes in-thread. Vendor hosts + auth are config
 # (real IMPS/LMS backends later = host swaps); timeouts are mandatory (the caller
-# blocks). In dev the vendors are the compose WireMocks (mock-imps :9110 / mock-lms
-# :9111) — only their DATA is mocked.
+# blocks). In dev the vendors are the compose WireMocks (mock-imps :19110 / mock-lms
+# :19111) — only their DATA is mocked.
 imps-disbursal:
-  vendor-base-url: ${IMPS_VENDOR_URL:http://localhost:9110}
+  vendor-base-url: ${IMPS_VENDOR_URL:http://localhost:19110}
   vendor-auth-token: ${IMPS_VENDOR_TOKEN:}
   connect-timeout-ms: 3000
   read-timeout-ms: 10000
 
 lms-utilities:
-  vendor-base-url: ${LMS_VENDOR_URL:http://localhost:9111}
+  vendor-base-url: ${LMS_VENDOR_URL:http://localhost:19111}
   vendor-auth-token: ${LMS_VENDOR_TOKEN:}
   connect-timeout-ms: 3000
   read-timeout-ms: 10000

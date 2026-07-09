@@ -38,11 +38,11 @@ POST /api/v1/impsFT | /api/v1/callLmsUtilities   (edge :8081)
   is a **uniform 5xx** with an `errorClass` (never a fake success).
 
 Local dev accepts `Authorization: Bearer dev-sync-token` (fail-closed allow-list — prod swaps in real
-Ory/Hydra introspection). Vendors are the compose WireMocks (`mock-imps :9110`, `mock-lms :9111`); real
+Ory/Hydra introspection). Vendors are the compose WireMocks (`mock-imps :19110`, `mock-lms :19111`); real
 backends later = host-config swaps.
 
 ```bash
-docker compose -f docker-compose.infra.yml up -d          # mock-imps :9110 + mock-lms :9111
+docker compose -f docker-compose.infra.yml up -d          # mock-imps :19110 + mock-lms :19111
 ./gradlew :edges:digital-partner-edge:bootRun --args='--spring.profiles.active=local'   # :8081
 ```
 

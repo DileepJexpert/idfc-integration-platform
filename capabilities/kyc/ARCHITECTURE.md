@@ -111,9 +111,9 @@ On any `RuntimeException` from `nsdl.verify(...)`, `KycService.handle()` returns
 
 - **Server port:** `8091` (`SERVER_PORT` override).
 - **Spring profiles:**
-  - `local` (`application-local.yml`): Kafka at `localhost:29092` (docker host listener); NSDL `mode: real`, `url: http://localhost:9104` (docker-compose mock vendor).
+  - `local` (`application-local.yml`): Kafka at `localhost:29092` (docker host listener); NSDL `mode: real`, `url: http://localhost:19104` (docker-compose mock vendor).
   - `eks` (`application-eks.yml`): production posture — NSDL `mode: real`, `url: ${NSDL_URL}` injected from the cluster ConfigMap/Secret.
-  - default (no profile, `application.yml`): Kafka at `localhost:9092`, NSDL `mode: mock` (`NSDL_MODE`), `url: http://localhost:9104` (`NSDL_URL`).
+  - default (no profile, `application.yml`): Kafka at `localhost:9092`, NSDL `mode: mock` (`NSDL_MODE`), `url: http://localhost:19104` (`NSDL_URL`).
 - **Key `application.yml` settings:** `spring.application.name=kyc`; Kafka String key/value serde, `auto-offset-reset=earliest`; `idfc.kyc.nsdl.{mode,url}`; actuator exposes only `health,info,prometheus`.
 - **How to run:**
   - IntelliJ: run `KycApplication` (optionally set the active profile `local` or `eks` via `SPRING_PROFILES_ACTIVE`).

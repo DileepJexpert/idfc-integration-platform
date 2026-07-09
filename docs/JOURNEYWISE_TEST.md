@@ -59,24 +59,24 @@ Also watch `orig.decision.v1` and `cap.*.response.v1` in Kafka UI.
 
 ## A. Ready out-of-the-box (Kafka, via `./run-services.sh`)
 
-### A1 · device-validation  ·  vendor mock 9106
+### A1 · device-validation  ·  vendor mock 19106
 - **Topic:** `orig.device-validation.v1`  ·  **type:** `DEVICE_VALIDATION`
 - **payload:** `{ "brand": "SAMSUNG", "deviceId": "DEV-1", "status": "1" }`
 - **Levers:** brand `SAMSUNG`(imei, validate+block+unblock) · `GODREJ`(serial, block-only) · `BOSCH`(serial, full) · `APPLE`(imei, block-only). `status` `1`=validate+block, `2`=unblock. deviceId `DEV-1`→**valid**, `DEV-DECLINE`→**invalid**, `DEV-FAIL`→**FAILED**. (serial brands may send `"serial"` instead of `deviceId`.)
 - **Expect:** `1`+`DEV-1` → `COMPLETED_APPROVED`, terminal `n_valid`; `DEV-DECLINE` → `COMPLETED_DECLINED` `n_invalid`; `2` → only the unblock hop runs.
 
-### A2 · loan-origination  ·  mocks 9101/9102/9103/9104 + FinnOne 1521
+### A2 · loan-origination  ·  mocks 19101/19102/19103/19104 + FinnOne 1521
 - **Topic:** `orig.sfdc.pl.v1`  ·  **type:** `PERSONAL_LOAN`
 - **payload:** `{ "customerId": "CUST-1001", "pan": "ABCDE1234F", "mobile": "9999900001", "amount": 500000 }`
 - **Flow:** customer → KYC → bureau → score → decide → book (with reversal + a FinnOne concurrency cap).
 - **Expect:** approve/decline is driven by the bureau/scoring mock; a good score → `COMPLETED_APPROVED` (`LoanBooked`), else `COMPLETED_DECLINED`. Exhaustive vetted payloads: see `docs/MANUAL_TEST_GUIDE.md`.
 
-### A3 · vehicle-rc-verification  ·  Karza mock 9105
+### A3 · vehicle-rc-verification  ·  Karza mock 19105
 - **Topic:** `orig.sfdc.pl.v1` (any consumed topic)  ·  **type:** `VEHICLE_RC`
 - **payload:** `{ "registrationNumber": "MH12AB1234", "consent": "Y" }`
 - **Expect:** RC `ACTIVE` & `CLEAR` → `COMPLETED_APPROVED`; not-active/blacklisted → `COMPLETED_DECLINED`; Karza error → `FAILED_*`.
 
-### A4 · employee-lwd-update  ·  Fusion mock 9107
+### A4 · employee-lwd-update  ·  Fusion mock 19107
 - **Topic:** `orig.employee-lwd-update.v1`  ·  **type:** `EMPLOYEE_LWD_UPDATE`
 - **payload:** `{ "employeeId": "EMP-001", "lastWorkingDay": "2026-07-31" }`
 - **Or via file drop:** put a CSV (`employeeId,lastWorkingDay`) into the file-batch edge's inbox → one run per row.
@@ -86,7 +86,7 @@ Also watch `orig.decision.v1` and `cap.*.response.v1` in Kafka UI.
 
 ## B. Sync lane — HTTP, no Kafka (digital edge :8081)
 
-### B1 · imps-disbursal  ·  mock-imps 9110
+### B1 · imps-disbursal  ·  mock-imps 19110
 ```bash
 curl -sS -X POST http://localhost:8081/api/v1/impsFT \
   -H 'Authorization: Bearer dev-sync-token' -H 'Content-Type: application/json' \
@@ -98,7 +98,7 @@ curl -sS -X POST http://localhost:8081/api/v1/impsFT \
 - **Expect:** `200 { "status":"S", "transactionId":"003712585052", ... }`. Repeat the same `idempotentId` → same result, **no second transfer**.
 - **Levers (`custBankAccNo`):** `BAD-ACCOUNT` → 200 `status:F` (business decline) · `SLOW-ACC` → `502 AMBIGUOUS` (timeout) · `SERVER-ERROR` → `502 TRANSIENT`. Missing/blank Bearer → `401`; missing `idempotentId` → `400`.
 
-### B2 · lms-utilities  ·  mock-lms 9111
+### B2 · lms-utilities  ·  mock-lms 19111
 ```bash
 curl -sS -X POST http://localhost:8081/api/v1/callLmsUtilities \
   -H 'Authorization: Bearer dev-sync-token' -H 'Content-Type: application/json' \
@@ -141,7 +141,7 @@ restart the engine, then publish as in section A.
 
 (These four also need their journeys loadable: run in **registry** mode — start `:platform:journey-registry`
 which seeds all bundled journeys — or add the journey file to the engine's `journey-resources` list.
-Karza-backed ones need the `verification` capability + the Karza mock (9105); e-mandate needs the `mandate`
+Karza-backed ones need the `verification` capability + the Karza mock (19105); e-mandate needs the `mandate`
 capability. The three Karza verification journeys share the `verification` capability — only `vehicle-rc`
 ships a route row.)
 

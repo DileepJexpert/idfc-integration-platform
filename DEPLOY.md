@@ -41,7 +41,7 @@ What `local` changes vs. the base config:
   internal listener advertises `kafka:9092`, which only resolves inside the
   docker network, so a host-run app must use 29092.)
 - **Vendors → `real`** pointing at the docker mocks
-  (`customer-party→:9101`, `bureau→:9102`, `scoring→:9103`, `kyc→:9104`).
+  (`customer-party→:19101`, `bureau→:19102`, `scoring→:19103`, `kyc→:19104`).
 - **lending-origination → real FinnOne** over Oracle at `localhost:1521`
   (`XEPDB1`, `finnone/finnone`). Oracle-XE takes ~1–2 min to go healthy; override
   `FINNONE_MODE=mock` in the run config to skip it.

@@ -26,7 +26,7 @@ flowchart LR
 - **Out-port(s):** `FicoPort` → `FicoHttpAdapter` (real HTTP) / `MockFicoAdapter` (in-JVM) → FICO. FICO is **enrichment only** — its score is appended to `reasons` as `fico=<n>`; it does **not** drive the APPROVE/REJECT decision.
 
 ## Config (what's data, not code)
-`idfc.scoring` in `application.yml`: `threshold` (default `700`, env `SCORING_THRESHOLD`) is the bureau-score cutoff — the decision boundary is **data, not code**; `fico-mode` (`mock`|`real`, default `mock`, env `FICO_MODE`) selects the FICO adapter; `fico-url` (default `http://localhost:9103`, env `FICO_URL`). The real adapter is `RestClient.builder().baseUrl(url)` only — **no auth or explicit timeout** configured here.
+`idfc.scoring` in `application.yml`: `threshold` (default `700`, env `SCORING_THRESHOLD`) is the bureau-score cutoff — the decision boundary is **data, not code**; `fico-mode` (`mock`|`real`, default `mock`, env `FICO_MODE`) selects the FICO adapter; `fico-url` (default `http://localhost:19103`, env `FICO_URL`). The real adapter is `RestClient.builder().baseUrl(url)` only — **no auth or explicit timeout** configured here.
 
 ## Outcomes & error model
 A **`REJECTED` is a business outcome, not a failure** — it is returned as a normal `CapabilityStatus.OK` response (`decision=REJECTED`, with `reasons`), never paged; the journey's `n_decide` branch declines it. **Fail-closed default:** a missing upstream bureau result reads `bureauScore = 0`, which is below any threshold → `REJECTED` (it never defaults to approve). A **technical** failure is different: because FICO is called before the rule, a FICO outage throws a `RuntimeException` → `CapabilityStatus.ERROR`, promoted by `ScoringCapability.unwrap` to `CapabilityException(PERMANENT)` — so the node fails **PERMANENT** (no retry → DLQ) even though FICO is only enrichment. `TRANSIENT`/`AMBIGUOUS` are not used.
@@ -44,7 +44,7 @@ A **`REJECTED` is a business outcome, not a failure** — it is returned as a no
 - `ScoringServiceTest` — approve when bureau score meets threshold; reject when below; reasons enriched with `fico=750`; **missing bureau result → score 0 → REJECTED**; a failing `FicoPort` → `CapabilityStatus.ERROR`.
 
 ## Vendor (dev vs real)
-Real vendor: **FICO** (score enrichment). In dev it is either the in-JVM `MockFicoAdapter` (constant `750`, no infra) or a docker mock on `:9103`. Swap to real with config only: `FICO_MODE=real` + `FICO_URL=<host>`. Note the **decision itself is in-house** (`DecisionRule` on bureau score + flags + threshold) — FICO is a swappable enrichment, not the decision engine.
+Real vendor: **FICO** (score enrichment). In dev it is either the in-JVM `MockFicoAdapter` (constant `750`, no infra) or a docker mock on `:19103`. Swap to real with config only: `FICO_MODE=real` + `FICO_URL=<host>`. Note the **decision itself is in-house** (`DecisionRule` on bureau score + flags + threshold) — FICO is a swappable enrichment, not the decision engine.
 
 ---
 ← [capability index](README.md) · [L3 component view](../03-component.md) · [L4 journeys](../04-journeys.md)

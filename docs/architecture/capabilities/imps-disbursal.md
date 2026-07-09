@@ -56,7 +56,7 @@ flowchart LR
 
 ## Vendor (dev vs real)
 
-Real IMPS/FT backend; in dev the WireMock **mock-imps** (`:9110`) — only the DATA is mocked. Levers: `custBankAccNo` = `BAD-ACCOUNT` (business decline), `SLOW-ACC` (timeout), `SERVER-ERROR` (5xx). Real backend later = a host-config swap.
+Real IMPS/FT backend; in dev the WireMock **mock-imps** (`:19110`) — only the DATA is mocked. Levers: `custBankAccNo` = `BAD-ACCOUNT` (business decline), `SLOW-ACC` (timeout), `SERVER-ERROR` (5xx). Real backend later = a host-config swap.
 
 ---
 ← [capability index](README.md) · [L3 component view](../03-component.md) · [L4 journeys](../04-journeys.md)

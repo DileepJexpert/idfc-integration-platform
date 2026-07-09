@@ -34,8 +34,8 @@ Onboarding a 4th partner (say **PhonePe**) = one row `{ code, token, callback-ur
 - **Poll status (tenant-scoped):** `GET http://localhost:8081/api/v1/digital/applications/{applicationId}`
   header `X-Partner-Token` — a partner sees only its own apps; another partner's id reads **404**.
 
-**Prereqs:** `digital-partner-edge` up on `:8081` (in the launcher) + the loan mocks (posidex 9101 · cibil 9102 ·
-fico 9103 · nsdl 9104 · FinnOne 1521) up. The flow reuses the exact `loan-origination` journey proven in
+**Prereqs:** `digital-partner-edge` up on `:8081` (in the launcher) + the loan mocks (posidex 19101 · cibil 19102 ·
+fico 19103 · nsdl 19104 · FinnOne 1521) up. The flow reuses the exact `loan-origination` journey proven in
 `AS_TESTED_LOG.md §3`.
 
 ---

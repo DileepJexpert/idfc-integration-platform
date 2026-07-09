@@ -140,7 +140,7 @@ sequenceDiagram
 
 - **Server port:** `8092` (`server.port`, overridable via `SERVER_PORT`).
 - **Spring profiles:**
-  - `local` (`application-local.yml`): Kafka on `localhost:29092`; all three vendors set to `mode: real` pointing at the docker-compose mocks (`http://localhost:9102`).
+  - `local` (`application-local.yml`): Kafka on `localhost:29092`; all three vendors set to `mode: real` pointing at the docker-compose mocks (`http://localhost:19102`).
   - `eks` (`application-eks.yml`): production posture — `cibil`, `multi-bureau`, `commercial` all `mode: real` with URLs from cluster env (`CIBIL_URL`, `MULTI_BUREAU_URL`, `COMMERCIAL_URL`).
 - **Key `application.yml` settings:**
   - `idfc.bureau.default-bureau-types` (default `CIBIL`; a request may ask for more, e.g. `[CIBIL, MULTI_BUREAU, COMMERCIAL]`).

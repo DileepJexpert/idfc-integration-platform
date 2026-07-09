@@ -19,7 +19,7 @@ idfc:
   customer-party:
     posidex:
       mode: ${POSIDEX_MODE:mock}
-      url: ${POSIDEX_URL:http://localhost:9101}
+      url: ${POSIDEX_URL:http://localhost:19101}
 
 management:
   endpoints:

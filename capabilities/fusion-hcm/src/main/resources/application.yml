@@ -17,8 +17,8 @@ spring:
 # The Fusion HCM vendor — reached over REAL HTTP (only its response DATA is
 # mocked in dev, on the compose WireMock). Real client + timeouts + status→class.
 fusion:
-  # Host bootRun -> localhost:9107; in-container -> http://mock-fusion:8080.
-  base-url: ${FUSION_VENDOR_URL:http://localhost:9107/vendor/fusion}
+  # Host bootRun -> localhost:19107; in-container -> http://mock-fusion:8080.
+  base-url: ${FUSION_VENDOR_URL:http://localhost:19107/vendor/fusion}
   connect-timeout-ms: 3000
   read-timeout-ms: 10000
 

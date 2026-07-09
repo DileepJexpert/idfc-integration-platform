@@ -11,4 +11,4 @@ idfc:
   customer-party:
     posidex:
       mode: real
-      url: http://localhost:9101
+      url: http://localhost:19101

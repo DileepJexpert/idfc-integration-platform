@@ -8,8 +8,8 @@
 # (docker-compose.services.yml) OR straight from your IDE / `./gradlew bootRun`.
 #
 # Host ports: kafka 9092 + 29092 · kafka-ui 8085 · cloudbeaver 8978 ·
-# aerospike 3000-3002 · mock-posidex 9101 · mock-cibil 9102 · mock-fico 9103 ·
-# mock-nsdl 9104 · mock-karza 9105 · mock-finnone(Oracle) 1521.
+# aerospike 3000-3002 · mock-posidex 19101 · mock-cibil 19102 · mock-fico 19103 ·
+# mock-nsdl 19104 · mock-karza 19105 · mock-finnone(Oracle) 1521.
 #
 # Browser UIs: Kafka -> http://localhost:8085 ; SQL/Oracle -> http://localhost:8978.
 # Aerospike has no free CE web UI; inspect it with ./demo.sh aql (or asadm).
@@ -108,7 +108,7 @@ services:
     # which upgrades to HTTP/2 cleartext (h2c); WireMock 3.9.1 mishandles that and
     # the connection EOFs. Disabling h2c forces a clean HTTP/1.1 fallback.
     command: ["--port", "8080", "--disable-banner", "--disable-http2-plain"]
-    ports: ["9101:8080"]
+    ports: ["19101:8080"]
     volumes:
       - ./infra/mock-vendors/posidex/mappings:/home/wiremock/mappings:ro
 
@@ -120,7 +120,7 @@ services:
     # which upgrades to HTTP/2 cleartext (h2c); WireMock 3.9.1 mishandles that and
     # the connection EOFs. Disabling h2c forces a clean HTTP/1.1 fallback.
     command: ["--port", "8080", "--disable-banner", "--disable-http2-plain"]
-    ports: ["9102:8080"]
+    ports: ["19102:8080"]
     volumes:
       - ./infra/mock-vendors/cibil/mappings:/home/wiremock/mappings:ro
 
@@ -132,7 +132,7 @@ services:
     # which upgrades to HTTP/2 cleartext (h2c); WireMock 3.9.1 mishandles that and
     # the connection EOFs. Disabling h2c forces a clean HTTP/1.1 fallback.
     command: ["--port", "8080", "--disable-banner", "--disable-http2-plain"]
-    ports: ["9103:8080"]
+    ports: ["19103:8080"]
     volumes:
       - ./infra/mock-vendors/fico/mappings:/home/wiremock/mappings:ro
 
@@ -144,7 +144,7 @@ services:
     # which upgrades to HTTP/2 cleartext (h2c); WireMock 3.9.1 mishandles that and
     # the connection EOFs. Disabling h2c forces a clean HTTP/1.1 fallback.
     command: ["--port", "8080", "--disable-banner", "--disable-http2-plain"]
-    ports: ["9104:8080"]
+    ports: ["19104:8080"]
     volumes:
       - ./infra/mock-vendors/nsdl/mappings:/home/wiremock/mappings:ro
 
@@ -156,7 +156,7 @@ services:
     # which upgrades to HTTP/2 cleartext (h2c); WireMock 3.9.1 mishandles that and the
     # connection EOFs. Disabling h2c forces a clean HTTP/1.1 fallback.
     command: ["--port", "8080", "--disable-banner", "--disable-http2-plain"]
-    ports: ["9105:8080"]
+    ports: ["19105:8080"]
     volumes:
       - ./infra/mock-vendors/karza/mappings:/home/wiremock/mappings:ro
 
@@ -168,7 +168,7 @@ services:
     # --disable-http2-plain: the capability uses RestClient/JDK HttpClient
     # (h2c upgrade); WireMock 3.9.1 mishandles h2c → force clean HTTP/1.1.
     command: ["--port", "8080", "--disable-banner", "--disable-http2-plain"]
-    ports: ["9106:8080"]
+    ports: ["19106:8080"]
     volumes:
       - ./infra/mock-vendors/device-validation/mappings:/home/wiremock/mappings:ro
 
@@ -177,7 +177,7 @@ services:
     container_name: idfc-mock-fusion
     networks: [idfc]
     command: ["--port", "8080", "--disable-banner", "--disable-http2-plain"]
-    ports: ["9107:8080"]
+    ports: ["19107:8080"]
     volumes:
       - ./infra/mock-vendors/fusion/mappings:/home/wiremock/mappings:ro
 
@@ -187,7 +187,7 @@ services:
     container_name: idfc-mock-imps
     networks: [idfc]
     command: ["--port", "8080", "--disable-banner", "--disable-http2-plain"]
-    ports: ["9110:8080"]
+    ports: ["19110:8080"]
     volumes:
       - ./infra/mock-vendors/imps/mappings:/home/wiremock/mappings:ro
 
@@ -196,7 +196,7 @@ services:
     container_name: idfc-mock-lms
     networks: [idfc]
     command: ["--port", "8080", "--disable-banner", "--disable-http2-plain"]
-    ports: ["9111:8080"]
+    ports: ["19111:8080"]
     volumes:
       - ./infra/mock-vendors/lms/mappings:/home/wiremock/mappings:ro
 

@@ -23,13 +23,13 @@ idfc:
     default-bureau-types: ${BUREAU_TYPES:CIBIL}
     cibil:
       mode: ${CIBIL_MODE:mock}
-      url: ${CIBIL_URL:http://localhost:9102}
+      url: ${CIBIL_URL:http://localhost:19102}
     multi-bureau:
       mode: ${MULTI_BUREAU_MODE:mock}
-      url: ${MULTI_BUREAU_URL:http://localhost:9102}
+      url: ${MULTI_BUREAU_URL:http://localhost:19102}
     commercial:
       mode: ${COMMERCIAL_MODE:mock}
-      url: ${COMMERCIAL_URL:http://localhost:9102}
+      url: ${COMMERCIAL_URL:http://localhost:19102}
 
 management:
   endpoints:

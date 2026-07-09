@@ -20,7 +20,7 @@ file:line where it matters.
 **Infra (mocks + Kafka + Aerospike) — start once, include `--remove-orphans` to avoid stale-container port clashes:**
 ```powershell
 docker compose -f docker-compose.infra.yml -p idfc-integration-platform up -d --remove-orphans
-docker ps --format "{{.Names}}  {{.Ports}}"     # eyeball every mock has a HOST port mapped (e.g. 0.0.0.0:9105->8080)
+docker ps --format "{{.Names}}  {{.Ports}}"     # eyeball every mock has a HOST port mapped (e.g. 0.0.0.0:19105->8080)
 ```
 
 **Services:**
@@ -38,13 +38,13 @@ curl --location 'http://localhost:8082/ops/runs/<runId>'          --header 'X-Op
 - runId is always `ji-<correlationId>`.
 - Status vocabulary: `COMPLETED_APPROVED` (approved) · `COMPLETED_DECLINED` (business "no") · `FAILED_SFDC_NOTIFIED` (technical failure, SFDC told) · `RUNNING`.
 
-**Ports (from code):** engine 8082 · SFDC edge 8080 · digital edge 8081 · Kafka broker host `29092` (container `idfc-kafka` internal `9092`) · Kafka UI 8085 · Aerospike 3000. Vendor mocks: device-validation **9106**, Karza **9105**, NSDL 9104, bureau 9101-03, Fusion 9107.
+**Ports (from code):** engine 8082 · SFDC edge 8080 · digital edge 8081 · Kafka broker host `29092` (container `idfc-kafka` internal `9092`) · Kafka UI 8085 · Aerospike 3000. Vendor mocks: device-validation **19106**, Karza **19105**, NSDL 19104, bureau 19101-03, Fusion 19107.
 
 ---
 
 ## 1. device-validation — Apple post-disbursal via SFDC SOAP  ✅ TESTED
 
-**Entry:** real SFDC SOAP door (HTTP). **Capability:** `device-validation` (ops `decideActivities`, `block`). **Vendor mock:** 9106.
+**Entry:** real SFDC SOAP door (HTTP). **Capability:** `device-validation` (ops `decideActivities`, `block`). **Vendor mock:** 19106.
 
 **Command (Postman-importable):**
 ```
@@ -68,8 +68,8 @@ curl --location 'http://localhost:8082/ops/runs/search?key=04l7200000Daq5RAb3' -
 **Expectation:** Apple config is **block-only** (`validate:false, block:true, unblock:false`), so the plan runs only `n_block`. Path: `n_decide → n_gate_validate (skip) → n_gate_block → n_block → n_valid` = **`COMPLETED_APPROVED`**, terminal **`n_valid`**.
 
 **ACTUAL RESULT (2026-07-06):**
-- 1st run `ji-corr-363b722b-…`: **`FAILED_SFDC_NOTIFIED`**, terminal `n_block → ERROR (TRANSIENT)`. Root cause: an orphaned pre-rename container `idfc-mock-devicefin` was holding port **9106**, so the new `idfc-mock-devicevalidation` couldn't bind → vendor call refused. (Correct behaviour: classified TRANSIENT, retried, then failed cleanly and told SFDC.)
-- Fix: `docker rm -f idfc-mock-devicefin` + start `mock-devicevalidation` (9106).
+- 1st run `ji-corr-363b722b-…`: **`FAILED_SFDC_NOTIFIED`**, terminal `n_block → ERROR (TRANSIENT)`. Root cause: an orphaned pre-rename container `idfc-mock-devicefin` was holding port **19106**, so the new `idfc-mock-devicevalidation` couldn't bind → vendor call refused. (Correct behaviour: classified TRANSIENT, retried, then failed cleanly and told SFDC.)
+- Fix: `docker rm -f idfc-mock-devicefin` + start `mock-devicevalidation` (19106).
 - 2nd run (fresh Notification Id): **`COMPLETED_APPROVED`**, terminal `n_valid`. ✅
 
 **Levers for more device-validation cases:** brand is implicit in `SVCNAME__c`. `SAMSUNG` = validate+block+unblock (all 3 fire); `GODREJ`/`BOSCH` = serial-based; deviceId/imei value picks the mock's pass vs decline stub.
@@ -78,7 +78,7 @@ curl --location 'http://localhost:8082/ops/runs/search?key=04l7200000Daq5RAb3' -
 
 ## 2. vehicle-rc-verification — Karza VAHAN RC via Kafka  ⏳ READY
 
-**Entry:** Kafka (there is **no** SOAP door for VEHICLE_RC — routing is by the envelope's `type` field, so any consumed origination topic works; use `orig.sfdc.pl.v1`). **Capability:** `verification` (op `KARZA_VAHAN_RC`). **Vendor mock:** Karza 9105.
+**Entry:** Kafka (there is **no** SOAP door for VEHICLE_RC — routing is by the envelope's `type` field, so any consumed origination topic works; use `orig.sfdc.pl.v1`). **Capability:** `verification` (op `KARZA_VAHAN_RC`). **Vendor mock:** Karza 19105.
 
 **⚠️ PREREQUISITE — the `verification` capability must be running.** It is now in `run-services.ps1`/`.sh`
 (added alongside `communications` and `mandate`), so `git pull` + `.\run-services.ps1 -Clean` picks it up
@@ -86,7 +86,7 @@ automatically. Until you pull, start it by hand:
 ```powershell
 java -jar capabilities\verification\build\libs\verification-0.1.0-SNAPSHOT.jar --spring.profiles.active=local --server.port=8102
 ```
-Also confirm Karza mock is up: `docker ps --filter "name=karza"` → `idfc-mock-karza … 0.0.0.0:9105->8080/tcp`.
+Also confirm Karza mock is up: `docker ps --filter "name=karza"` → `idfc-mock-karza … 0.0.0.0:19105->8080/tcp`.
 (Without the verification capability running, the run hangs at `n_vehicleRc` — nothing consumes `cap.verification.request.v1`.)
 
 **Command — publish the canonical envelope to Kafka.**
@@ -123,7 +123,7 @@ rc-corr-0001|{"type":"VEHICLE_RC","source":"SFDC","orgId":"IDFC_RETAIL","notific
         ▼
 2. cap.verification.request.v1  ENGINE publishes (key=journeyInstanceId ji-rc-corr-0001)
         CapabilityRequest{ capabilityKey:verification, operation:KARZA_VAHAN_RC, input:{registrationNumber:AB12CD1234, consent:Y} }
-        │  verification cap consumes; internally (HTTP to Karza mock :9105, not Kafka):
+        │  verification cap consumes; internally (HTTP to Karza mock :19105, not Kafka):
         │    KarzaVahanRcRequestMapper -> adds version:1.0 ; POST /karza/vahan-rc (OAuth) ;
         │    KarzaVahanRcResponseMapper -> {Status,result[]} ; VerificationEnvelope.ok -> {ISSUCCESS:True, DATA:{…}}
         ▼
@@ -145,15 +145,15 @@ Failure topics: Karza unreachable/permanent → `cap.verification.dlq.v1` · unr
 
 **Levers:**
 - `registrationNumber = XX00YY0000` → mock `vahan-rc-fail` (BLACKLIST) → **`COMPLETED_DECLINED`**, terminal `n_decline`, emit `VehicleRcDeclined`.
-- Karza unreachable / mock down (9105) → technical failure → `n_rcError` / `FAILED_*`.
+- Karza unreachable / mock down (19105) → technical failure → `n_rcError` / `FAILED_*`.
 
 **ACTUAL RESULT (2026-07-07): `COMPLETED_APPROVED` ✅** — terminal `n_proceed`, decision `VehicleRcApproved` on `orig.decision.v1`.
 
 Got there after fixing **two real bugs** the test flushed out (both on `main`):
 1. `verification` (and `communications`, `mandate`) were **missing from `run-services.ps1`/`.sh`** → engine dispatched to `cap.verification.request.v1` with no consumer → run hung at `n_vehicleRc` (RUNNING). Fixed in commit `5d2103e`.
-2. `verification` had **no `application-local.yml`** → under `--spring.profiles.active=local` it fell back to the in-container Kafka `localhost:9092` (unreachable from host) and Karza `mock-karza:8080`; it booted but its consumer never connected. Fixed in commit `c673c55` (local profile → Kafka `29092`, Karza routes → `localhost:9105`, allow-list `localhost`).
+2. `verification` had **no `application-local.yml`** → under `--spring.profiles.active=local` it fell back to the in-container Kafka `localhost:9092` (unreachable from host) and Karza `mock-karza:8080`; it booted but its consumer never connected. Fixed in commit `c673c55` (local profile → Kafka `29092`, Karza routes → `localhost:19105`, allow-list `localhost`).
 
-Symptom trail: runs `ji-rc-corr-0001` / `ji-rc-corr-0002` sat "active" at `n_vehicleRc`; the `CapabilityRequest` was visible on `cap.verification.request.v1` but never consumed (no `cap-verification` consumer-group member). After `git pull` + `.\run-services.ps1 -Clean`, `verification` connected, drained the pending request, called Karza (9105), and the run walked `n_vehicleRc → n_rcDecision → n_proceed`.
+Symptom trail: runs `ji-rc-corr-0001` / `ji-rc-corr-0002` sat "active" at `n_vehicleRc`; the `CapabilityRequest` was visible on `cap.verification.request.v1` but never consumed (no `cap-verification` consumer-group member). After `git pull` + `.\run-services.ps1 -Clean`, `verification` connected, drained the pending request, called Karza (19105), and the run walked `n_vehicleRc → n_rcDecision → n_proceed`.
 
 **Gotcha for future journeys:** any capability run on the host needs an `application-local.yml` pinning Kafka to `localhost:29092` (and its vendor URL to the host mock port). A capability that hangs a journey at its task node with the request stuck on `cap.<key>.request.v1` = its consumer isn't connected — check it's launched *and* has a local profile.
 
@@ -163,7 +163,7 @@ Symptom trail: runs `ji-rc-corr-0001` / `ji-rc-corr-0002` sat "active" at `n_veh
 
 **Entry:** SFDC SOAP door (full prod chain: SOAP → edge auth/dedup/org-check → route row → Kafka → engine → journey).
 **Capabilities (5, in sequence):** customer-party → kyc → bureau → scoring → (branch) → lending-origination.
-**Vendor mocks needed:** posidex 9101 · cibil 9102 · fico 9103 · nsdl 9104 · finnone 1521 (all in `docker-compose.infra.yml`).
+**Vendor mocks needed:** posidex 19101 · cibil 19102 · fico 19103 · nsdl 19104 · finnone 1521 (all in `docker-compose.infra.yml`).
 
 ### Honest labelling (provenance — verified against code/docs 2026-07-07)
 - **`Inbound_Wrapper` is a REAL legacy SVCNAME** (real golden captured SOAP; payload `createGenericAccountReq`) —
@@ -190,11 +190,11 @@ Dedup key = `Notification/Id` → **bump `…LOAN0001` → `…LOAN0002` each ru
 ### Verify — watch the topics in order (Kafka UI), one publish → seven hops
 ```
 1. orig.sfdc.pl.v1                    edge publishes  { type:PERSONAL_LOAN, payload:{pan,name,amount,…} }
-2. cap.customer-party.request.v1      engine → n_customer   (mock posidex :9101)
+2. cap.customer-party.request.v1      engine → n_customer   (mock posidex :19101)
    cap.customer-party.response.v1     capability answers
-3. cap.kyc.request.v1 / .response.v1  n_kyc                 (mock nsdl :9104)
-4. cap.bureau.request.v1 / .response  n_bureau              (mock cibil :9102)
-5. cap.scoring.request.v1 / .response n_score → decision APPROVED (mock fico :9103)
+3. cap.kyc.request.v1 / .response.v1  n_kyc                 (mock nsdl :19104)
+4. cap.bureau.request.v1 / .response  n_bureau              (mock cibil :19102)
+5. cap.scoring.request.v1 / .response n_score → decision APPROVED (mock fico :19103)
 6. cap.lending-origination.request.v1 n_book — branch n_decide passed (scoring.decision=='APPROVED')
    cap.lending-origination.response   booked in FinnOne mock (:1521)
 7. orig.decision.v1                   { decision:"LoanBooked" }  → run COMPLETED_APPROVED, terminal n_done
@@ -211,7 +211,7 @@ fixed 750; the *bureau* (cibil) score is the deciding number.
 - Low-score decline: the cibil mock drops the score (→540) only when **`applicationRef` matches `/LOW/i`**. The SOAP
   edge sets `applicationRef=null`, so this fires **only on a direct-Kafka publish** where you set
   `"applicationRef":"APP-LOW-1"` — NOT via the SOAP door.
-- Scoring/bureau mock outage (:9103 / :9102 down) → technical failure `FAILED_*` — never a silent success
+- Scoring/bureau mock outage (:19103 / :19102 down) → technical failure `FAILED_*` — never a silent success
   (this is the *failure* case, distinct from the business *decline* above).
 
 **ACTUAL RESULT (2026-07-07): `COMPLETED_APPROVED` ✅** — runId `ji-corr-c14a5d85-b167-4f10-8956-654203f15628`,

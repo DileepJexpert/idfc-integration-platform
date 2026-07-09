@@ -1,7 +1,7 @@
 # LOCAL profile — run this capability on the host against the docker-compose
 # infra + mock vendors. This is the ONLY profile used locally (no 'demo'
 # profile). Kafka is reached via the HOST listener (29092); the WireMock
-# device-validation vendor + OAuth token endpoint are the compose mock on 9106
+# device-validation vendor + OAuth token endpoint are the compose mock on 19106
 # (the base application.yml defaults already point there for host bootRun).
 spring:
   kafka:

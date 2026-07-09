@@ -38,7 +38,7 @@ re-drop refused by ledger AND engine dedup, empty file skipped.
 ## Running it live
 
 ```bash
-docker compose -f docker-compose.infra.yml up -d        # Kafka + Aerospike + mock-devicevalidation (9106) + mock-fusion (9107)
+docker compose -f docker-compose.infra.yml up -d        # Kafka + Aerospike + mock-devicevalidation (19106) + mock-fusion (19107)
 
 # 1. the engine with the demo rows (classpath journeys; flip to registry to
 #    show the designer→registry→engine seam instead)

@@ -20,7 +20,7 @@ idfc:
   scoring:
     threshold: ${SCORING_THRESHOLD:700}
     fico-mode: ${FICO_MODE:mock}
-    fico-url: ${FICO_URL:http://localhost:9103}
+    fico-url: ${FICO_URL:http://localhost:19103}
 
 management:
   endpoints:

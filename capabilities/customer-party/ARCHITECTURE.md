@@ -111,9 +111,9 @@ On any `RuntimeException` from `posidex.resolve(...)`, `CustomerPartyService.han
 
 - **Server port:** `8090` (`SERVER_PORT` override).
 - **Spring profiles:**
-  - `local` (`application-local.yml`): Kafka at `localhost:29092` (docker host listener); Posidex `mode: real`, `url: http://localhost:9101` (docker-compose mock vendor).
+  - `local` (`application-local.yml`): Kafka at `localhost:29092` (docker host listener); Posidex `mode: real`, `url: http://localhost:19101` (docker-compose mock vendor).
   - `eks` (`application-eks.yml`): production posture — Posidex `mode: real`, `url: ${POSIDEX_URL}` injected from the cluster ConfigMap/Secret.
-  - default (no profile, `application.yml`): Kafka at `localhost:9092`, Posidex `mode: mock` (`POSIDEX_MODE`), `url: http://localhost:9101` (`POSIDEX_URL`).
+  - default (no profile, `application.yml`): Kafka at `localhost:9092`, Posidex `mode: mock` (`POSIDEX_MODE`), `url: http://localhost:19101` (`POSIDEX_URL`).
 - **Key `application.yml` settings:** `spring.application.name=customer-party`; Kafka String key/value serde, `auto-offset-reset=earliest`; `idfc.customer-party.posidex.{mode,url}`; actuator exposes only `health,info,prometheus`.
 - **How to run:**
   - IntelliJ: run `CustomerPartyApplication` (optionally set the active profile `local` or `eks` via `SPRING_PROFILES_ACTIVE`).

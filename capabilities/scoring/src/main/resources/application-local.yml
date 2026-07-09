@@ -10,4 +10,4 @@ spring:
 idfc:
   scoring:
     fico-mode: real
-    fico-url: http://localhost:9103
+    fico-url: http://localhost:19103

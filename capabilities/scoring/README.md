@@ -31,4 +31,4 @@ Result map: `{ "decision": "APPROVED"|"REJECTED", "score": <int>, "reasons": [..
 |-------------|-------------------------|----------------------------------|
 | `threshold` | `700`                   | bureau-score cutoff for APPROVED |
 | `fico-mode` | `mock`                  | `mock` or `real` FICO adapter    |
-| `fico-url`  | `http://localhost:9103` | FICO base URL (real mode)        |
+| `fico-url`  | `http://localhost:19103` | FICO base URL (real mode)        |

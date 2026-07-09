@@ -26,5 +26,5 @@ idfc:
   kyc:
     nsdl:
       mode: ${NSDL_MODE:mock}
-      url: ${NSDL_URL:http://localhost:9104}
+      url: ${NSDL_URL:http://localhost:19104}
 ```
