@@ -1,0 +1,831 @@
+{
+  "info": {
+    "name": "IDFC Integration - manual test (SFDC / digital / sync)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Importable into Postman AND Insomnia. Requests use {{variables}} (see the collection Variables tab) so you can retarget hosts/tokens in one place. IDs use Postman's {{$guid}} so each send is unique (re-runnable); in Insomnia replace {{$guid}} or use its uuid tag. SERVICE ports are 8080/8081/8082 (the 191xx remap is for the vendor MOCKS the services call, not for you). Watch results: engine ops runs (:8082) / Sync Invocations tab / Kafka UI :8085 for the DLQ (orig.sfdc.dlq.v1). Prereqs: infra + services up (docker compose -f docker-compose.infra.yml up -d, then run-services.ps1)."
+  },
+  "variable": [
+    {
+      "key": "sfdcBase",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "edgeBase",
+      "value": "http://localhost:8081"
+    },
+    {
+      "key": "engineBase",
+      "value": "http://localhost:8082"
+    },
+    {
+      "key": "sfdcToken",
+      "value": "dev-token"
+    },
+    {
+      "key": "syncToken",
+      "value": "dev-sync-token"
+    },
+    {
+      "key": "opsToken",
+      "value": "dev-ops-token"
+    },
+    {
+      "key": "opsUser",
+      "value": "you@bank"
+    },
+    {
+      "key": "growwToken",
+      "value": "groww-dev-token"
+    },
+    {
+      "key": "credToken",
+      "value": "cred-dev-token"
+    },
+    {
+      "key": "flipkartToken",
+      "value": "flipkart-dev-token"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. SFDC SOAP - config-DAG routing",
+      "item": [
+        {
+          "name": "PERSONAL_LOAN -> loan-origination (APPROVED)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/xml"
+              },
+              {
+                "key": "X-Auth-Token",
+                "value": "{{sfdcToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns=\"http://soap.sforce.com/2005/09/outbound\" xmlns:sf1=\"urn:sobject.enterprise.soap.sforce.com\"><soapenv:Body><notifications><OrganizationId>IDFC_RETAIL</OrganizationId><Notification><Id>nid-{{$guid}}</Id><sObject><sf1:Id>sobj-{{$guid}}</sf1:Id><sf1:Request__c><![CDATA[{\"pan\":\"ABCDE1234F\",\"name\":\"ASHA RAO\",\"amount\":500000,\"tenureMonths\":36,\"negativeFlags\":[]}]]></sf1:Request__c><sf1:SVCNAME__c>PERSONAL_LOAN</sf1:SVCNAME__c><sf1:VERSION__c>1.0</sf1:VERSION__c></sObject></Notification></notifications></soapenv:Body></soapenv:Envelope>",
+              "options": {
+                "raw": {
+                  "language": "xml"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{sfdcBase}}/api/v1/sfdc/outbound-messages",
+              "host": [
+                "{{sfdcBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sfdc",
+                "outbound-messages"
+              ]
+            },
+            "description": "Routes edge->orig.sfdc.pl.v1, engine->loan-origination. Expect an async run COMPLETED_APPROVED."
+          }
+        },
+        {
+          "name": "PERSONAL_LOAN -> loan-origination (DECLINED)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/xml"
+              },
+              {
+                "key": "X-Auth-Token",
+                "value": "{{sfdcToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns=\"http://soap.sforce.com/2005/09/outbound\" xmlns:sf1=\"urn:sobject.enterprise.soap.sforce.com\"><soapenv:Body><notifications><OrganizationId>IDFC_RETAIL</OrganizationId><Notification><Id>nid-{{$guid}}</Id><sObject><sf1:Id>sobj-{{$guid}}</sf1:Id><sf1:Request__c><![CDATA[{\"pan\":\"ABCDE1234F\",\"name\":\"ASHA RAO\",\"amount\":500000,\"tenureMonths\":36,\"negativeFlags\":[\"FRAUD\"]}]]></sf1:Request__c><sf1:SVCNAME__c>PERSONAL_LOAN</sf1:SVCNAME__c><sf1:VERSION__c>1.0</sf1:VERSION__c></sObject></Notification></notifications></soapenv:Body></soapenv:Envelope>",
+              "options": {
+                "raw": {
+                  "language": "xml"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{sfdcBase}}/api/v1/sfdc/outbound-messages",
+              "host": [
+                "{{sfdcBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sfdc",
+                "outbound-messages"
+              ]
+            },
+            "description": "negativeFlags=[FRAUD] -> COMPLETED_DECLINED (a business no, not a failure)."
+          }
+        },
+        {
+          "name": "Post_Disbursal_Apple -> device-validation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/xml"
+              },
+              {
+                "key": "X-Auth-Token",
+                "value": "{{sfdcToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns=\"http://soap.sforce.com/2005/09/outbound\" xmlns:sf1=\"urn:sobject.enterprise.soap.sforce.com\"><soapenv:Body><notifications><OrganizationId>00D0w0000008ec7EAA</OrganizationId><Notification><Id>nid-{{$guid}}</Id><sObject><sf1:Id>sobj-{{$guid}}</sf1:Id><sf1:Request__c><![CDATA[{\"imei\":\"431254356142345678\",\"apiVersion\":\"2\",\"paymentInfo\":{\"swipeOrLoanAmount\":\"23800.00\",\"scheme\":\"2\",\"loanTenure\":\"12\"}}]]></sf1:Request__c><sf1:SVCNAME__c>Post_Disbursal_Apple</sf1:SVCNAME__c><sf1:VERSION__c>1.0</sf1:VERSION__c></sObject></Notification></notifications></soapenv:Body></soapenv:Envelope>",
+              "options": {
+                "raw": {
+                  "language": "xml"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{sfdcBase}}/api/v1/sfdc/outbound-messages",
+              "host": [
+                "{{sfdcBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sfdc",
+                "outbound-messages"
+              ]
+            },
+            "description": "Different svcName -> orig.device-validation.v1 -> device-validation journey. Apple = block-only config."
+          }
+        },
+        {
+          "name": "Inbound_Wrapper -> loan-origination (CASA scaffold)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/xml"
+              },
+              {
+                "key": "X-Auth-Token",
+                "value": "{{sfdcToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns=\"http://soap.sforce.com/2005/09/outbound\" xmlns:sf1=\"urn:sobject.enterprise.soap.sforce.com\"><soapenv:Body><notifications><OrganizationId>IDFC_BUSINESS</OrganizationId><Notification><Id>nid-{{$guid}}</Id><sObject><sf1:Id>sobj-{{$guid}}</sf1:Id><sf1:Request__c><![CDATA[{\"pan\":\"ABCDE1234F\",\"name\":\"ASHA RAO\",\"amount\":500000,\"tenureMonths\":36,\"negativeFlags\":[]}]]></sf1:Request__c><sf1:SVCNAME__c>Inbound_Wrapper</sf1:SVCNAME__c><sf1:VERSION__c>1.0</sf1:VERSION__c></sObject></Notification></notifications></soapenv:Body></soapenv:Envelope>",
+              "options": {
+                "raw": {
+                  "language": "xml"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{sfdcBase}}/api/v1/sfdc/outbound-messages",
+              "host": [
+                "{{sfdcBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sfdc",
+                "outbound-messages"
+              ]
+            },
+            "description": "Inbound_Wrapper maps to loan-origination in the engine (scaffold). Routes to a run."
+          }
+        },
+        {
+          "name": "SENDSMS -> communications (capability, NO run)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/xml"
+              },
+              {
+                "key": "X-Auth-Token",
+                "value": "{{sfdcToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns=\"http://soap.sforce.com/2005/09/outbound\" xmlns:sf1=\"urn:sobject.enterprise.soap.sforce.com\"><soapenv:Body><notifications><OrganizationId>00DC40000014dS1MAI</OrganizationId><Notification><Id>nid-{{$guid}}</Id><sObject><sf1:Id>sobj-{{$guid}}</sf1:Id><sf1:Request__c><![CDATA[{\"Mobile__c\":\"9876543210\",\"Description\":\"Your OTP is 123456\"}]]></sf1:Request__c><sf1:SVCNAME__c>SENDSMS</sf1:SVCNAME__c><sf1:VERSION__c>1.0</sf1:VERSION__c></sObject></Notification></notifications></soapenv:Body></soapenv:Envelope>",
+              "options": {
+                "raw": {
+                  "language": "xml"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{sfdcBase}}/api/v1/sfdc/outbound-messages",
+              "host": [
+                "{{sfdcBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sfdc",
+                "outbound-messages"
+              ]
+            },
+            "description": "svcName -> comm.sms.send.v1 -> communications capability (fire-and-forget). No journey run; check communications.log. Verify the exact Mobile__c/Description fields against the capability."
+          }
+        },
+        {
+          "name": "LAP -> DLQ (fail closed, unmapped type)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/xml"
+              },
+              {
+                "key": "X-Auth-Token",
+                "value": "{{sfdcToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns=\"http://soap.sforce.com/2005/09/outbound\" xmlns:sf1=\"urn:sobject.enterprise.soap.sforce.com\"><soapenv:Body><notifications><OrganizationId>IDFC_RETAIL</OrganizationId><Notification><Id>nid-{{$guid}}</Id><sObject><sf1:Id>sobj-{{$guid}}</sf1:Id><sf1:Request__c><![CDATA[{\"pan\":\"ABCDE1234F\",\"name\":\"ASHA RAO\",\"amount\":500000,\"tenureMonths\":36,\"negativeFlags\":[]}]]></sf1:Request__c><sf1:SVCNAME__c>LAP</sf1:SVCNAME__c><sf1:VERSION__c>1.0</sf1:VERSION__c></sObject></Notification></notifications></soapenv:Body></soapenv:Envelope>",
+              "options": {
+                "raw": {
+                  "language": "xml"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{sfdcBase}}/api/v1/sfdc/outbound-messages",
+              "host": [
+                "{{sfdcBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sfdc",
+                "outbound-messages"
+              ]
+            },
+            "description": "Edge routes LAP to orig.sfdc.lap.v1, but the engine has NO type->journey row -> DLQ (orig.sfdc.dlq.v1). No run. This IS the guardrail working."
+          }
+        },
+        {
+          "name": "Unknown ORG -> DLQ (org allow-list)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/xml"
+              },
+              {
+                "key": "X-Auth-Token",
+                "value": "{{sfdcToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns=\"http://soap.sforce.com/2005/09/outbound\" xmlns:sf1=\"urn:sobject.enterprise.soap.sforce.com\"><soapenv:Body><notifications><OrganizationId>ORG_UNKNOWN</OrganizationId><Notification><Id>nid-{{$guid}}</Id><sObject><sf1:Id>sobj-{{$guid}}</sf1:Id><sf1:Request__c><![CDATA[{\"pan\":\"ABCDE1234F\",\"name\":\"ASHA RAO\",\"amount\":500000,\"tenureMonths\":36,\"negativeFlags\":[]}]]></sf1:Request__c><sf1:SVCNAME__c>PERSONAL_LOAN</sf1:SVCNAME__c><sf1:VERSION__c>1.0</sf1:VERSION__c></sObject></Notification></notifications></soapenv:Body></soapenv:Envelope>",
+              "options": {
+                "raw": {
+                  "language": "xml"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{sfdcBase}}/api/v1/sfdc/outbound-messages",
+              "host": [
+                "{{sfdcBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sfdc",
+                "outbound-messages"
+              ]
+            },
+            "description": "OrganizationId not in known-orgs -> refresh+recheck -> DLQ. Tests the org config allow-list."
+          }
+        },
+        {
+          "name": "Unknown SVCNAME (FOO_BAR) -> fail closed",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/xml"
+              },
+              {
+                "key": "X-Auth-Token",
+                "value": "{{sfdcToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns=\"http://soap.sforce.com/2005/09/outbound\" xmlns:sf1=\"urn:sobject.enterprise.soap.sforce.com\"><soapenv:Body><notifications><OrganizationId>IDFC_RETAIL</OrganizationId><Notification><Id>nid-{{$guid}}</Id><sObject><sf1:Id>sobj-{{$guid}}</sf1:Id><sf1:Request__c><![CDATA[{\"x\":\"y\"}]]></sf1:Request__c><sf1:SVCNAME__c>FOO_BAR</sf1:SVCNAME__c><sf1:VERSION__c>1.0</sf1:VERSION__c></sObject></Notification></notifications></soapenv:Body></soapenv:Envelope>",
+              "options": {
+                "raw": {
+                  "language": "xml"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{sfdcBase}}/api/v1/sfdc/outbound-messages",
+              "host": [
+                "{{sfdcBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sfdc",
+                "outbound-messages"
+              ]
+            },
+            "description": "No edge routing row for FOO_BAR -> fail closed at the edge. Tests svcName routing discipline."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Digital edge - origination (async)",
+      "item": [
+        {
+          "name": "GROWW origination (APPROVED)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Partner-Token",
+                "value": "{{growwToken}}"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "dl-{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{edgeBase}}/api/v1/digital/origination",
+              "host": [
+                "{{edgeBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "digital",
+                "origination"
+              ]
+            },
+            "description": "Async multi-partner origination. 200 ACK_PROCESSED, then loan-origination run COMPLETED_APPROVED.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"requestId\": \"req-{{$guid}}\", \"applicationRef\": \"APP-{{$guid}}\", \"type\": \"PERSONAL_LOAN\", \"orgId\": \"IDFC_RETAIL\", \"payload\": {\"pan\": \"ABCDE1234F\", \"name\": \"ASHA RAO\", \"amount\": 500000, \"tenureMonths\": 36, \"negativeFlags\": []}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "CRED origination (DECLINED)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Partner-Token",
+                "value": "{{credToken}}"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "dl-{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{edgeBase}}/api/v1/digital/origination",
+              "host": [
+                "{{edgeBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "digital",
+                "origination"
+              ]
+            },
+            "description": "negativeFlags=[FRAUD] -> outcome REJECTED / COMPLETED_DECLINED.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"requestId\": \"req-{{$guid}}\", \"applicationRef\": \"APP-{{$guid}}\", \"type\": \"PERSONAL_LOAN\", \"orgId\": \"IDFC_RETAIL\", \"payload\": {\"pan\": \"ABCDE1234F\", \"name\": \"ASHA RAO\", \"amount\": 500000, \"tenureMonths\": 36, \"negativeFlags\": [\"FRAUD\"]}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Origination UNROUTABLE (bad type)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Partner-Token",
+                "value": "{{growwToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{edgeBase}}/api/v1/digital/origination",
+              "host": [
+                "{{edgeBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "digital",
+                "origination"
+              ]
+            },
+            "description": "type=FOO has no route -> 422 UNROUTABLE.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"requestId\": \"req-{{$guid}}\", \"applicationRef\": \"APP-{{$guid}}\", \"type\": \"FOO\", \"orgId\": \"IDFC_RETAIL\", \"payload\": {}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Origination status poll",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Partner-Token",
+                "value": "{{growwToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{edgeBase}}/api/v1/digital/applications/DIG-GROWW-REPLACE-ME",
+              "host": [
+                "{{edgeBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "digital",
+                "applications",
+                "DIG-GROWW-REPLACE-ME"
+              ]
+            },
+            "description": "GET the outcome. REPLACE the last path segment with the applicationId from the origination response (e.g. DIG-GROWW-APP-...). PENDING -> APPROVED."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Digital edge - sync lane",
+      "item": [
+        {
+          "name": "IMPS transfer (SUCCESS + txn)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{syncToken}}"
+              },
+              {
+                "key": "source",
+                "value": "INDMONEY"
+              },
+              {
+                "key": "correlationId",
+                "value": "imps-{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{edgeBase}}/api/v1/impsFT",
+              "host": [
+                "{{edgeBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "impsFT"
+              ]
+            },
+            "description": "status S + transactionId. Shows in the Sync Invocations tab as SUCCESS. (Re-send with the SAME idempotentId to see a deduped replay.)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"custBankAccNo\": \"50100123456789\", \"ifscCode\": \"IDFB0040101\", \"reqId\": \"R-{{$guid}}\", \"loanNo\": \"LN-1\", \"isDisbursalFlag\": \"Y\", \"idempotentId\": \"idem-{{$guid}}\", \"source\": \"INDMONEY\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "IMPS business decline (BAD-ACCOUNT)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{syncToken}}"
+              },
+              {
+                "key": "source",
+                "value": "INDMONEY"
+              }
+            ],
+            "url": {
+              "raw": "{{edgeBase}}/api/v1/impsFT",
+              "host": [
+                "{{edgeBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "impsFT"
+              ]
+            },
+            "description": "custBankAccNo=BAD-ACCOUNT -> status F -> BUSINESS_FAILURE (teal), still HTTP 200.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"custBankAccNo\": \"BAD-ACCOUNT\", \"ifscCode\": \"IDFB0040101\", \"reqId\": \"R-{{$guid}}\", \"loanNo\": \"LN-1\", \"isDisbursalFlag\": \"Y\", \"idempotentId\": \"idem-{{$guid}}\", \"source\": \"INDMONEY\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "IMPS technical (SERVER-ERROR -> 502)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{syncToken}}"
+              },
+              {
+                "key": "source",
+                "value": "INDMONEY"
+              }
+            ],
+            "url": {
+              "raw": "{{edgeBase}}/api/v1/impsFT",
+              "host": [
+                "{{edgeBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "impsFT"
+              ]
+            },
+            "description": "custBankAccNo=SERVER-ERROR -> vendor 500 -> edge 502 -> TECHNICAL_ERROR (red).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"custBankAccNo\": \"SERVER-ERROR\", \"ifscCode\": \"IDFB0040101\", \"reqId\": \"R-{{$guid}}\", \"loanNo\": \"LN-1\", \"isDisbursalFlag\": \"Y\", \"idempotentId\": \"idem-{{$guid}}\", \"source\": \"INDMONEY\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "LMS offer check (SUCCESS)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{syncToken}}"
+              },
+              {
+                "key": "source",
+                "value": "SAVEIN"
+              },
+              {
+                "key": "correlationId",
+                "value": "lms-{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{edgeBase}}/api/v1/callLmsUtilities",
+              "host": [
+                "{{edgeBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "callLmsUtilities"
+              ]
+            },
+            "description": "Offer with LOAN_AMOUNT/ROI -> SUCCESS.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"entityName\": \"PBLINE\", \"agreementId\": \"AGR-1\", \"crnNo\": \"CRN-{{$guid}}\", \"requestCode\": \"OFFER_CHECK\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "LMS no-offer (still SUCCESS)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{syncToken}}"
+              },
+              {
+                "key": "source",
+                "value": "SAVEIN"
+              }
+            ],
+            "url": {
+              "raw": "{{edgeBase}}/api/v1/callLmsUtilities",
+              "host": [
+                "{{edgeBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "callLmsUtilities"
+              ]
+            },
+            "description": "crnNo=NO-OFFER-CRN -> empty resource_data -> SUCCESS (a query returning none is not a failure).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"entityName\": \"PBLINE\", \"agreementId\": \"AGR-1\", \"crnNo\": \"NO-OFFER-CRN\", \"requestCode\": \"OFFER_CHECK\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "LMS unknown code (422 fail-closed)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{syncToken}}"
+              },
+              {
+                "key": "source",
+                "value": "SAVEIN"
+              }
+            ],
+            "url": {
+              "raw": "{{edgeBase}}/api/v1/callLmsUtilities",
+              "host": [
+                "{{edgeBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "callLmsUtilities"
+              ]
+            },
+            "description": "requestCode not in known-request-codes -> 422 UNKNOWN_REQUEST_CODE (backend never called) -> TECHNICAL_ERROR.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"entityName\": \"PBLINE\", \"agreementId\": \"AGR-1\", \"crnNo\": \"CRN-1\", \"requestCode\": \"BALANCE_CHECK\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Ops read windows",
+      "item": [
+        {
+          "name": "Sync invocations (edge /ops)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Ops-Token",
+                "value": "{{opsToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{opsUser}}"
+              }
+            ],
+            "url": {
+              "raw": "{{edgeBase}}/ops/sync-invocations",
+              "host": [
+                "{{edgeBase}}"
+              ],
+              "path": [
+                "ops",
+                "sync-invocations"
+              ]
+            },
+            "description": "The sync-lane audit list (imps/lms). Fail-closed without both headers."
+          }
+        },
+        {
+          "name": "Engine runs (newest 20)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Ops-Token",
+                "value": "{{opsToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{opsUser}}"
+              }
+            ],
+            "url": {
+              "raw": "{{engineBase}}/ops/runs",
+              "host": [
+                "{{engineBase}}"
+              ],
+              "path": [
+                "ops",
+                "runs"
+              ]
+            },
+            "description": "The journey runs list on the engine. Watch the SFDC/digital journeys land here."
+          }
+        }
+      ]
+    }
+  ]
+}
