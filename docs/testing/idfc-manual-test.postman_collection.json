@@ -2,7 +2,7 @@
   "info": {
     "name": "IDFC Integration - manual test (SFDC / digital / sync)",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "Importable into Postman AND Insomnia. Requests use {{variables}} (Variables tab) so you can retarget hosts/tokens in one place. IDs use Postman's {{$guid}} so each send is unique; in Insomnia replace {{$guid}} or use its uuid tag. SERVICE ports are 8080/8081/8082 (the 191xx remap is for the vendor MOCKS the services call, not for you); kafka-ui is 8085.\n\nFolders 1-4 hit the edges over HTTP. Folder 5 covers engine journeys that have NO edge HTTP door (device-validation brand-variety, vehicle-rc, employee-lwd): they are triggered by producing a CanonicalEnvelope to a consumed topic, which folder 5 does via the kafka-ui produce API (each request also carries the guaranteed docker-exec kafka-console-producer fallback).\n\nNOT included by design: negative-area-verification, domain-check-verification, emandate-cancel and emandate-autopay-setup. Their journey files exist but in the default local (classpath) run they are neither loaded (not in the engine's local journey-resources) nor routable (no type-to-journey row), so they cannot run out of the box. To exercise them, publish them via the DAG Designer/journey-registry and add a type-to-journey row, then produce an envelope like folder 5.\n\nWatch results: engine ops runs (:8082) / Sync Invocations tab / kafka-ui :8085 (DLQ orig.sfdc.dlq.v1). Prereqs: infra + services up (docker compose -f docker-compose.infra.yml up -d, then run-services.ps1)."
+    "description": "Importable into Postman AND Insomnia. Requests use {{variables}} (Variables tab) so you can retarget hosts/tokens in one place. IDs use Postman's {{$guid}} so each send is unique; in Insomnia replace {{$guid}} or use its uuid tag. SERVICE ports are 8080/8081/8082 (the 191xx remap is for the vendor MOCKS the services call, not for you); kafka-ui is 8085.\n\nFolders 1-4 hit the edges over HTTP. Folder 5 covers engine journeys that have NO edge HTTP door (device-validation brand-variety, vehicle-rc, employee-lwd): they are triggered by producing a CanonicalEnvelope to a consumed topic, which folder 5 does via the kafka-ui produce API (each request also carries the guaranteed docker-exec kafka-console-producer fallback).\n\nNOT included by design: negative-area-verification, domain-check-verification, emandate-cancel and emandate-autopay-setup. Their journey files exist but in the default local (classpath) run they are neither loaded (not in the engine's local journey-resources) nor routable (no type-to-journey row), so they cannot run out of the box. To exercise them, publish them via the DAG Designer/journey-registry and add a type-to-journey row, then produce an envelope like folder 5.\n\nFolder 4 also has the ops DRILL-DOWNS (run search/detail/metrics; sync-invocation detail + dedup-chain-by-key). Folder 6 is the journey-registry config plane (:8104) read side - the maker-checker WRITE endpoints (POST/PUT .../versions, /validate, /submit, /approve, /reject; X-Registry-Token + X-User-Id) exist but are driven from the DAG Designer with a journey configJson, so they're not hand-run here. Folder 7 is a health smoke check.\n\nWatch results: engine ops runs (:8082) / Sync Invocations tab / kafka-ui :8085 (DLQ orig.sfdc.dlq.v1). Prereqs: infra + services up (docker compose -f docker-compose.infra.yml up -d, then run-services.ps1)."
   },
   "variable": [
     {
@@ -52,6 +52,18 @@
     {
       "key": "kafkaCluster",
       "value": "idfc"
+    },
+    {
+      "key": "registryBase",
+      "value": "http://localhost:8104"
+    },
+    {
+      "key": "registryToken",
+      "value": "dev-registry-token"
+    },
+    {
+      "key": "decisionNotifId",
+      "value": "nid-decision-demo-1"
     }
   ],
   "item": [
@@ -436,6 +448,86 @@
               ]
             },
             "description": "No edge routing row for FOO_BAR -> fail closed at the edge. Tests svcName routing discipline."
+          }
+        },
+        {
+          "name": "PERSONAL_LOAN with FIXED notificationId (seeds a claim for /decisions)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/xml"
+              },
+              {
+                "key": "X-Auth-Token",
+                "value": "{{sfdcToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns=\"http://soap.sforce.com/2005/09/outbound\" xmlns:sf1=\"urn:sobject.enterprise.soap.sforce.com\"><soapenv:Body><notifications><OrganizationId>IDFC_RETAIL</OrganizationId><Notification><Id>{{decisionNotifId}}</Id><sObject><sf1:Id>sobj-{{$guid}}</sf1:Id><sf1:Request__c><![CDATA[{\"pan\":\"ABCDE1234F\",\"name\":\"ASHA RAO\",\"amount\":500000,\"tenureMonths\":36,\"negativeFlags\":[]}]]></sf1:Request__c><sf1:SVCNAME__c>PERSONAL_LOAN</sf1:SVCNAME__c><sf1:VERSION__c>1.0</sf1:VERSION__c></sObject></Notification></notifications></soapenv:Body></soapenv:Envelope>",
+              "options": {
+                "raw": {
+                  "language": "xml"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{sfdcBase}}/api/v1/sfdc/outbound-messages",
+              "host": [
+                "{{sfdcBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sfdc",
+                "outbound-messages"
+              ]
+            },
+            "description": "Same as the first request but with a FIXED Notification <Id> ({{decisionNotifId}}) instead of a random guid, so the /decisions call below has a known claim to act on. Run this once, then the decision request."
+          }
+        },
+        {
+          "name": "Decision callback -> DECIDED + SFDC push (C1 guard)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Auth-Token",
+                "value": "{{sfdcToken}}"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "dec-{{$guid}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notificationId\": \"{{decisionNotifId}}\",\n  \"outcome\": \"APPROVED\",\n  \"applicationId\": \"APP-DEC-1\",\n  \"terms\": \"ROI 12% / 36m\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{sfdcBase}}/api/v1/sfdc/decisions",
+              "host": [
+                "{{sfdcBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sfdc",
+                "decisions"
+              ]
+            },
+            "description": "Decision-callback (C1 ownership guard). Requires an EXISTING claim: run the FIXED-notificationId ingest above first. FIRST call -> 200 {pushed:true} 'transitioned to DECIDED and pushed to SFDC'. Re-send (same notificationId) -> 200 {pushed:false} 'already decided; no push (C1)'. An unknown notificationId -> 200 {pushed:false} (no claim, nothing happens). X-Auth-Token is the SAME edge token as the SOAP inbound."
           }
         }
       ]
@@ -908,6 +1000,226 @@
             },
             "description": "The journey runs list on the engine. Watch the SFDC/digital journeys land here."
           }
+        },
+        {
+          "name": "Engine runs - filtered (status + journeyKey)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Ops-Token",
+                "value": "{{opsToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{opsUser}}"
+              }
+            ],
+            "url": {
+              "raw": "{{engineBase}}/ops/runs?status=COMPLETED_APPROVED&size=20",
+              "host": [
+                "{{engineBase}}"
+              ],
+              "path": [
+                "ops",
+                "runs"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "COMPLETED_APPROVED"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Filter the runs list. status is one of RUNNING | COMPLETED_APPROVED | COMPLETED_DECLINED | FAILED_SFDC_NOTIFIED | FAILED_NOTIFY_PENDING. Other params: journeyKey, since/until (ISO-8601), stuckOnly=true, page, size (<=200)."
+          }
+        },
+        {
+          "name": "Engine run search by exact id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Ops-Token",
+                "value": "{{opsToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{opsUser}}"
+              }
+            ],
+            "url": {
+              "raw": "{{engineBase}}/ops/runs/search?key=corr-samsung-REPLACE-ME",
+              "host": [
+                "{{engineBase}}"
+              ],
+              "path": [
+                "ops",
+                "runs",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "key",
+                  "value": "corr-samsung-REPLACE-ME"
+                }
+              ]
+            },
+            "description": "Exact-id lookup across runId | correlationId | notificationId | sfdcRecordId. Paste a correlationId you sent (e.g. the corr-... key from a folder-5 Kafka request, or a digital X-Correlation-Id). Returns matching run summaries."
+          }
+        },
+        {
+          "name": "Engine run detail (by runId)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Ops-Token",
+                "value": "{{opsToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{opsUser}}"
+              }
+            ],
+            "url": {
+              "raw": "{{engineBase}}/ops/runs/REPLACE-RUN-ID",
+              "host": [
+                "{{engineBase}}"
+              ],
+              "path": [
+                "ops",
+                "runs",
+                "REPLACE-RUN-ID"
+              ]
+            },
+            "description": "Full run detail incl. per-node steps, attempts, failure class, deadline/sweep and (for failed runs) the DLQ pointer orig.sfdc.dlq.v1. REPLACE the last path segment with a runId from the runs list or search."
+          }
+        },
+        {
+          "name": "Engine metrics (per-journey aggregates)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Ops-Token",
+                "value": "{{opsToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{opsUser}}"
+              }
+            ],
+            "url": {
+              "raw": "{{engineBase}}/ops/metrics",
+              "host": [
+                "{{engineBase}}"
+              ],
+              "path": [
+                "ops",
+                "metrics"
+              ]
+            },
+            "description": "Temporal-style per-journey counts (running / approved / declined / failed). No params."
+          }
+        },
+        {
+          "name": "Sync invocations - filtered (outcome + capability)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Ops-Token",
+                "value": "{{opsToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{opsUser}}"
+              }
+            ],
+            "url": {
+              "raw": "{{edgeBase}}/ops/sync-invocations?outcome=SUCCESS&size=20",
+              "host": [
+                "{{edgeBase}}"
+              ],
+              "path": [
+                "ops",
+                "sync-invocations"
+              ],
+              "query": [
+                {
+                  "key": "outcome",
+                  "value": "SUCCESS"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Filter the sync-lane audit list. outcome is one of SUCCESS | BUSINESS_FAILURE | TECHNICAL_ERROR. Other params: capability (imps-disbursal | lms-utilities), source, since/until, page, size."
+          }
+        },
+        {
+          "name": "Sync invocation detail (by invocationId)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Ops-Token",
+                "value": "{{opsToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{opsUser}}"
+              }
+            ],
+            "url": {
+              "raw": "{{edgeBase}}/ops/sync-invocations/REPLACE-INVOCATION-ID",
+              "host": [
+                "{{edgeBase}}"
+              ],
+              "path": [
+                "ops",
+                "sync-invocations",
+                "REPLACE-INVOCATION-ID"
+              ]
+            },
+            "description": "One sync invocation (ids only, no PII). REPLACE with an invocationId from the sync-invocations list."
+          }
+        },
+        {
+          "name": "Sync dedup chain (by idempotency key)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Ops-Token",
+                "value": "{{opsToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{opsUser}}"
+              }
+            ],
+            "url": {
+              "raw": "{{edgeBase}}/ops/sync-invocations/by-key/idem-REPLACE-ME",
+              "host": [
+                "{{edgeBase}}"
+              ],
+              "path": [
+                "ops",
+                "sync-invocations",
+                "by-key",
+                "idem-REPLACE-ME"
+              ]
+            },
+            "description": "All invocations sharing an idempotency key = the dedup chain. For IMPS the key is the idempotentId you sent; re-send an IMPS transfer with the SAME idempotentId, then look here to see the original + the deduped replay."
+          }
         }
       ]
     },
@@ -1200,6 +1512,174 @@
                 }
               }
             }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Journey registry / config plane (:8104)",
+      "item": [
+        {
+          "name": "List journeys",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Registry-Token",
+                "value": "{{registryToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{opsUser}}"
+              }
+            ],
+            "url": {
+              "raw": "{{registryBase}}/api/v1/journeys",
+              "host": [
+                "{{registryBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "journeys"
+              ]
+            },
+            "description": "Every journey the registry knows, with version/maker-checker state. Optional filters: businessLine, product, partner."
+          }
+        },
+        {
+          "name": "Published journeys (what the engine loads in registry mode)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Registry-Token",
+                "value": "{{registryToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{opsUser}}"
+              }
+            ],
+            "url": {
+              "raw": "{{registryBase}}/api/v1/published-journeys",
+              "host": [
+                "{{registryBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "published-journeys"
+              ]
+            },
+            "description": "The currently-published config for every journey - this is exactly what the engine bootstraps/refreshes from when IDFC_ENGINE_JOURNEY_SOURCE=registry."
+          }
+        },
+        {
+          "name": "Journey versions + maker-checker state",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Registry-Token",
+                "value": "{{registryToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{opsUser}}"
+              }
+            ],
+            "url": {
+              "raw": "{{registryBase}}/api/v1/journeys/loan-origination/versions",
+              "host": [
+                "{{registryBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "journeys",
+                "loan-origination",
+                "versions"
+              ]
+            },
+            "description": "Version history for one journey (DRAFT/SUBMITTED/PUBLISHED, maker vs checker). Swap loan-origination for any key from the list above."
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Health / smoke (is it up?)",
+      "item": [
+        {
+          "name": "SFDC ingress edge (:8080)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{sfdcBase}}/actuator/health",
+              "host": [
+                "{{sfdcBase}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            },
+            "description": "UP means the service booted and its infra deps (Kafka/Aerospike where wired) are reachable. Public - no token."
+          }
+        },
+        {
+          "name": "Digital partner edge (:8081)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{edgeBase}}/actuator/health",
+              "host": [
+                "{{edgeBase}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            },
+            "description": "UP means the service booted and its infra deps (Kafka/Aerospike where wired) are reachable. Public - no token."
+          }
+        },
+        {
+          "name": "Engine / origination-journey (:8082)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{engineBase}}/actuator/health",
+              "host": [
+                "{{engineBase}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            },
+            "description": "UP means the service booted and its infra deps (Kafka/Aerospike where wired) are reachable. Public - no token."
+          }
+        },
+        {
+          "name": "Journey registry (:8104)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{registryBase}}/actuator/health",
+              "host": [
+                "{{registryBase}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            },
+            "description": "UP means the service booted and its infra deps (Kafka/Aerospike where wired) are reachable. Public - no token."
           }
         }
       ]
