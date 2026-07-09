@@ -2,7 +2,7 @@
   "info": {
     "name": "IDFC Integration - manual test (SFDC / digital / sync)",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "Importable into Postman AND Insomnia. Requests use {{variables}} (Variables tab) so you can retarget hosts/tokens in one place. IDs use Postman's {{$guid}} so each send is unique; in Insomnia replace {{$guid}} or use its uuid tag. SERVICE ports are 8080/8081/8082 (the 191xx remap is for the vendor MOCKS the services call, not for you); kafka-ui is 8085.\n\nFolders 1-4 hit the edges over HTTP. Folder 5 covers engine journeys that have NO edge HTTP door (device-validation brand-variety, vehicle-rc, employee-lwd): they are triggered by producing a CanonicalEnvelope to a consumed topic, which folder 5 does via the kafka-ui produce API (each request also carries the guaranteed docker-exec kafka-console-producer fallback).\n\nNOT included by design: negative-area-verification, domain-check-verification, emandate-cancel and emandate-autopay-setup. Their journey files exist but in the default local (classpath) run they are neither loaded (not in the engine's local journey-resources) nor routable (no type-to-journey row), so they cannot run out of the box. To exercise them, publish them via the DAG Designer/journey-registry and add a type-to-journey row, then produce an envelope like folder 5.\n\nFolder 4 also has the ops DRILL-DOWNS (run search/detail/metrics; sync-invocation detail + dedup-chain-by-key). Folder 6 is the journey-registry config plane (:8104) read side - the maker-checker WRITE endpoints (POST/PUT .../versions, /validate, /submit, /approve, /reject; X-Registry-Token + X-User-Id) exist but are driven from the DAG Designer with a journey configJson, so they're not hand-run here. Folder 7 is a health smoke check.\n\nWatch results: engine ops runs (:8082) / Sync Invocations tab / kafka-ui :8085 (DLQ orig.sfdc.dlq.v1). Prereqs: infra + services up (docker compose -f docker-compose.infra.yml up -d, then run-services.ps1)."
+    "description": "Importable into Postman AND Insomnia. Requests use {{variables}} (Variables tab) so you can retarget hosts/tokens in one place. IDs use Postman's {{$guid}} so each send is unique; in Insomnia replace {{$guid}} or use its uuid tag. SERVICE ports are 8080/8081/8082 (the 191xx remap is for the vendor MOCKS the services call, not for you); kafka-ui is 8085.\n\nFolders 1-4 hit the edges over HTTP. Folder 5 covers engine journeys that have NO edge HTTP door (device-validation brand-variety, vehicle-rc, employee-lwd): they are triggered by producing a CanonicalEnvelope to a consumed topic, which folder 5 does via the kafka-ui produce API (each request also carries the guaranteed docker-exec kafka-console-producer fallback).\n\nFolder 6 covers the remaining 4 journeys (negative-area, domain-check, emandate-autopay-setup, emandate-cancel). They are GATED - their journey files exist but in the default local run they are not loaded and have no type-to-journey row, so each request there documents the exact two config lines to add (then restart the engine) to make it route. Once routed they run end-to-end against the Karza / mandate mocks.\n\nFolder 4 also has the ops DRILL-DOWNS (run search/detail/metrics; sync-invocation detail + dedup-chain-by-key). Folder 7 is the journey-registry config plane (:8104) read side - the maker-checker WRITE endpoints (POST/PUT .../versions, /validate, /submit, /approve, /reject; X-Registry-Token + X-User-Id) exist but are driven from the DAG Designer with a journey configJson, so they're not hand-run here. Folder 8 is a health smoke check.\n\nWatch results: engine ops runs (:8082) / Sync Invocations tab / kafka-ui :8085 (DLQ orig.sfdc.dlq.v1). Prereqs: infra + services up (docker compose -f docker-compose.infra.yml up -d, then run-services.ps1)."
   },
   "variable": [
     {
@@ -1517,7 +1517,264 @@
       ]
     },
     {
-      "name": "6. Journey registry / config plane (:8104)",
+      "name": "6. Gated engine journeys (add a config row to route)",
+      "item": [
+        {
+          "name": "negative-area CLEAR (addressId != RISK -> completed)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{kafkaUiBase}}/api/clusters/{{kafkaCluster}}/topics/orig.sfdc.pl.v1/messages",
+              "host": [
+                "{{kafkaUiBase}}"
+              ],
+              "path": [
+                "api",
+                "clusters",
+                "{{kafkaCluster}}",
+                "topics",
+                "orig.sfdc.pl.v1",
+                "messages"
+              ]
+            },
+            "description": "verification:ENT_KARZA_NEGATIVE_AREA_TAGGING. Karza mock: addressId != 'RISK' -> is_negative=false -> NegativeAreaClear (completed).\n\nENABLE FIRST (2 lines in orchestration/origination-journey application-local.yml, then .\\dev-service.ps1 restart origination-journey):\n  idfc.engine.journey-resources:  add  journeys/negative-area-verification.journey.json\n  idfc.engine.type-to-journey:    add  NEGATIVE_AREA: negative-area-verification\n(or publish negative-area-verification via the DAG Designer/registry instead of journey-resources). Until then this type has no route and the engine DLQs it (orig.sfdc.dlq.v1).\n\nProduces a CanonicalEnvelope to orig.sfdc.pl.v1 via the kafka-ui produce API. correlationId is the ops search key.\n\nFallback (guaranteed): docker compose -f docker-compose.infra.yml exec -T kafka /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server localhost:9092 --topic orig.sfdc.pl.v1   then paste:  {\"transactionId\":\"txn-{{$guid}}\",\"schemaVersion\":\"demo.v1\",\"source\":\"FILE_DEMO\",\"type\":\"NEGATIVE_AREA\",\"notificationId\":\"corr-na-ok-nid-{{$guid}}\",\"orgId\":\"DEMO-ORG\",\"sfdcRecordId\":\"corr-na-ok-rec\",\"applicationRef\":\"corr-na-ok-app-{{$guid}}\",\"correlationId\":\"corr-na-ok-{{$guid}}\",\"originalCorrelationId\":\"corr-na-ok-{{$guid}}\",\"payloadContentType\":\"application/json\",\"occurredAt\":\"2026-07-09T10:00:00Z\",\"payload\":{\"addressId\":\"ADDR-1\"}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keySerde\": \"String\",\n  \"valueSerde\": \"String\",\n  \"key\": \"corr-na-ok-{{$guid}}\",\n  \"content\": \"{\\\"transactionId\\\":\\\"txn-{{$guid}}\\\",\\\"schemaVersion\\\":\\\"demo.v1\\\",\\\"source\\\":\\\"FILE_DEMO\\\",\\\"type\\\":\\\"NEGATIVE_AREA\\\",\\\"notificationId\\\":\\\"corr-na-ok-nid-{{$guid}}\\\",\\\"orgId\\\":\\\"DEMO-ORG\\\",\\\"sfdcRecordId\\\":\\\"corr-na-ok-rec\\\",\\\"applicationRef\\\":\\\"corr-na-ok-app-{{$guid}}\\\",\\\"correlationId\\\":\\\"corr-na-ok-{{$guid}}\\\",\\\"originalCorrelationId\\\":\\\"corr-na-ok-{{$guid}}\\\",\\\"payloadContentType\\\":\\\"application/json\\\",\\\"occurredAt\\\":\\\"2026-07-09T10:00:00Z\\\",\\\"payload\\\":{\\\"addressId\\\":\\\"ADDR-1\\\"}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "negative-area FLAGGED (addressId = RISK -> rejected)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{kafkaUiBase}}/api/clusters/{{kafkaCluster}}/topics/orig.sfdc.pl.v1/messages",
+              "host": [
+                "{{kafkaUiBase}}"
+              ],
+              "path": [
+                "api",
+                "clusters",
+                "{{kafkaCluster}}",
+                "topics",
+                "orig.sfdc.pl.v1",
+                "messages"
+              ]
+            },
+            "description": "Karza mock: addressId == 'RISK' -> is_negative=true -> NegativeAreaFlagged (rejected).\n\nENABLE FIRST (2 lines in orchestration/origination-journey application-local.yml, then .\\dev-service.ps1 restart origination-journey):\n  idfc.engine.journey-resources:  add  journeys/negative-area-verification.journey.json\n  idfc.engine.type-to-journey:    add  NEGATIVE_AREA: negative-area-verification\n(or publish negative-area-verification via the DAG Designer/registry instead of journey-resources). Until then this type has no route and the engine DLQs it (orig.sfdc.dlq.v1).\n\nProduces a CanonicalEnvelope to orig.sfdc.pl.v1 via the kafka-ui produce API. correlationId is the ops search key.\n\nFallback (guaranteed): docker compose -f docker-compose.infra.yml exec -T kafka /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server localhost:9092 --topic orig.sfdc.pl.v1   then paste:  {\"transactionId\":\"txn-{{$guid}}\",\"schemaVersion\":\"demo.v1\",\"source\":\"FILE_DEMO\",\"type\":\"NEGATIVE_AREA\",\"notificationId\":\"corr-na-bad-nid-{{$guid}}\",\"orgId\":\"DEMO-ORG\",\"sfdcRecordId\":\"corr-na-bad-rec\",\"applicationRef\":\"corr-na-bad-app-{{$guid}}\",\"correlationId\":\"corr-na-bad-{{$guid}}\",\"originalCorrelationId\":\"corr-na-bad-{{$guid}}\",\"payloadContentType\":\"application/json\",\"occurredAt\":\"2026-07-09T10:00:00Z\",\"payload\":{\"addressId\":\"RISK\"}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keySerde\": \"String\",\n  \"valueSerde\": \"String\",\n  \"key\": \"corr-na-bad-{{$guid}}\",\n  \"content\": \"{\\\"transactionId\\\":\\\"txn-{{$guid}}\\\",\\\"schemaVersion\\\":\\\"demo.v1\\\",\\\"source\\\":\\\"FILE_DEMO\\\",\\\"type\\\":\\\"NEGATIVE_AREA\\\",\\\"notificationId\\\":\\\"corr-na-bad-nid-{{$guid}}\\\",\\\"orgId\\\":\\\"DEMO-ORG\\\",\\\"sfdcRecordId\\\":\\\"corr-na-bad-rec\\\",\\\"applicationRef\\\":\\\"corr-na-bad-app-{{$guid}}\\\",\\\"correlationId\\\":\\\"corr-na-bad-{{$guid}}\\\",\\\"originalCorrelationId\\\":\\\"corr-na-bad-{{$guid}}\\\",\\\"payloadContentType\\\":\\\"application/json\\\",\\\"occurredAt\\\":\\\"2026-07-09T10:00:00Z\\\",\\\"payload\\\":{\\\"addressId\\\":\\\"RISK\\\"}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "domain-check APPROVED (normal email -> completed)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{kafkaUiBase}}/api/clusters/{{kafkaCluster}}/topics/orig.sfdc.pl.v1/messages",
+              "host": [
+                "{{kafkaUiBase}}"
+              ],
+              "path": [
+                "api",
+                "clusters",
+                "{{kafkaCluster}}",
+                "topics",
+                "orig.sfdc.pl.v1",
+                "messages"
+              ]
+            },
+            "description": "verification:KARZA_DOMAIN_CHECK. Karza mock: email != 'temp@disposable.com' -> result true, disposable false, org_domain_match true -> DomainCheckApproved (completed).\n\nENABLE FIRST (2 lines in orchestration/origination-journey application-local.yml, then .\\dev-service.ps1 restart origination-journey):\n  idfc.engine.journey-resources:  add  journeys/domain-check-verification.journey.json\n  idfc.engine.type-to-journey:    add  DOMAIN_CHECK: domain-check-verification\n(or publish domain-check-verification via the DAG Designer/registry instead of journey-resources). Until then this type has no route and the engine DLQs it (orig.sfdc.dlq.v1).\n\nProduces a CanonicalEnvelope to orig.sfdc.pl.v1 via the kafka-ui produce API. correlationId is the ops search key.\n\nFallback (guaranteed): docker compose -f docker-compose.infra.yml exec -T kafka /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server localhost:9092 --topic orig.sfdc.pl.v1   then paste:  {\"transactionId\":\"txn-{{$guid}}\",\"schemaVersion\":\"demo.v1\",\"source\":\"FILE_DEMO\",\"type\":\"DOMAIN_CHECK\",\"notificationId\":\"corr-dc-ok-nid-{{$guid}}\",\"orgId\":\"DEMO-ORG\",\"sfdcRecordId\":\"corr-dc-ok-rec\",\"applicationRef\":\"corr-dc-ok-app-{{$guid}}\",\"correlationId\":\"corr-dc-ok-{{$guid}}\",\"originalCorrelationId\":\"corr-dc-ok-{{$guid}}\",\"payloadContentType\":\"application/json\",\"occurredAt\":\"2026-07-09T10:00:00Z\",\"payload\":{\"organizationName\":\"IDFC FIRST BANK\",\"individualName\":\"ASHA RAO\",\"email\":\"asha@idfcfirstbank.com\"}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keySerde\": \"String\",\n  \"valueSerde\": \"String\",\n  \"key\": \"corr-dc-ok-{{$guid}}\",\n  \"content\": \"{\\\"transactionId\\\":\\\"txn-{{$guid}}\\\",\\\"schemaVersion\\\":\\\"demo.v1\\\",\\\"source\\\":\\\"FILE_DEMO\\\",\\\"type\\\":\\\"DOMAIN_CHECK\\\",\\\"notificationId\\\":\\\"corr-dc-ok-nid-{{$guid}}\\\",\\\"orgId\\\":\\\"DEMO-ORG\\\",\\\"sfdcRecordId\\\":\\\"corr-dc-ok-rec\\\",\\\"applicationRef\\\":\\\"corr-dc-ok-app-{{$guid}}\\\",\\\"correlationId\\\":\\\"corr-dc-ok-{{$guid}}\\\",\\\"originalCorrelationId\\\":\\\"corr-dc-ok-{{$guid}}\\\",\\\"payloadContentType\\\":\\\"application/json\\\",\\\"occurredAt\\\":\\\"2026-07-09T10:00:00Z\\\",\\\"payload\\\":{\\\"organizationName\\\":\\\"IDFC FIRST BANK\\\",\\\"individualName\\\":\\\"ASHA RAO\\\",\\\"email\\\":\\\"asha@idfcfirstbank.com\\\"}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "domain-check DECLINED (temp@disposable.com -> rejected)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{kafkaUiBase}}/api/clusters/{{kafkaCluster}}/topics/orig.sfdc.pl.v1/messages",
+              "host": [
+                "{{kafkaUiBase}}"
+              ],
+              "path": [
+                "api",
+                "clusters",
+                "{{kafkaCluster}}",
+                "topics",
+                "orig.sfdc.pl.v1",
+                "messages"
+              ]
+            },
+            "description": "Karza mock: email == 'temp@disposable.com' -> disposable true, org_domain_match false -> DomainCheckDeclined (rejected).\n\nENABLE FIRST (2 lines in orchestration/origination-journey application-local.yml, then .\\dev-service.ps1 restart origination-journey):\n  idfc.engine.journey-resources:  add  journeys/domain-check-verification.journey.json\n  idfc.engine.type-to-journey:    add  DOMAIN_CHECK: domain-check-verification\n(or publish domain-check-verification via the DAG Designer/registry instead of journey-resources). Until then this type has no route and the engine DLQs it (orig.sfdc.dlq.v1).\n\nProduces a CanonicalEnvelope to orig.sfdc.pl.v1 via the kafka-ui produce API. correlationId is the ops search key.\n\nFallback (guaranteed): docker compose -f docker-compose.infra.yml exec -T kafka /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server localhost:9092 --topic orig.sfdc.pl.v1   then paste:  {\"transactionId\":\"txn-{{$guid}}\",\"schemaVersion\":\"demo.v1\",\"source\":\"FILE_DEMO\",\"type\":\"DOMAIN_CHECK\",\"notificationId\":\"corr-dc-bad-nid-{{$guid}}\",\"orgId\":\"DEMO-ORG\",\"sfdcRecordId\":\"corr-dc-bad-rec\",\"applicationRef\":\"corr-dc-bad-app-{{$guid}}\",\"correlationId\":\"corr-dc-bad-{{$guid}}\",\"originalCorrelationId\":\"corr-dc-bad-{{$guid}}\",\"payloadContentType\":\"application/json\",\"occurredAt\":\"2026-07-09T10:00:00Z\",\"payload\":{\"organizationName\":\"IDFC FIRST BANK\",\"individualName\":\"ASHA RAO\",\"email\":\"temp@disposable.com\"}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keySerde\": \"String\",\n  \"valueSerde\": \"String\",\n  \"key\": \"corr-dc-bad-{{$guid}}\",\n  \"content\": \"{\\\"transactionId\\\":\\\"txn-{{$guid}}\\\",\\\"schemaVersion\\\":\\\"demo.v1\\\",\\\"source\\\":\\\"FILE_DEMO\\\",\\\"type\\\":\\\"DOMAIN_CHECK\\\",\\\"notificationId\\\":\\\"corr-dc-bad-nid-{{$guid}}\\\",\\\"orgId\\\":\\\"DEMO-ORG\\\",\\\"sfdcRecordId\\\":\\\"corr-dc-bad-rec\\\",\\\"applicationRef\\\":\\\"corr-dc-bad-app-{{$guid}}\\\",\\\"correlationId\\\":\\\"corr-dc-bad-{{$guid}}\\\",\\\"originalCorrelationId\\\":\\\"corr-dc-bad-{{$guid}}\\\",\\\"payloadContentType\\\":\\\"application/json\\\",\\\"occurredAt\\\":\\\"2026-07-09T10:00:00Z\\\",\\\"payload\\\":{\\\"organizationName\\\":\\\"IDFC FIRST BANK\\\",\\\"individualName\\\":\\\"ASHA RAO\\\",\\\"email\\\":\\\"temp@disposable.com\\\"}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "emandate autopay-setup (invoiceNo -> AutopayLinkSent)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{kafkaUiBase}}/api/clusters/{{kafkaCluster}}/topics/orig.sfdc.pl.v1/messages",
+              "host": [
+                "{{kafkaUiBase}}"
+              ],
+              "path": [
+                "api",
+                "clusters",
+                "{{kafkaCluster}}",
+                "topics",
+                "orig.sfdc.pl.v1",
+                "messages"
+              ]
+            },
+            "description": "mandate:setupAutopayLink (QuickPay->Dwarf->SFDC-SMS, all mocked). invoiceNo is required -> AutopayLinkSent (completed).\n\nENABLE FIRST (2 lines in orchestration/origination-journey application-local.yml, then .\\dev-service.ps1 restart origination-journey):\n  idfc.engine.journey-resources:  add  journeys/emandate-autopay-setup.journey.json\n  idfc.engine.type-to-journey:    add  EMANDATE_AUTOPAY_SETUP: emandate-autopay-setup\n(or publish emandate-autopay-setup via the DAG Designer/registry instead of journey-resources). Until then this type has no route and the engine DLQs it (orig.sfdc.dlq.v1).\n\nProduces a CanonicalEnvelope to orig.sfdc.pl.v1 via the kafka-ui produce API. correlationId is the ops search key.\n\nFallback (guaranteed): docker compose -f docker-compose.infra.yml exec -T kafka /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server localhost:9092 --topic orig.sfdc.pl.v1   then paste:  {\"transactionId\":\"txn-{{$guid}}\",\"schemaVersion\":\"demo.v1\",\"source\":\"FILE_DEMO\",\"type\":\"EMANDATE_AUTOPAY_SETUP\",\"notificationId\":\"corr-autopay-nid-{{$guid}}\",\"orgId\":\"DEMO-ORG\",\"sfdcRecordId\":\"corr-autopay-rec\",\"applicationRef\":\"corr-autopay-app-{{$guid}}\",\"correlationId\":\"corr-autopay-{{$guid}}\",\"originalCorrelationId\":\"corr-autopay-{{$guid}}\",\"payloadContentType\":\"application/json\",\"occurredAt\":\"2026-07-09T10:00:00Z\",\"payload\":{\"invoiceNo\":\"INV-1001\"}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keySerde\": \"String\",\n  \"valueSerde\": \"String\",\n  \"key\": \"corr-autopay-{{$guid}}\",\n  \"content\": \"{\\\"transactionId\\\":\\\"txn-{{$guid}}\\\",\\\"schemaVersion\\\":\\\"demo.v1\\\",\\\"source\\\":\\\"FILE_DEMO\\\",\\\"type\\\":\\\"EMANDATE_AUTOPAY_SETUP\\\",\\\"notificationId\\\":\\\"corr-autopay-nid-{{$guid}}\\\",\\\"orgId\\\":\\\"DEMO-ORG\\\",\\\"sfdcRecordId\\\":\\\"corr-autopay-rec\\\",\\\"applicationRef\\\":\\\"corr-autopay-app-{{$guid}}\\\",\\\"correlationId\\\":\\\"corr-autopay-{{$guid}}\\\",\\\"originalCorrelationId\\\":\\\"corr-autopay-{{$guid}}\\\",\\\"payloadContentType\\\":\\\"application/json\\\",\\\"occurredAt\\\":\\\"2026-07-09T10:00:00Z\\\",\\\"payload\\\":{\\\"invoiceNo\\\":\\\"INV-1001\\\"}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "emandate cancel FOUND (invoiceNo -> MandateCancelled)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{kafkaUiBase}}/api/clusters/{{kafkaCluster}}/topics/orig.sfdc.pl.v1/messages",
+              "host": [
+                "{{kafkaUiBase}}"
+              ],
+              "path": [
+                "api",
+                "clusters",
+                "{{kafkaCluster}}",
+                "topics",
+                "orig.sfdc.pl.v1",
+                "messages"
+              ]
+            },
+            "description": "mandate:cancel. Mock CBS 'finds' any invoiceNo NOT containing 'MISSING' -> cancel.found=true -> MandateCancelled (completed).\n\nENABLE FIRST (2 lines in orchestration/origination-journey application-local.yml, then .\\dev-service.ps1 restart origination-journey):\n  idfc.engine.journey-resources:  add  journeys/emandate-cancel.journey.json\n  idfc.engine.type-to-journey:    add  EMANDATE_CANCEL: emandate-cancel\n(or publish emandate-cancel via the DAG Designer/registry instead of journey-resources). Until then this type has no route and the engine DLQs it (orig.sfdc.dlq.v1).\n\nProduces a CanonicalEnvelope to orig.sfdc.pl.v1 via the kafka-ui produce API. correlationId is the ops search key.\n\nFallback (guaranteed): docker compose -f docker-compose.infra.yml exec -T kafka /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server localhost:9092 --topic orig.sfdc.pl.v1   then paste:  {\"transactionId\":\"txn-{{$guid}}\",\"schemaVersion\":\"demo.v1\",\"source\":\"FILE_DEMO\",\"type\":\"EMANDATE_CANCEL\",\"notificationId\":\"corr-cancel-ok-nid-{{$guid}}\",\"orgId\":\"DEMO-ORG\",\"sfdcRecordId\":\"corr-cancel-ok-rec\",\"applicationRef\":\"corr-cancel-ok-app-{{$guid}}\",\"correlationId\":\"corr-cancel-ok-{{$guid}}\",\"originalCorrelationId\":\"corr-cancel-ok-{{$guid}}\",\"payloadContentType\":\"application/json\",\"occurredAt\":\"2026-07-09T10:00:00Z\",\"payload\":{\"invoiceNo\":\"INV-1001\"}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keySerde\": \"String\",\n  \"valueSerde\": \"String\",\n  \"key\": \"corr-cancel-ok-{{$guid}}\",\n  \"content\": \"{\\\"transactionId\\\":\\\"txn-{{$guid}}\\\",\\\"schemaVersion\\\":\\\"demo.v1\\\",\\\"source\\\":\\\"FILE_DEMO\\\",\\\"type\\\":\\\"EMANDATE_CANCEL\\\",\\\"notificationId\\\":\\\"corr-cancel-ok-nid-{{$guid}}\\\",\\\"orgId\\\":\\\"DEMO-ORG\\\",\\\"sfdcRecordId\\\":\\\"corr-cancel-ok-rec\\\",\\\"applicationRef\\\":\\\"corr-cancel-ok-app-{{$guid}}\\\",\\\"correlationId\\\":\\\"corr-cancel-ok-{{$guid}}\\\",\\\"originalCorrelationId\\\":\\\"corr-cancel-ok-{{$guid}}\\\",\\\"payloadContentType\\\":\\\"application/json\\\",\\\"occurredAt\\\":\\\"2026-07-09T10:00:00Z\\\",\\\"payload\\\":{\\\"invoiceNo\\\":\\\"INV-1001\\\"}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "emandate cancel NOT-FOUND (INV-MISSING -> rejected)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{kafkaUiBase}}/api/clusters/{{kafkaCluster}}/topics/orig.sfdc.pl.v1/messages",
+              "host": [
+                "{{kafkaUiBase}}"
+              ],
+              "path": [
+                "api",
+                "clusters",
+                "{{kafkaCluster}}",
+                "topics",
+                "orig.sfdc.pl.v1",
+                "messages"
+              ]
+            },
+            "description": "Mock CBS: invoiceNo containing 'MISSING' -> enquire returns false -> cancel.found=false -> MandateNotFound (rejected).\n\nENABLE FIRST (2 lines in orchestration/origination-journey application-local.yml, then .\\dev-service.ps1 restart origination-journey):\n  idfc.engine.journey-resources:  add  journeys/emandate-cancel.journey.json\n  idfc.engine.type-to-journey:    add  EMANDATE_CANCEL: emandate-cancel\n(or publish emandate-cancel via the DAG Designer/registry instead of journey-resources). Until then this type has no route and the engine DLQs it (orig.sfdc.dlq.v1).\n\nProduces a CanonicalEnvelope to orig.sfdc.pl.v1 via the kafka-ui produce API. correlationId is the ops search key.\n\nFallback (guaranteed): docker compose -f docker-compose.infra.yml exec -T kafka /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server localhost:9092 --topic orig.sfdc.pl.v1   then paste:  {\"transactionId\":\"txn-{{$guid}}\",\"schemaVersion\":\"demo.v1\",\"source\":\"FILE_DEMO\",\"type\":\"EMANDATE_CANCEL\",\"notificationId\":\"corr-cancel-miss-nid-{{$guid}}\",\"orgId\":\"DEMO-ORG\",\"sfdcRecordId\":\"corr-cancel-miss-rec\",\"applicationRef\":\"corr-cancel-miss-app-{{$guid}}\",\"correlationId\":\"corr-cancel-miss-{{$guid}}\",\"originalCorrelationId\":\"corr-cancel-miss-{{$guid}}\",\"payloadContentType\":\"application/json\",\"occurredAt\":\"2026-07-09T10:00:00Z\",\"payload\":{\"invoiceNo\":\"INV-MISSING\"}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keySerde\": \"String\",\n  \"valueSerde\": \"String\",\n  \"key\": \"corr-cancel-miss-{{$guid}}\",\n  \"content\": \"{\\\"transactionId\\\":\\\"txn-{{$guid}}\\\",\\\"schemaVersion\\\":\\\"demo.v1\\\",\\\"source\\\":\\\"FILE_DEMO\\\",\\\"type\\\":\\\"EMANDATE_CANCEL\\\",\\\"notificationId\\\":\\\"corr-cancel-miss-nid-{{$guid}}\\\",\\\"orgId\\\":\\\"DEMO-ORG\\\",\\\"sfdcRecordId\\\":\\\"corr-cancel-miss-rec\\\",\\\"applicationRef\\\":\\\"corr-cancel-miss-app-{{$guid}}\\\",\\\"correlationId\\\":\\\"corr-cancel-miss-{{$guid}}\\\",\\\"originalCorrelationId\\\":\\\"corr-cancel-miss-{{$guid}}\\\",\\\"payloadContentType\\\":\\\"application/json\\\",\\\"occurredAt\\\":\\\"2026-07-09T10:00:00Z\\\",\\\"payload\\\":{\\\"invoiceNo\\\":\\\"INV-MISSING\\\"}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Journey registry / config plane (:8104)",
       "item": [
         {
           "name": "List journeys",
@@ -1608,7 +1865,7 @@
       ]
     },
     {
-      "name": "7. Health / smoke (is it up?)",
+      "name": "8. Health / smoke (is it up?)",
       "item": [
         {
           "name": "SFDC ingress edge (:8080)",
