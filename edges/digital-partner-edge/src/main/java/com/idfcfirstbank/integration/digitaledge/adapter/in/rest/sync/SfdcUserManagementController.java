@@ -38,9 +38,9 @@ public class SfdcUserManagementController {
 
     private static final String CAPABILITY = "sfdc-user-management";
 
-    /** Client-side "you asked for something not available" — a 422, not a downstream 502. */
+    /** Client-side "your request can't be processed as-is" — a 422, not a downstream 502. */
     private static final Set<String> CLIENT_ERROR_CODES =
-            Set.of("NO_ROUTE", "UNKNOWN_ORG", "ORG_DISABLED", "BAD_ROUTE_PATH", "WRITE_NOT_ENABLED");
+            Set.of("NO_ROUTE", "UNKNOWN_ORG", "ORG_DISABLED", "BAD_ROUTE_PATH", "MISSING_IDEMPOTENCY_KEY");
 
     private final SyncCapabilityInvoker invoker;
     private final BearerTokenValidator bearer;

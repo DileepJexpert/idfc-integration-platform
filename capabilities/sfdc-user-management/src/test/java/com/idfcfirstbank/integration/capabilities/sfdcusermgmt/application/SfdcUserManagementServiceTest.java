@@ -1,5 +1,6 @@
 package com.idfcfirstbank.integration.capabilities.sfdcusermgmt.application;
 
+import com.idfcfirstbank.integration.capabilities.sfdcusermgmt.adapter.out.idempotency.InMemorySfdcIdempotencyStore;
 import com.idfcfirstbank.integration.capabilities.sfdcusermgmt.application.mapper.SfdcMapperRegistry;
 import com.idfcfirstbank.integration.capabilities.sfdcusermgmt.config.SfdcUserManagementProperties;
 import com.idfcfirstbank.integration.capabilities.sfdcusermgmt.domain.model.ResolvedSfdcTarget;
@@ -45,7 +46,7 @@ class SfdcUserManagementServiceTest {
 
     private final CapturingPort port = new CapturingPort();
     private final SfdcUserManagementService service = new SfdcUserManagementService(
-            new SfdcOrgRouteResolver(props()), new SfdcMapperRegistry(), port);
+            new SfdcOrgRouteResolver(props()), new SfdcMapperRegistry(), port, new InMemorySfdcIdempotencyStore());
 
     private static SfdcUserManagementProperties props() {
         return new SfdcUserManagementProperties(3000, 10000,
@@ -103,10 +104,13 @@ class SfdcUserManagementServiceTest {
     }
 
     @Test
-    void writeSvcNameIsRefusedInSliceOne() {
-        Map<String, Object> b = Map.of("svcName", "SFDC_USER_CREATE", "orgName", "ORG_A", "payload", Map.of());
-        assertThatThrownBy(() -> service.invoke("SFDC_USER_CREATE", b, CTX))
-                .isInstanceOfSatisfying(SyncTechnicalException.class,
-                        e -> assertThat(e.code()).isEqualTo("WRITE_NOT_ENABLED"));
+    void writeAlsoRoutesByOrg() {
+        // org-routing applies to writes too: same svcName, different org -> different host
+        Map<String, Object> b = Map.of("svcName", "SFDC_USER_CREATE", "orgName", "ORG_B",
+                "idempotencyKey", "k-1", "payload", Map.of("Username", "u@b"));
+        service.invoke("SFDC_USER_CREATE", b, CTX);
+        assertThat(port.lastTarget.orgName()).isEqualTo("ORG_B");
+        assertThat(port.lastTarget.url()).isEqualTo("http://b.local:19113/svc/create");
+        assertThat(port.lastTarget.write()).isTrue();
     }
 }

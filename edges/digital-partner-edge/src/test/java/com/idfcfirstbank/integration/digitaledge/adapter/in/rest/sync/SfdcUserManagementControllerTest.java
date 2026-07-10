@@ -112,6 +112,15 @@ class SfdcUserManagementControllerTest {
     }
 
     @Test
+    void missingIdempotencyKeyOnAWriteIs422() throws Exception {
+        capability.toThrow = new SyncTechnicalException(ErrorClass.PERMANENT, "MISSING_IDEMPOTENCY_KEY", "need a key");
+        mvc.perform(post(URL).header("Authorization", GOOD)
+                        .contentType(MediaType.APPLICATION_JSON).content(body("SFDC_USER_CREATE", "ORG_A")))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("MISSING_IDEMPOTENCY_KEY"));
+    }
+
+    @Test
     void downstreamTechnicalFailureIs502() throws Exception {
         capability.toThrow = new SyncTechnicalException(ErrorClass.TRANSIENT, "IO", "unreachable");
         mvc.perform(post(URL).header("Authorization", GOOD)

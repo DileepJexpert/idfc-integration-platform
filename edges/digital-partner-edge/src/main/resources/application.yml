@@ -99,7 +99,14 @@ sfdc-user-mgmt:
   connect-timeout-ms: 3000
   read-timeout-ms: 10000
   routes:
+    # Reads (idempotent query, no idempotency key). SFDC paths are placeholders pending
+    # the JMI-confirmed contract.
     - { svcName: SFDC_USER_FETCH, path: /services/apexrest/usermgmt/user/fetch, write: false }
+    # Writes (state-changing) — a caller-supplied idempotencyKey is MANDATORY; a duplicate
+    # key returns the prior result and never re-executes.
+    - { svcName: SFDC_USER_CREATE, path: /services/apexrest/usermgmt/user/create, write: true }
+    - { svcName: SFDC_USER_UPDATE, path: /services/apexrest/usermgmt/user/update, write: true }
+    - { svcName: SFDC_ROLE_ASSIGN, path: /services/apexrest/usermgmt/role/assign, write: true }
   orgs:
     - { orgName: ORG_A, baseUrl: "${SFDC_ORG_A_URL:http://localhost:19112}", authType: BEARER, authToken: "${SFDC_ORG_A_TOKEN:}", enabled: true }
     - { orgName: ORG_B, baseUrl: "${SFDC_ORG_B_URL:http://localhost:19113}", authType: BEARER, authToken: "${SFDC_ORG_B_TOKEN:}", enabled: true }

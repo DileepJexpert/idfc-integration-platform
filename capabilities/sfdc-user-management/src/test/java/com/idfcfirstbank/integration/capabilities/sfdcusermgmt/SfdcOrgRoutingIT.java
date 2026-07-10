@@ -48,7 +48,8 @@ class SfdcOrgRoutingIT {
                 List.of(new SfdcUserManagementProperties.Org("ORG_A", baseUrl(serverA), "NONE", null, true),
                         new SfdcUserManagementProperties.Org("ORG_B", baseUrl(serverB), "NONE", null, true)));
         service = new SfdcUserManagementService(
-                new SfdcOrgRouteResolver(props), new SfdcMapperRegistry(), new SfdcOrgHttpClient(props));
+                new SfdcOrgRouteResolver(props), new SfdcMapperRegistry(), new SfdcOrgHttpClient(props),
+                new com.idfcfirstbank.integration.capabilities.sfdcusermgmt.adapter.out.idempotency.InMemorySfdcIdempotencyStore());
     }
 
     @AfterEach

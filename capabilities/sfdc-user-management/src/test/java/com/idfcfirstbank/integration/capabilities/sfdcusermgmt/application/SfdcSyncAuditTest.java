@@ -45,7 +45,8 @@ class SfdcSyncAuditTest {
 
     private final StubPort port = new StubPort();
     private final SfdcUserManagementService service = new SfdcUserManagementService(
-            new SfdcOrgRouteResolver(props()), new SfdcMapperRegistry(), port);
+            new SfdcOrgRouteResolver(props()), new SfdcMapperRegistry(), port,
+            new com.idfcfirstbank.integration.capabilities.sfdcusermgmt.adapter.out.idempotency.InMemorySfdcIdempotencyStore());
     private final List<SyncInvocation> recorded = new ArrayList<>();
     private final SyncCapabilityInvoker invoker = new SyncCapabilityInvoker(List.of(service), recorded::add);
 
