@@ -84,4 +84,17 @@ class SfdcOrgRouteResolverTest {
     void writeFlagIsCarriedThrough() {
         assertThat(resolver.resolve("SFDC_USER_CREATE", "ORG_A").write()).isTrue();
     }
+
+    @Test
+    void unknownAuthTypeFailsClosedNeverSilentlyNone() {
+        // A typo'd authType must NOT default to NONE (which would drop auth) — fail closed.
+        SfdcOrgRouteResolver r = new SfdcOrgRouteResolver(new SfdcUserManagementProperties(3000, 10000,
+                List.of(new SfdcUserManagementProperties.Route("SFDC_USER_FETCH", PATH, false)),
+                List.of(new SfdcUserManagementProperties.Org("ORG_BAD", "http://bad.local", "OAUTH2", "tok", true))));
+        assertThatThrownBy(() -> r.resolve("SFDC_USER_FETCH", "ORG_BAD"))
+                .isInstanceOfSatisfying(SyncTechnicalException.class, e -> {
+                    assertThat(e.code()).isEqualTo("BAD_AUTH_CONFIG");
+                    assertThat(e.errorClass()).isEqualTo(ErrorClass.PERMANENT);
+                });
+    }
 }

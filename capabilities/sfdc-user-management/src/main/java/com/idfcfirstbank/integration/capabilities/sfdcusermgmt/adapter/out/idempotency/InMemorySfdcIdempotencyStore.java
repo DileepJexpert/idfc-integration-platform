@@ -10,9 +10,11 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Dev/test in-memory SFDC write idempotency store. Production swaps in the shared
- * Aerospike store (a host-config swap) behind the same port — exactly like imps. Stores
- * a defensive copy so a later mutation of the returned map can't corrupt a cached result.
- * HashMap copies (not {@code Map.copyOf}) because an SFDC JSON body may carry null values.
+ * Aerospike store (a host-config swap) behind the same port — exactly like imps. Stores a
+ * TOP-LEVEL defensive copy (HashMap, not {@code Map.copyOf}, because an SFDC JSON body may
+ * carry null values). Nested maps/lists remain shared by reference — safe here because a
+ * cached response is only serialised back to the caller, never mutated, and the passthrough
+ * mappers don't mutate; a future mutating mapper would need a deep copy.
  */
 @Component
 public class InMemorySfdcIdempotencyStore implements SfdcIdempotencyStorePort {

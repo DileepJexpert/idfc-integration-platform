@@ -4,8 +4,11 @@ import com.idfcfirstbank.integration.capabilities.sfdcusermgmt.application.SfdcO
 import com.idfcfirstbank.integration.capabilities.sfdcusermgmt.application.SfdcUserManagementService;
 import com.idfcfirstbank.integration.capabilities.sfdcusermgmt.application.mapper.SfdcMapperRegistry;
 import com.idfcfirstbank.integration.capabilities.sfdcusermgmt.adapter.out.http.SfdcOrgHttpClient;
+import com.idfcfirstbank.integration.capabilities.sfdcusermgmt.adapter.out.idempotency.InMemorySfdcIdempotencyStore;
 import com.idfcfirstbank.integration.capabilities.sfdcusermgmt.config.SfdcUserManagementProperties;
+import com.idfcfirstbank.integration.shared.domain.capability.ErrorClass;
 import com.idfcfirstbank.integration.shared.sync.SyncRequestContext;
+import com.idfcfirstbank.integration.shared.sync.SyncTechnicalException;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,6 +23,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * The REAL-HTTP org-routing proof: two independent HTTP servers (org A and org B) on
@@ -69,6 +73,33 @@ class SfdcOrgRoutingIT {
         assertThat(respB).containsEntry("org", "ORG_B");
         assertThat(hitsB.get()).isEqualTo(1);
         assertThat(hitsA.get()).isEqualTo(1);   // server A was NOT hit again — routing is by org
+    }
+
+    @Test
+    void writeWithAnEmpty2xxIsAmbiguousNotPermanent() throws IOException {
+        // A successful-but-empty-bodied create may have applied -> the caller must not be
+        // told "definitely didn't happen" (PERMANENT), which could invite a double-create.
+        HttpServer empty = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        empty.createContext("/svc/create", ex -> { ex.sendResponseHeaders(200, -1); ex.close(); });
+        empty.start();
+        try {
+            SfdcUserManagementProperties props = new SfdcUserManagementProperties(2000, 3000,
+                    List.of(new SfdcUserManagementProperties.Route("SFDC_USER_CREATE", "/svc/create", true)),
+                    List.of(new SfdcUserManagementProperties.Org("ORG_A",
+                            "http://localhost:" + empty.getAddress().getPort(), "NONE", null, true)));
+            SfdcUserManagementService svc = new SfdcUserManagementService(
+                    new SfdcOrgRouteResolver(props), new SfdcMapperRegistry(),
+                    new SfdcOrgHttpClient(props), new InMemorySfdcIdempotencyStore());
+            Map<String, Object> b = Map.of("svcName", "SFDC_USER_CREATE", "orgName", "ORG_A",
+                    "idempotencyKey", "k-empty", "payload", Map.of("Username", "u@a"));
+            assertThatThrownBy(() -> svc.invoke("SFDC_USER_CREATE", b, CTX))
+                    .isInstanceOfSatisfying(SyncTechnicalException.class, e -> {
+                        assertThat(e.code()).isEqualTo("EMPTY_RESPONSE");
+                        assertThat(e.errorClass()).isEqualTo(ErrorClass.AMBIGUOUS);
+                    });
+        } finally {
+            empty.stop(0);
+        }
     }
 
     private static Map<String, Object> body(String org) {

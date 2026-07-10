@@ -62,7 +62,12 @@ public class SfdcOrgHttpClient implements SfdcOrgPort {
             Map<String, Object> body = spec.body(requestBody == null ? Map.of() : requestBody)
                     .retrieve().body(Map.class);
             if (body == null) {
-                throw new SyncTechnicalException(ErrorClass.PERMANENT, "EMPTY_RESPONSE",
+                // A read with no body is definitively empty (PERMANENT). A WRITE with an
+                // empty 2xx is AMBIGUOUS — the mutation may have applied, so we must NOT
+                // signal "definitely not done" (that could invite a double-create). The
+                // idempotency key makes a retry safe either way.
+                ErrorClass ec = target.write() ? ErrorClass.AMBIGUOUS : ErrorClass.PERMANENT;
+                throw new SyncTechnicalException(ec, "EMPTY_RESPONSE",
                         "SFDC org " + target.orgName() + " returned an empty body for svcName=" + target.svcName());
             }
             return body;

@@ -95,10 +95,18 @@ public class SfdcOrgRouteResolver {
     }
 
     private static SfdcAuthType authType(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return SfdcAuthType.NONE;   // explicit "no auth"
+        }
         try {
-            return raw == null ? SfdcAuthType.NONE : SfdcAuthType.valueOf(raw.toUpperCase());
+            return SfdcAuthType.valueOf(raw.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
-            return SfdcAuthType.NONE;
+            // FAIL CLOSED on an unknown enum (platform principle): a typo'd authType must
+            // NOT silently drop auth to NONE. The misconfigured org's requests fail closed
+            // with a clear code rather than ever calling SFDC unauthenticated. (Deliberately
+            // stricter than the verification capability's lenient default-to-NONE.)
+            throw new SyncTechnicalException(ErrorClass.PERMANENT, "BAD_AUTH_CONFIG",
+                    "unknown authType configured for org: " + raw);
         }
     }
 }
