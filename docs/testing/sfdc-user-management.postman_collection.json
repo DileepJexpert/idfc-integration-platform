@@ -1,0 +1,676 @@
+{
+  "info": {
+    "name": "IDFC \u2014 SFDC user-management (org-targeted egress)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Tests the sfdc-user-management SYNC capability on the DIGITAL EDGE (POST /api/v1/sfdcUserManagement, :8081). svcName selects the operation; orgName selects WHICH SFDC org instance is called (org-targeted egress). Requests carry pm.test assertions, so `newman run` gates them.\n\nBRANCH-ONLY: this endpoint + the two SFDC org WireMocks live on branch claude/code-review-bug-design-u568d3, not main. Prereqs: (1) build+run the digital edge from that branch; (2) docker compose -f docker-compose.infra.yml up -d so mock-sfdc-org-a (:19112) and mock-sfdc-org-b (:19113) are live. Only the mock DATA is mocked \u2014 each org's response carries an `org` field so routing is provable.\n\nAuth = Authorization: Bearer {{syncToken}} (the same fail-closed sync-edge token as impsFT/callLmsUtilities; dev = dev-sync-token). Import into Postman or Insomnia."
+  },
+  "variable": [
+    {
+      "key": "edgeBase",
+      "value": "http://localhost:8081"
+    },
+    {
+      "key": "syncToken",
+      "value": "dev-sync-token"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Reads \u2014 org routing proof",
+      "item": [
+        {
+          "name": "Fetch user \u2014 ORG_A",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"routed to ORG_A (HTTP 200)\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().org).to.eql(\"ORG_A\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{syncToken}}"
+              },
+              {
+                "key": "correlationId",
+                "value": "sfdc-{{$guid}}"
+              },
+              {
+                "key": "source",
+                "value": "JMI"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"svcName\": \"SFDC_USER_FETCH\",\n  \"orgName\": \"ORG_A\",\n  \"payload\": {\n    \"Username\": \"asha.rao@orga.example.com\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{edgeBase}}/api/v1/sfdcUserManagement",
+              "host": [
+                "{{edgeBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sfdcUserManagement"
+              ]
+            },
+            "description": "Read (no idempotency key). Routes to mock-sfdc-org-a (:19112) -> response org=ORG_A."
+          }
+        },
+        {
+          "name": "Fetch user \u2014 ORG_B (same svcName, other org)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"routed to ORG_B (HTTP 200)\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().org).to.eql(\"ORG_B\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{syncToken}}"
+              },
+              {
+                "key": "correlationId",
+                "value": "sfdc-{{$guid}}"
+              },
+              {
+                "key": "source",
+                "value": "JMI"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"svcName\": \"SFDC_USER_FETCH\",\n  \"orgName\": \"ORG_B\",\n  \"payload\": {\n    \"Username\": \"vikram.rao@orgb.example.com\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{edgeBase}}/api/v1/sfdcUserManagement",
+              "host": [
+                "{{edgeBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sfdcUserManagement"
+              ]
+            },
+            "description": "SAME svcName, orgName=ORG_B -> routes to mock-sfdc-org-b (:19113) -> org=ORG_B. THIS is the org-routing proof: the org name, not the svcName, chose the target."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Writes \u2014 idempotency + business/technical",
+      "item": [
+        {
+          "name": "Create user \u2014 ORG_A (success)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200, success=true\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().success).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{syncToken}}"
+              },
+              {
+                "key": "correlationId",
+                "value": "sfdc-{{$guid}}"
+              },
+              {
+                "key": "source",
+                "value": "JMI"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"svcName\": \"SFDC_USER_CREATE\",\n  \"orgName\": \"ORG_A\",\n  \"idempotencyKey\": \"idem-{{$guid}}\",\n  \"payload\": {\n    \"Username\": \"new.user@orga.example.com\",\n    \"LastName\": \"Rao\",\n    \"Email\": \"new.user@orga.example.com\",\n    \"ProfileId\": \"00eXX0000000001\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{edgeBase}}/api/v1/sfdcUserManagement",
+              "host": [
+                "{{edgeBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sfdcUserManagement"
+              ]
+            },
+            "description": "Write. Mandatory idempotencyKey (unique {{$guid}} here). 200 success:true + id + org=ORG_A."
+          }
+        },
+        {
+          "name": "Create user \u2014 idempotency REPLAY (fixed key)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200, success=true\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().success).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{syncToken}}"
+              },
+              {
+                "key": "correlationId",
+                "value": "sfdc-{{$guid}}"
+              },
+              {
+                "key": "source",
+                "value": "JMI"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"svcName\": \"SFDC_USER_CREATE\",\n  \"orgName\": \"ORG_A\",\n  \"idempotencyKey\": \"idem-fixed-001\",\n  \"payload\": {\n    \"Username\": \"replay.user@orga.example.com\",\n    \"LastName\": \"Rao\",\n    \"Email\": \"replay.user@orga.example.com\",\n    \"ProfileId\": \"00eXX0000000001\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{edgeBase}}/api/v1/sfdcUserManagement",
+              "host": [
+                "{{edgeBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sfdcUserManagement"
+              ]
+            },
+            "description": "SEND THIS TWICE. Both return the identical body; the capability calls SFDC only ONCE \u2014 the second is a cached replay keyed by idempotencyKey (idem-fixed-001). In the edge log you'll see one 'write done' then one 'idempotent replay'. (Reset by changing the key.)"
+          }
+        },
+        {
+          "name": "Create user \u2014 DUPLICATE (business no, still 200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200, success=false\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().success).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{syncToken}}"
+              },
+              {
+                "key": "correlationId",
+                "value": "sfdc-{{$guid}}"
+              },
+              {
+                "key": "source",
+                "value": "JMI"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"svcName\": \"SFDC_USER_CREATE\",\n  \"orgName\": \"ORG_A\",\n  \"idempotencyKey\": \"idem-{{$guid}}\",\n  \"payload\": {\n    \"Username\": \"DUPE_USER\",\n    \"LastName\": \"Rao\",\n    \"Email\": \"DUPE_USER\",\n    \"ProfileId\": \"00eXX0000000001\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{edgeBase}}/api/v1/sfdcUserManagement",
+              "host": [
+                "{{edgeBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sfdcUserManagement"
+              ]
+            },
+            "description": "Username=DUPE_USER triggers the mock's success:false + DUPLICATE_USERNAME. This is a BUSINESS 'no' (HTTP 200, returned as a body, audited BUSINESS_FAILURE) \u2014 NOT a technical error."
+          }
+        },
+        {
+          "name": "Update user \u2014 ORG_A",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200, success=true\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().success).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{syncToken}}"
+              },
+              {
+                "key": "correlationId",
+                "value": "sfdc-{{$guid}}"
+              },
+              {
+                "key": "source",
+                "value": "JMI"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"svcName\": \"SFDC_USER_UPDATE\",\n  \"orgName\": \"ORG_A\",\n  \"idempotencyKey\": \"idem-{{$guid}}\",\n  \"payload\": {\n    \"Id\": \"005A0000001aAAAIA2\",\n    \"ProfileId\": \"00eXX0000000002\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{edgeBase}}/api/v1/sfdcUserManagement",
+              "host": [
+                "{{edgeBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sfdcUserManagement"
+              ]
+            },
+            "description": "Another write svcName (config row, passthrough mapper). 200 success:true."
+          }
+        },
+        {
+          "name": "Assign role \u2014 ORG_A",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200, success=true\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().success).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{syncToken}}"
+              },
+              {
+                "key": "correlationId",
+                "value": "sfdc-{{$guid}}"
+              },
+              {
+                "key": "source",
+                "value": "JMI"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"svcName\": \"SFDC_ROLE_ASSIGN\",\n  \"orgName\": \"ORG_A\",\n  \"idempotencyKey\": \"idem-{{$guid}}\",\n  \"payload\": {\n    \"userId\": \"005A0000001aAAAIA2\",\n    \"roleId\": \"00EXX0000000001\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{edgeBase}}/api/v1/sfdcUserManagement",
+              "host": [
+                "{{edgeBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sfdcUserManagement"
+              ]
+            },
+            "description": "Role assignment write svcName. 200 success:true."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Fail closed",
+      "item": [
+        {
+          "name": "Write without idempotencyKey -> 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"fail closed: HTTP 422 MISSING_IDEMPOTENCY_KEY\", function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().code).to.eql(\"MISSING_IDEMPOTENCY_KEY\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{syncToken}}"
+              },
+              {
+                "key": "correlationId",
+                "value": "sfdc-{{$guid}}"
+              },
+              {
+                "key": "source",
+                "value": "JMI"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"svcName\": \"SFDC_USER_CREATE\",\n  \"orgName\": \"ORG_A\",\n  \"payload\": {\n    \"Username\": \"no.key@orga.example.com\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{edgeBase}}/api/v1/sfdcUserManagement",
+              "host": [
+                "{{edgeBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sfdcUserManagement"
+              ]
+            },
+            "description": "A write with no idempotencyKey is refused BEFORE SFDC is touched (identity is never mutated without its dedup guarantee)."
+          }
+        },
+        {
+          "name": "Unknown org -> 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"fail closed: HTTP 422 UNKNOWN_ORG\", function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().code).to.eql(\"UNKNOWN_ORG\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{syncToken}}"
+              },
+              {
+                "key": "correlationId",
+                "value": "sfdc-{{$guid}}"
+              },
+              {
+                "key": "source",
+                "value": "JMI"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"svcName\": \"SFDC_USER_FETCH\",\n  \"orgName\": \"ORG_ZZ\",\n  \"payload\": {\n    \"Username\": \"x@x\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{edgeBase}}/api/v1/sfdcUserManagement",
+              "host": [
+                "{{edgeBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sfdcUserManagement"
+              ]
+            },
+            "description": "orgName not in the curated org allow-list -> fail closed, no default org."
+          }
+        },
+        {
+          "name": "Unknown svcName -> 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"fail closed: HTTP 422 NO_ROUTE\", function () {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().code).to.eql(\"NO_ROUTE\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{syncToken}}"
+              },
+              {
+                "key": "correlationId",
+                "value": "sfdc-{{$guid}}"
+              },
+              {
+                "key": "source",
+                "value": "JMI"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"svcName\": \"SFDC_NOPE\",\n  \"orgName\": \"ORG_A\",\n  \"payload\": {}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{edgeBase}}/api/v1/sfdcUserManagement",
+              "host": [
+                "{{edgeBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sfdcUserManagement"
+              ]
+            },
+            "description": "svcName has no route row -> NO_ROUTE, consistent with the verification resolver."
+          }
+        },
+        {
+          "name": "Missing bearer -> 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 401\", function () { pm.response.to.have.status(401); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "correlationId",
+                "value": "sfdc-{{$guid}}"
+              },
+              {
+                "key": "source",
+                "value": "JMI"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"svcName\": \"SFDC_USER_FETCH\",\n  \"orgName\": \"ORG_A\",\n  \"payload\": {\n    \"Username\": \"x@x\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{edgeBase}}/api/v1/sfdcUserManagement",
+              "host": [
+                "{{edgeBase}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sfdcUserManagement"
+              ]
+            },
+            "description": "No Authorization: Bearer -> fail-closed 401 UNAUTHENTICATED before the capability is touched."
+          }
+        }
+      ]
+    }
+  ]
+}

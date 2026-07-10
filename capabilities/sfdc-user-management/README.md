@@ -80,8 +80,8 @@ appearing, that is the boundary being crossed.
 - **Slice 2 (this):** **write** svcNames (`SFDC_USER_CREATE` / `SFDC_USER_UPDATE` /
   `SFDC_ROLE_ASSIGN`) with mandatory caller-supplied idempotency, definitive-only caching,
   and the read-vs-action retry-safety line (business `success:false` vs technical 5xx /
-  AMBIGUOUS timeout). `SFDC_USER_UPDATE` / `SFDC_ROLE_ASSIGN` are config rows sharing the
-  same path (mappers stay passthrough) pending confirmed JMI payloads.
+  AMBIGUOUS timeout). `SFDC_USER_UPDATE` / `SFDC_ROLE_ASSIGN` are additional write route
+  rows (distinct paths, passthrough mappers) pending confirmed JMI payloads.
 
 ## Dev vendors
 
