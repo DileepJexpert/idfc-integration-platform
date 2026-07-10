@@ -200,6 +200,28 @@ services:
     volumes:
       - ./infra/mock-vendors/lms/mappings:/home/wiremock/mappings:ro
 
+  # --- SFDC user-management org instances (WireMock; only the DATA is mocked) -----
+  # TWO org instances so ORG-targeted egress routing is PROVABLE: a request for ORG_A
+  # must demonstrably hit org-a and ORG_B hit org-b. Each mock's response carries an
+  # "org" field identifying itself, so a caller/test can confirm which one answered.
+  mock-sfdc-org-a:
+    image: wiremock/wiremock:3.9.1
+    container_name: idfc-mock-sfdc-org-a
+    networks: [idfc]
+    command: ["--port", "8080", "--disable-banner", "--disable-http2-plain"]
+    ports: ["19112:8080"]
+    volumes:
+      - ./infra/mock-vendors/sfdc-org-a/mappings:/home/wiremock/mappings:ro
+
+  mock-sfdc-org-b:
+    image: wiremock/wiremock:3.9.1
+    container_name: idfc-mock-sfdc-org-b
+    networks: [idfc]
+    command: ["--port", "8080", "--disable-banner", "--disable-http2-plain"]
+    ports: ["19113:8080"]
+    volumes:
+      - ./infra/mock-vendors/sfdc-org-b/mappings:/home/wiremock/mappings:ro
+
   mock-finnone:
     image: gvenzl/oracle-xe:21-slim
     container_name: idfc-mock-finnone

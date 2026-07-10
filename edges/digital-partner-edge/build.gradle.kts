@@ -19,6 +19,7 @@ dependencies {
     implementation(project(":shared:shared-sync"))
     implementation(project(":capabilities:imps-disbursal"))
     implementation(project(":capabilities:lms-utilities"))
+    implementation(project(":capabilities:sfdc-user-management"))
 
     implementation("org.springframework.kafka:spring-kafka:${property("springKafkaVersion")}")
     // SAME idempotency store as the platform (Aerospike) — partner resends dedupe too.

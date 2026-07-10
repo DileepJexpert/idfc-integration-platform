@@ -47,6 +47,7 @@ include("capabilities:device-validation") // brand-as-config capability (real HT
 include("capabilities:fusion-hcm")       // per-record Fusion HCM update/read (real HTTP; vendor mocked in dev)
 include("capabilities:imps-disbursal")   // digital-lending SYNC lane: IMPS fund transfer (caller waits; not the engine)
 include("capabilities:lms-utilities")    // digital-lending SYNC lane: LMS utilities (requestCode dispatch; house envelope)
+include("capabilities:sfdc-user-management") // SYNC lane: SFDC user/role/profile ops, per-svcName route + ORG-targeted egress
 
 // orchestration/ — long-running journeys (stubs in Slice 1)
 include("orchestration:origination-journey")

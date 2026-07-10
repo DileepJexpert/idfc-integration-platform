@@ -1,0 +1,25 @@
+{
+  "priority": 5,
+  "request": {
+    "method": "POST",
+    "urlPath": "/services/apexrest/usermgmt/user/fetch"
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "org": "ORG_A",
+      "totalSize": 1,
+      "done": true,
+      "records": [
+        {
+          "attributes": { "type": "User" },
+          "Id": "005A0000001aAAAIA2",
+          "Username": "asha.rao@orga.example.com",
+          "ProfileName": "System Administrator",
+          "IsActive": true
+        }
+      ]
+    }
+  }
+}

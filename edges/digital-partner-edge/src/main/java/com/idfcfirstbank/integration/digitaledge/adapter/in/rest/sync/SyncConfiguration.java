@@ -2,6 +2,7 @@ package com.idfcfirstbank.integration.digitaledge.adapter.in.rest.sync;
 
 import com.idfcfirstbank.integration.capabilities.impsdisbursal.ImpsDisbursalModule;
 import com.idfcfirstbank.integration.capabilities.lmsutilities.LmsUtilitiesModule;
+import com.idfcfirstbank.integration.capabilities.sfdcusermgmt.SfdcUserManagementModule;
 import com.idfcfirstbank.integration.digitaledge.config.SyncEdgeProperties;
 import com.idfcfirstbank.integration.shared.sync.SyncCapabilityInvoker;
 import com.idfcfirstbank.integration.shared.sync.SyncInvocable;
@@ -22,7 +23,7 @@ import java.util.List;
  * async engine/Kafka path is untouched.
  */
 @Configuration
-@Import({ImpsDisbursalModule.class, LmsUtilitiesModule.class})
+@Import({ImpsDisbursalModule.class, LmsUtilitiesModule.class, SfdcUserManagementModule.class})
 @EnableConfigurationProperties(SyncEdgeProperties.class)
 public class SyncConfiguration {
 
