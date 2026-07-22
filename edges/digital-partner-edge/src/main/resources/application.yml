@@ -84,6 +84,33 @@ lms-utilities:
   known-request-codes:
     - OFFER_CHECK
 
+# SFDC user-management SYNC capability (the JMI-migration APIs for SFDC user/role/
+# profile ops). svcName selects the OPERATION (a per-svcName route row, like the
+# verification capability). The request's ORG NAME selects WHICH SFDC org instance to
+# call — org-as-egress-target, this platform's ONE scoped exception to "org is never a
+# routing key" (see SfdcOrgRouteResolver). The `orgs` table is a CURATED ALLOW-LIST:
+# endpoints are OUR config, never the message; an unknown/disabled org fails closed and
+# there is NO default org. Timeouts are mandatory (the caller blocks). In dev the orgs
+# are the compose WireMocks (mock-sfdc-org-a :19112 / mock-sfdc-org-b :19113) — only
+# their DATA is mocked; real SFDC orgs later = host+token swaps here, no code. Slice 1
+# ships ONE read svcName; writes (idempotent) are slice 2. The SFDC path is a
+# placeholder pending the JMI-confirmed contract.
+sfdc-user-mgmt:
+  connect-timeout-ms: 3000
+  read-timeout-ms: 10000
+  routes:
+    # Reads (idempotent query, no idempotency key). SFDC paths are placeholders pending
+    # the JMI-confirmed contract.
+    - { svcName: SFDC_USER_FETCH, path: /services/apexrest/usermgmt/user/fetch, write: false }
+    # Writes (state-changing) — a caller-supplied idempotencyKey is MANDATORY; a duplicate
+    # key returns the prior result and never re-executes.
+    - { svcName: SFDC_USER_CREATE, path: /services/apexrest/usermgmt/user/create, write: true }
+    - { svcName: SFDC_USER_UPDATE, path: /services/apexrest/usermgmt/user/update, write: true }
+    - { svcName: SFDC_ROLE_ASSIGN, path: /services/apexrest/usermgmt/role/assign, write: true }
+  orgs:
+    - { orgName: ORG_A, baseUrl: "${SFDC_ORG_A_URL:http://localhost:19112}", authType: BEARER, authToken: "${SFDC_ORG_A_TOKEN:}", enabled: true }
+    - { orgName: ORG_B, baseUrl: "${SFDC_ORG_B_URL:http://localhost:19113}", authType: BEARER, authToken: "${SFDC_ORG_B_TOKEN:}", enabled: true }
+
 management:
   endpoints:
     web:

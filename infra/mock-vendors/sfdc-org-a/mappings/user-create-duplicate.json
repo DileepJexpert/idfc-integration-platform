@@ -1,0 +1,19 @@
+{
+  "priority": 1,
+  "request": {
+    "method": "POST",
+    "urlPath": "/services/apexrest/usermgmt/user/create",
+    "bodyPatterns": [ { "matchesJsonPath": "$[?(@.Username == 'DUPE_USER')]" } ]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "success": false,
+      "org": "ORG_A",
+      "errors": [
+        { "statusCode": "DUPLICATE_USERNAME", "message": "duplicate username: DUPE_USER" }
+      ]
+    }
+  }
+}

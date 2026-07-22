@@ -1,0 +1,17 @@
+{
+  "priority": 5,
+  "request": {
+    "method": "POST",
+    "urlPath": "/services/apexrest/usermgmt/user/create"
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "success": true,
+      "id": "005B0000009dCREATEDIB",
+      "org": "ORG_B",
+      "errors": []
+    }
+  }
+}
